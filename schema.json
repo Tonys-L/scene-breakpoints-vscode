@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scene Breakpoints Configuration Schema",
+  "description": "Configuration schema for VS Code Scene Breakpoints (.vscode/debug-scenes.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference URI for auto-completion and validation"
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema version indicator",
+      "default": "1.0"
+    },
+    "bindings": {
+      "type": "object",
+      "description": "Map debug launch configuration names (from launch.json) to scene names",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Single debug scene name to activate upon launch"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Composite debug scene names to layer upon launch"
+          }
+        ]
+      }
+    },
+    "scenes": {
+      "type": "object",
+      "description": "Debug scene dictionary mapping scene names to breakpoint lists",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "line",
+                "condition",
+                "hit",
+                "logpoint",
+                "function"
+              ],
+              "description": "Type of the breakpoint: line, condition, hit, logpoint, or function"
+            },
+            "file": {
+              "type": "string",
+              "description": "Relative POSIX file path from workspace root (e.g. src/index.ts)"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based line number in the source file"
+            },
+            "desc": {
+              "type": "string",
+              "description": "Human-readable description or note for this breakpoint"
+            },
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether this breakpoint is enabled or disabled"
+            },
+            "condition": {
+              "type": "string",
+              "description": "Boolean expression that must evaluate to true for execution to pause"
+            },
+            "hitCondition": {
+              "type": "string",
+              "description": "Hit count expression condition (e.g. '> 5', '% 2 === 0')"
+            },
+            "logMessage": {
+              "type": "string",
+              "description": "Log message to print in the Debug Console (supports {variable} interpolation)"
+            },
+            "functionName": {
+              "type": "string",
+              "description": "Name of the function/method to intercept across files"
+            },
+            "snippet": {
+              "type": "string",
+              "description": "Lexical fingerprint of the target line used by the self-healing engine"
+            },
+            "contextBefore": {
+              "type": "string",
+              "description": "Lexical fingerprint of the preceding line used by the self-healing engine"
+            },
+            "contextAfter": {
+              "type": "string",
+              "description": "Lexical fingerprint of the succeeding line used by the self-healing engine"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "function"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "functionName"
+                ]
+              },
+              "else": {
+                "required": [
+                  "file",
+                  "line"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

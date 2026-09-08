@@ -1,0 +1,26 @@
+{
+  "extension.displayName": "场景断点 (Scene Breakpoints)",
+  "extension.description": "把断点按场景分组管理，一键切换、代码改了自动找回、随 Git 共享给团队。",
+  "command.addBreakpoint": "保存当前断点到调试场景 (Add to Scene)...",
+  "command.applyScene": "激活指定场景断点 (清理杂散断点)...",
+  "command.clearAll": "清空所有断点 (Clear All)",
+  "command.exportScene": "将当前所有断点导出为新场景 (Export to Scene)...",
+  "command.showMenu": "呼出场景断点控制菜单 (Show Menu)...",
+  "command.refreshView": "刷新场景列表",
+  "command.createNewScene": "新建调试场景...",
+  "command.applySceneItem": "激活此场景",
+  "command.renameSceneItem": "重命名场景...",
+  "command.deleteSceneItem": "删除场景",
+  "command.removeBreakpointItem": "从场景中移除断点",
+  "command.toggleBreakpointItem": "切换断点启用/禁用状态",
+  "command.copySceneToClipboard": "复制场景到剪贴板",
+  "command.importSceneFromClipboard": "从剪贴板导入场景...",
+  "command.toggleSceneActivation": "切换场景激活状态",
+  "command.enableAllBreakpointsInScene": "启用场景内全部断点",
+  "command.disableAllBreakpointsInScene": "禁用场景内全部断点",
+  "command.duplicateScene": "克隆场景副本...",
+  "config.autoActivateOnLaunch": "启动调试配置时自动联动激活关联的场景断点",
+  "view.sceneBreakpoints": "场景断点 (Scene Breakpoints)"
+}
+
+

@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# VS Code package archives
+*.vsix
+
+# Build output
+out/
+dist/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

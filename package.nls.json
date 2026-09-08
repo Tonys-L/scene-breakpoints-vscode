@@ -1,0 +1,26 @@
+{
+  "extension.displayName": "Scene Breakpoints",
+  "extension.description": "Group breakpoints by scenario, switch with one click, auto-heal after code changes, and share via Git.",
+  "command.addBreakpoint": "Add to Debug Scene...",
+  "command.applyScene": "Activate Scene Breakpoints...",
+  "command.clearAll": "Clear All Breakpoints",
+  "command.exportScene": "Export Current Breakpoints to Scene...",
+  "command.showMenu": "Show Scene Menu...",
+  "command.refreshView": "Refresh Scenes",
+  "command.createNewScene": "New Scene...",
+  "command.applySceneItem": "Activate Scene",
+  "command.renameSceneItem": "Rename Scene...",
+  "command.deleteSceneItem": "Delete Scene",
+  "command.removeBreakpointItem": "Remove Breakpoint",
+  "command.toggleBreakpointItem": "Toggle Breakpoint Enabled/Disabled",
+  "command.copySceneToClipboard": "Copy Scene to Clipboard",
+  "command.importSceneFromClipboard": "Import Scene from Clipboard...",
+  "command.toggleSceneActivation": "Toggle Scene Activation",
+  "command.enableAllBreakpointsInScene": "Enable All Breakpoints in Scene",
+  "command.disableAllBreakpointsInScene": "Disable All Breakpoints in Scene",
+  "command.duplicateScene": "Duplicate Scene...",
+  "config.autoActivateOnLaunch": "Automatically activate bound scene breakpoints when a debug launch configuration is started",
+  "view.sceneBreakpoints": "Scene Breakpoints"
+}
+
+

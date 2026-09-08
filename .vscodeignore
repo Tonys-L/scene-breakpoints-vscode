@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+src/**
+test/**
+docs/**
+node_modules/**
+build.mjs
+install.bat
+install.ps1
+AGENTS.md
+DESIGN.md
+*.vsix

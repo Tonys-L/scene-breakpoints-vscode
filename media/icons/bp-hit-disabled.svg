@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- 饱满暗灰空心命中计数断点 (内嵌灰色数据点) -->
+  <circle cx="8" cy="8" r="4.6" fill="none" stroke="#848484" stroke-width="1.6" opacity="0.85" />
+  <circle cx="8" cy="8" r="1.6" fill="#848484" opacity="0.85" />
+</svg>
