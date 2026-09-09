@@ -3,6 +3,7 @@
 src/**
 test/**
 docs/**
+!docs/images/**
 node_modules/**
 build.mjs
 install.bat

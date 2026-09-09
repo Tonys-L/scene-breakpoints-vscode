@@ -57,6 +57,7 @@
       {
         "command": "sceneBreakpoints.applyScene",
         "title": "%command.applyScene%",
+        "icon": "$(debug-start)",
         "category": "Scene"
       },
       {
@@ -67,6 +68,7 @@
       {
         "command": "sceneBreakpoints.exportScene",
         "title": "%command.exportScene%",
+        "icon": "$(export)",
         "category": "Scene"
       },
       {
@@ -298,9 +300,10 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "npm run build",
     "build": "node build.mjs",
     "test": "node test/run-all.mjs",
-    "package": "vsce package"
+    "package": "npx -y @vscode/vsce package"
   }
 
 }

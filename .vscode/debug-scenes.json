@@ -1,0 +1,126 @@
+{
+  "bindings": {
+    "Launch Extension": "scene-activation-flow"
+  },
+  "scenes": {
+    "scene-activation-flow": [
+      {
+        "type": "line",
+        "file": "src/commands/applyScene.ts",
+        "line": 11,
+        "desc": "Step 1: Load debug-scenes.json configuration"
+      },
+      {
+        "type": "line",
+        "file": "src/commands/applyScene.ts",
+        "line": 128,
+        "desc": "Step 2: Aggregate breakpoints across scenes and deduplicate",
+        "enabled": true
+      },
+      {
+        "type": "line",
+        "file": "src/breakpointAdapter.ts",
+        "line": 19,
+        "desc": "Step 3: Enter batch breakpoint mutation protection"
+      },
+      {
+        "type": "line",
+        "file": "src/breakpointAdapter.ts",
+        "line": 78,
+        "desc": "Step 4: Probe and auto-heal breakpoint line numbers"
+      },
+      {
+        "type": "line",
+        "file": "src/breakpointAdapter.ts",
+        "line": 155,
+        "desc": "Step 5: Diff and install modified breakpoints into editor",
+        "enabled": true
+      },
+      {
+        "type": "line",
+        "file": "src/commands/applyScene.ts",
+        "line": 138,
+        "desc": "Step 6: Update state machine to refresh sidebar and status bar",
+        "enabled": true
+      }
+    ],
+    "code-drift-healing": [
+      {
+        "type": "line",
+        "file": "src/healingAdapter.ts",
+        "line": 77,
+        "desc": "Step 1: Extract 3-line fingerprint context (prev + current + next)"
+      },
+      {
+        "type": "line",
+        "file": "src/healingAdapter.ts",
+        "line": 101,
+        "desc": "Step 2: Trace upward to locate enclosing function anchor"
+      },
+      {
+        "type": "line",
+        "file": "src/healingAdapter.ts",
+        "line": 196,
+        "desc": "Step 3: Fast path: Return immediately if original line matches exactly"
+      },
+      {
+        "type": "condition",
+        "file": "src/healingAdapter.ts",
+        "line": 237,
+        "condition": "isCurrentExactMatch === true",
+        "desc": "Step 4: Slow path: Score candidates based on exact line match"
+      },
+      {
+        "type": "logpoint",
+        "file": "src/healingAdapter.ts",
+        "line": 296,
+        "logMessage": "confidence={confidenceRatio}, best={bestIdx+1}, threshold={HEALING_CONFIDENCE_THRESHOLD}",
+        "desc": "Step 5: Log confidence score without halting execution"
+      },
+      {
+        "type": "line",
+        "file": "src/healingAdapter.ts",
+        "line": 298,
+        "desc": "Step 6: Return healed line if confidence score meets threshold"
+      }
+    ],
+    "config-read-write": [
+      {
+        "type": "line",
+        "file": "src/config/configStorage.ts",
+        "line": 72,
+        "desc": "Entry: loadScenesConfig reads debug-scenes.json"
+      },
+      {
+        "type": "line",
+        "file": "src/config/configStorage.ts",
+        "line": 84,
+        "desc": "Guard: Detect Git merge conflict markers"
+      },
+      {
+        "type": "line",
+        "file": "src/config/configStorage.ts",
+        "line": 91,
+        "desc": "Parser: Strip comments and trailing commas before JSON parse"
+      },
+      {
+        "type": "line",
+        "file": "src/config/configStorage.ts",
+        "line": 136,
+        "desc": "Entry: saveScenesConfig writes debug-scenes.json"
+      },
+      {
+        "type": "condition",
+        "file": "src/config/configStorage.ts",
+        "line": 148,
+        "condition": "isWriting === true",
+        "desc": "Mutex: Queue into pendingSave if disk write is in progress"
+      },
+      {
+        "type": "function",
+        "functionName": "stripJsonComments",
+        "desc": "Function Breakpoint: JSON comment stripper"
+      }
+    ]
+  }
+}

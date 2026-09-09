@@ -28,6 +28,10 @@
 
 ## ✨ 它能帮你做什么？
 
+<p align="center">
+  <img src="./docs/images/treeview-interactive.gif" alt="Scene Breakpoints 动态演示" width="100%" />
+</p>
+
 - 🗺️ **记录业务关键流程，秒变代码路线图**
   给每个断点写上中文备注（例如 `步骤1: 权限校验`、`步骤2: 扣减库存`）。一个场景就是一条完整的业务主干执行图，顺藤摸瓜看懂复杂源码，再也不用担心遗忘。
 
@@ -57,8 +61,18 @@
 
 ### 2. 三步上手流程
 
-1. **添加断点**：在任意代码行右键，或按下 `Ctrl + Alt + B`（Mac: `Cmd + Alt + B`），选择场景并输入备注；
-2. **切换场景**：点击 VS Code 底部状态栏（或按下 `Ctrl + Alt + S`），选择场景一键激活；
+1. **添加断点**：在任意代码行右键选择 `Add to Debug Scene...`，或者直接按下快捷键 `Ctrl + Alt + B`（macOS: `Cmd + Alt + B`），选择场景并输入备注；
+
+<p align="center">
+  <img src="./docs/images/context-menu-add.png" alt="右键菜单或快捷键 Ctrl+Alt+B 添加断点" width="75%" />
+</p>
+
+2. **切换场景**：点击 VS Code 底部状态栏（或按下快捷键 `Ctrl + Alt + S` / macOS: `Cmd + Alt + S`），选择场景一键激活；
+
+<p align="center">
+  <img src="./docs/images/scene-quickpick.png" alt="场景快速切换与多选 QuickPick 弹窗" width="85%" />
+</p>
+
 3. **反向导出**：在编辑器打好断点后，在命令面板输入 `Scene: 将当前所有断点导出为新场景` 一键固化存盘。
 
 ---
@@ -74,7 +88,11 @@
 
 ## 📝 配置文件示例 (`.vscode/debug-scenes.json`)
 
-断点数据以纯文本声明式保存在工作区 `.vscode/debug-scenes.json` 中，自带语法提示：
+断点数据以纯文本声明式保存在工作区 `.vscode/debug-scenes.json` 中，自带代码透视（CodeLens）一键激活与语法提示：
+
+<p align="center">
+  <img src="./docs/images/config-file-codelens.png" alt="debug-scenes.json 配置文件与 CodeLens 视图" width="85%" />
+</p>
 
 ```json
 {
