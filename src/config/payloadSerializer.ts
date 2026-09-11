@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import type { SceneBreakpoint, SourceSceneBreakpoint } from "../types";
 import { stripJsonComments } from "./configStorage";
 
@@ -29,6 +30,83 @@ export function generateScenePayload(
 export const serializeScenePayload = generateScenePayload;
 
 /**
+ * 自动剥离外层的 Markdown 代码块包裹（如 ```json ... ```）
+ */
+export function stripMarkdownCodeBlocks(text: string): string {
+	const trimmed = text.trim();
+	const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
+	if (blockMatch) {
+		return blockMatch[1].trim();
+	}
+	return trimmed;
+}
+
+/**
+ * 动态获取当前 VS Code 语言环境下的支持格式示例模板
+ */
+export function getSupportedFormatsTemplate(): string {
+	const title = vscode.l10n.t("Scene Breakpoints: Supported Clipboard Formats");
+	const format1Title = vscode.l10n.t("Format 1: Standard Scene Payload (Recommended)");
+	const format2Title = vscode.l10n.t("Format 2: scenes dictionary (debug-scenes.json snippet)");
+	const format3Title = vscode.l10n.t("Format 3: Raw breakpoint array");
+
+	return `// ========================================================
+// ${title}
+// ========================================================
+
+// ${format1Title}
+{
+  "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+  "version": "1.0",
+  "sceneName": "order-debug",
+  "breakpoints": [
+    {
+      "type": "line",
+      "file": "src/order.ts",
+      "line": 42,
+      "enabled": true,
+      "condition": "order.total > 100",
+      "desc": "Check order total"
+    },
+    {
+      "type": "function",
+      "functionName": "handleOrderPayment",
+      "enabled": true
+    }
+  ]
+}
+
+// ${format2Title}
+{
+  "scenes": {
+    "order-debug": [
+      {
+        "file": "src/order.ts",
+        "line": 42,
+        "enabled": true
+      }
+    ]
+  }
+}
+
+// ${format3Title}
+[
+  {
+    "file": "src/order.ts",
+    "line": 42,
+    "enabled": true
+  },
+  {
+    "type": "function",
+    "functionName": "handleOrderPayment"
+  }
+]
+`;
+}
+
+export const SUPPORTED_FORMATS_TEMPLATE = getSupportedFormatsTemplate;
+
+/**
  * 解析并清洗外部传入的剪贴板 Payload 字符串，兼容多种结构
  */
 export function parseScenePayload(
@@ -45,7 +123,8 @@ export function parseScenePayload(
 
 	let parsed: any;
 	try {
-		const sanitized = stripJsonComments(rawText);
+		const unmarshalled = stripMarkdownCodeBlocks(rawText);
+		const sanitized = stripJsonComments(unmarshalled);
 		parsed = JSON.parse(sanitized);
 	} catch (e: any) {
 		return { success: false, error: `Invalid JSON format: ${e.message}` };

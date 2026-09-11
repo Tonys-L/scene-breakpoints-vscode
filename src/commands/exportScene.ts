@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import { collectCurrentBreakpoints } from "../breakpointAdapter";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig, upsertBreakpointToScene } from "../configManager";
 import { sceneStateManager } from "../sceneStateManager";
@@ -59,6 +60,9 @@ export async function exportSceneCommand(): Promise<void> {
 
 	// 4. 同步全局场景状态机 (驱动状态栏并复位脏状态)
 	sceneStateManager.setActiveScene(targetScene, exportedBps.length);
+
+	// 5. 立即通知调试侧边栏树视图更新 DOM
+	await vscode.commands.executeCommand("sceneBreakpoints.refreshView");
 
 	vscode.window.showInformationMessage(
 		vscode.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", exportedBps.length, targetScene),

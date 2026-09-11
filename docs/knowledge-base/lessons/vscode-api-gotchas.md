@@ -91,5 +91,23 @@
 **影响文件**: `src/configManager.ts`
 **日期**: 2026-09-08
 
+### 1.10 esbuild 外部依赖排除模式下模块漏写 vscode 导入引发运行时 ReferenceError
+
+**问题**: 用户执行 `sceneBreakpoints.exportScene` 命令时，VS Code 抛出 `Error running command sceneBreakpoints.exportScene: vscode is not defined`。
+**原因**: 项目采用 esbuild 单文件打包并配置了 `--external:vscode`。源码模块中若直接使用 `vscode.xxx` 却未显式声明 `import * as vscode from "vscode"`，esbuild 不会执行 TS 类型检查，而是将其视为全局自由变量直接输出在 bundle 中。在 VS Code 运行期，CommonJS 执行上下文中不存在全局 `vscode` 对象，导致在命令执行时报 `ReferenceError: vscode is not defined`。
+**解决方案**: 源码中任何调用宿主 API 的模块均必须严格声明 `import * as vscode from "vscode";`，esbuild 会将其安全映射为 `require("vscode")` 的命名空间局部引用。
+**影响文件**: `src/commands/exportScene.ts`
+**日期**: 2026-09-11
+
+### 1.11 Content Hash Guard 拦截内部写盘后业务命令层必须主动触发树视图刷新
+
+**问题**: 用户从剪贴板成功导入新场景后，调试侧边栏（Scene Breakpoints 视图）没有立即显示新导入的场景，必须手动点击刷新按钮。
+**原因**: 工程为防止写盘被系统防病毒软件/文件系统延迟触发二次整树闪烁，在 `fileWatcher` 中设计了 `Content Hash Guard`。内部写盘的内容与最近保存指纹一致时会被 `fileWatcher` 直接拦截放行，不触发 `treeDataProvider.refresh()`。若导入的场景未处于激活态，状态机不会变更，导致树视图完全未收到重绘信号。
+**解决方案**: 任何通过 `saveScenesConfig` 新增或修改配置的命令层逻辑（如剪贴板导入、导出场景），在写盘持久化后必须主动调度 `await vscode.commands.executeCommand("sceneBreakpoints.refreshView");` 显式驱动树视图更新。
+**影响文件**: `src/commands/clipboardSync.ts`, `src/commands/exportScene.ts`
+**日期**: 2026-09-11
+
+
+
 
 

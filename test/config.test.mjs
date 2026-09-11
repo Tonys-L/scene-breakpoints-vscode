@@ -241,6 +241,15 @@ export function serializeScenePayload(sceneName, breakpoints) {
 	return JSON.stringify(payload, null, 2);
 }
 
+export function stripMarkdownCodeBlocks(text) {
+	const trimmed = text.trim();
+	const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
+	if (blockMatch) {
+		return blockMatch[1].trim();
+	}
+	return trimmed;
+}
+
 export function parseScenePayload(rawText, defaultSceneName) {
 	if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
 		return { success: false, error: "Empty content" };
@@ -251,7 +260,8 @@ export function parseScenePayload(rawText, defaultSceneName) {
 
 	let parsed;
 	try {
-		const sanitized = stripJsonComments(rawText);
+		const unmarshalled = stripMarkdownCodeBlocks(rawText);
+		const sanitized = stripJsonComments(unmarshalled);
 		parsed = JSON.parse(sanitized);
 	} catch (e) {
 		return { success: false, error: "Invalid JSON format" };
@@ -547,6 +557,18 @@ export function runConfigTests() {
 		if (resMixed.success) {
 			assert.strictEqual(resMixed.breakpoints.length, 1);
 			assert.strictEqual(resMixed.breakpoints[0].file, "ok.ts");
+		}
+
+		// 带有 Markdown ```json ... ``` 包裹自动提取成功
+		const mdWrapped = "```json\n" + JSON.stringify({
+			sceneName: "md-scene",
+			breakpoints: [{ type: "line", file: "md.ts", line: 8 }],
+		}) + "\n```";
+		const resMd = parseScenePayload(mdWrapped);
+		assert.strictEqual(resMd.success, true);
+		if (resMd.success) {
+			assert.strictEqual(resMd.sceneName, "md-scene");
+			assert.strictEqual(resMd.breakpoints[0].file, "md.ts");
 		}
 	}
 

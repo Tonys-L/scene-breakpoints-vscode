@@ -3,6 +3,7 @@ import { applySceneBreakpoints } from "../breakpointAdapter";
 import {
 	getWorkspaceRoot,
 	loadScenesConfig,
+	getSupportedFormatsTemplate,
 	mergeScenesBreakpoints,
 	parseScenePayload,
 	saveScenesConfig,
@@ -10,7 +11,8 @@ import {
 	upsertBreakpointToScene,
 } from "../configManager";
 import { sceneStateManager } from "../sceneStateManager";
-import type { SceneNode } from "../sceneTreeProvider";
+import { SceneNode } from "../sceneTreeProvider";
+import { applySceneCommand } from "./applyScene";
 
 /**
  * 复制指定场景至系统剪贴板 (以标准 JSON 格式共享)
@@ -27,12 +29,15 @@ export async function copySceneToClipboardCommand(target?: SceneNode | string): 
 	}
 
 	let targetScene: string | undefined;
-	if (typeof target === "string" && target.trim()) {
-		targetScene = target.trim();
-	} else if (target && typeof (target as SceneNode).sceneName === "string") {
-		targetScene = (target as SceneNode).sceneName;
-	} else {
-		// 命令面板调用时弹出场景选择列表
+	if (target) {
+		if (typeof target === "string") {
+			targetScene = target.trim();
+		} else if (target.sceneName) {
+			targetScene = target.sceneName;
+		}
+	}
+
+	if (!targetScene) {
 		const picked = await vscode.window.showQuickPick(
 			sceneNames.map((name) => ({
 				label: `$(symbol-event) ${name}`,
@@ -64,7 +69,7 @@ export async function copySceneToClipboardCommand(target?: SceneNode | string): 
 }
 
 /**
- * 从系统剪贴板读取并安全导入场景配置
+ * 从系统剪贴板解析并导入场景断点，支持同名覆盖、追加与重命名
  */
 export async function importSceneFromClipboardCommand(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot(true);
@@ -80,9 +85,18 @@ export async function importSceneFromClipboardCommand(): Promise<void> {
 
 	const parseResult = parseScenePayload(clipboardText);
 	if (!parseResult.success) {
-		vscode.window.showErrorMessage(
+		const viewFormatAction = vscode.l10n.t("View Supported Formats");
+		const action = await vscode.window.showErrorMessage(
 			vscode.l10n.t("Failed to import scene from clipboard: {0}", parseResult.error),
+			viewFormatAction,
 		);
+		if (action === viewFormatAction) {
+			const doc = await vscode.workspace.openTextDocument({
+				language: "jsonc",
+				content: getSupportedFormatsTemplate(),
+			});
+			await vscode.window.showTextDocument(doc, { preview: true });
+		}
 		return;
 	}
 
@@ -141,7 +155,13 @@ export async function importSceneFromClipboardCommand(): Promise<void> {
 		config.scenes[finalSceneName] = importedBreakpoints;
 	}
 
+	// 记录展开状态，使导入后树视图刷新时新场景自动展开断点列表
+	SceneNode.expandedScenes.add(finalSceneName);
+
 	saveScenesConfig(workspaceRoot, config);
+
+	// 立即通知调试侧边栏树视图更新 DOM（由于 Content Hash Guard 会拦截内部写盘的 fileWatcher，必须在此主动调度刷新）
+	await vscode.commands.executeCommand("sceneBreakpoints.refreshView");
 
 	// 若当前导入覆盖或追加的场景正处于激活状态，立即将更新后的断点集合注入编辑器 DAP，并保持多场景集合不退化
 	if (sceneStateManager.isSceneActive(finalSceneName)) {
@@ -151,11 +171,17 @@ export async function importSceneFromClipboardCommand(): Promise<void> {
 		sceneStateManager.setActiveScenes(activeScenes, merged.length);
 	}
 
-	vscode.window.showInformationMessage(
+	const activateAction = vscode.l10n.t("Activate Scene");
+	const choice = await vscode.window.showInformationMessage(
 		vscode.l10n.t(
 			"Successfully imported scene [{0}] with {1} breakpoint(s)!",
 			finalSceneName,
 			config.scenes[finalSceneName].length,
 		),
+		activateAction,
 	);
+
+	if (choice === activateAction) {
+		await applySceneCommand(finalSceneName);
+	}
 }
