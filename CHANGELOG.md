@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.2] - 2026-09-12
+
+### Fixed
+- **Marketplace Links & User Guide Accessibility**:
+  - Upgraded User Guide, License, and documentation links to public GitHub URLs, ensuring all badges and links are directly clickable inside the VS Code Extension Details view and web Marketplace.
+  - Included `docs/guide.md` and `docs/guide_zh.md` in the release package distribution.
+- **Defensive Null-Safety**:
+  - Enhanced array type and null checks in `SceneTreeDataProvider` to prevent transient `reading 'length'` exceptions during process hot-reloading.
+
+---
+
 ## [1.0.1] - 2026-09-12
 
 ### Added
