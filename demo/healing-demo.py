@@ -3,6 +3,9 @@
 
 class PaymentGateway:
     def process_transaction(self, order: dict) -> dict:
+        print(f"[Python] Received order: {order.get('id')}")
+        print(f"[Python] Customer: {order.get('customer')}")
+
 
         # AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）
         if not order.get("id"):

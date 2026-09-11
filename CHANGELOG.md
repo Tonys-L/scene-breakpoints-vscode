@@ -2,38 +2,42 @@
 
 All notable changes to the "scene-breakpoints-vscode" extension will be documented in this file.
 
-Check [Keep a Changelog](https://keepachangelog.com/) for recommendations on how to structure this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+<p><b>English</b> | <a href="./CHANGELOG_zh.md">简体中文</a></p>
+
+---
 
 ## [1.0.1] - 2026-09-12
 
 ### Added
-- **两阶段自愈引擎升级 (INV-003)**：
-  - 引入全文作用域巡航大跨度重锚定（Phase 2 Scope Cruise），轻松抵御超长代码位移（超 30 行甚至百行）。
-  - 引入非空拓扑伴随窗口（Non-empty Topology Window），自动穿透空行与格式化干扰。
-- **当前行本体守卫 (Target Existence Guard)**：
-  - 目标代码行被彻底删除时，严格拦截仅凭单侧上下文引发的误自愈，精准判定为脱靶未匹配（`unmatched`）。
-- **侧边栏脱靶断点专属矢量 SVG 警告图标**：
-  - 新增标准 16x16 琥珀黄警告三角矢量图标，脱靶状态一目了然。
-  - 前置 `[未匹配]` 文本标签，彻底根治侧边栏面板狭窄时的文字末尾省略号截断问题。
+- **Two-Phase Breakpoint Self-Healing Engine (INV-003)**:
+  - **Phase 2 Scope Cruise**: Introduced full-file scope anchor traversal to dynamically re-anchor breakpoints during massive code shifts (> 30 lines, up to 150 lines of function body).
+  - **Non-Empty Topology Window**: Enhanced context snippet matching to seamlessly penetrate blank lines and comment insertions without losing confidence scores.
+- **Target Existence Guard**:
+  - Strictly prevents false positive auto-healing when a target line is deleted. Single-sided context matches (e.g. preceding comment) no longer falsely drift breakpoints to unrelated adjacent lines; safely classifies them as `[Unmatched]`.
+- **Dedicated Unmatched Vector Warning Icon in Sidebar**:
+  - Added crisp 16x16 amber-yellow warning triangle SVG icons (`bp-unmatched-enabled.svg` / `bp-unmatched-disabled.svg`).
+  - Prepended `[Unmatched]` / `[未匹配]` text tag to the front of descriptions, eliminating trailing text truncation on narrow sidebars.
 
 ### Fixed
-- 修复 `applyScene` 激活脱靶告警分支中漏写 `path` 模块导入的潜在运行时错误。
-- 修复剪贴板导入与导出场景后内部写盘拦截树视图刷新的问题。
-- 增强 Windows 平台路径反斜杠与正斜杠在脱靶状态下的比对归一化。
+- Fixed runtime `ReferenceError: path is not defined` when triggering unmatched breakpoint warning notifications.
+- Fixed an issue where internal disk writes prevented the TreeView from refreshing after clipboard imports or exports.
+- Enhanced Windows backslash and forward slash path normalization in unmatched breakpoint state checks.
 
 ---
 
-## [1.0.0] - 首发版本 (2026-09-08)
+## [1.0.0] - Initial Release (2026-09-08)
 
 ### Added
-- **场景化断点分组管理**：按业务场景组织断点，一键切换、自动隔离清理无关断点。
-- **代码漂移自愈**：代码改了行号变了？自动找回断点正确位置。
-- **侧边栏树视图**：专属面板管理所有场景，支持复选框直接启用/禁用断点。
-- **全类型断点支持**：行断点、条件断点、命中计数、Logpoint、函数断点全覆盖。
-- **launch.json 自动联动**：启动调试时自动激活关联的场景断点。
-- **断点双向实时同步**：编辑器里改了断点，场景自动更新；场景切换了，编辑器自动跟上。
-- **多场景自由叠加**：同时激活多个场景，断点自动去重合并。
-- **一键导出与导入**：当前断点导出为场景，或通过剪贴板分享给团队。
-- **CodeLens 快捷入口**：在 `debug-scenes.json` 中直接点击 `▶ Apply Scene` 激活。
-- **中英文双语自适应**：跟随 VS Code 语言设置自动切换。
-- **声明式 JSON 配置**：`.vscode/debug-scenes.json` 随 Git 版本化，带 JSON Schema 校验。
+- **Scenario-Driven Breakpoint Management**: Organize breakpoints into business scenarios, switch them in seconds, and automatically clear unrelated breakpoints.
+- **Code Drift Self-Healing**: Automatically locate and recover true breakpoint lines after git pulls or code refactorings.
+- **Dedicated Sidebar TreeView**: Intuitive checklist in the "Run & Debug" panel with native checkbox toggles.
+- **Full Breakpoint Type Support**: Line breakpoints, conditional expressions, hit counts, logpoints, and global function breakpoints.
+- **launch.json Integration**: Automatically activate linked breakpoint scenarios before debug sessions start.
+- **Full-Duplex Real-Time Sync**: Bi-directional synchronization between editor DAP breakpoints and scene JSON configurations.
+- **Multi-Scene Layered Activation**: Layer multiple scenes together with automatic deduplication.
+- **One-Click Export & Clipboard Sharing**: Export editor breakpoints to scenes or share them with teammates via clipboard.
+- **CodeLens Quick Activation**: Direct `▶ Apply Scene` buttons inside `debug-scenes.json`.
+- **Bilingual Adaptive i18n**: Automatic UI language switching following VS Code settings (English & Simplified Chinese).
+- **Declarative JSON Configuration**: Version-controlled `.vscode/debug-scenes.json` with integrated JSON Schema validation.

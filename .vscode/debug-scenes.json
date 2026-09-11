@@ -155,7 +155,7 @@
       {
         "type": "line",
         "file": "demo/healing-demo.py",
-        "line": 8,
+        "line": 11,
         "desc": "bbb",
         "contextSnippet": {
           "prev": "# AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）",

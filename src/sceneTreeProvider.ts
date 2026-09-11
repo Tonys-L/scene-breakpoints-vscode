@@ -209,7 +209,7 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 			const isDirty = sceneStateManager.getIsDirty();
 
 			return sceneNames.map((name) => {
-				const bps = config.scenes[name] || [];
+				const bps = (config.scenes && Array.isArray(config.scenes[name])) ? config.scenes[name] : [];
 				const isActive = activeScenes.includes(name);
 				return new SceneNode(name, bps.length, isActive, isDirty && isActive);
 			});
@@ -219,7 +219,9 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 		// 子节点：返回指定场景内的断点列表
 		if (element instanceof SceneNode) {
 			const config = loadScenesConfig(workspaceRoot);
-			const list = config.scenes[element.sceneName] || [];
+			const list = (config.scenes && Array.isArray(config.scenes[element.sceneName]))
+				? config.scenes[element.sceneName]
+				: [];
 			if (list.length === 0) {
 				return [new PlaceholderNode(vscode.l10n.t("No breakpoints in this scene"))];
 			}
