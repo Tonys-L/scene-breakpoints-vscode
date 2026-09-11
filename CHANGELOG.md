@@ -4,6 +4,23 @@ All notable changes to the "scene-breakpoints-vscode" extension will be document
 
 Check [Keep a Changelog](https://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.0.1] - 2026-09-12
+
+### Added
+- **两阶段自愈引擎升级 (INV-003)**：
+  - 引入全文作用域巡航大跨度重锚定（Phase 2 Scope Cruise），轻松抵御超长代码位移（超 30 行甚至百行）。
+  - 引入非空拓扑伴随窗口（Non-empty Topology Window），自动穿透空行与格式化干扰。
+- **当前行本体守卫 (Target Existence Guard)**：
+  - 目标代码行被彻底删除时，严格拦截仅凭单侧上下文引发的误自愈，精准判定为脱靶未匹配（`unmatched`）。
+- **侧边栏脱靶断点专属矢量 SVG 警告图标**：
+  - 新增标准 16x16 琥珀黄警告三角矢量图标，脱靶状态一目了然。
+  - 前置 `[未匹配]` 文本标签，彻底根治侧边栏面板狭窄时的文字末尾省略号截断问题。
+
+### Fixed
+- 修复 `applyScene` 激活脱靶告警分支中漏写 `path` 模块导入的潜在运行时错误。
+- 修复剪贴板导入与导出场景后内部写盘拦截树视图刷新的问题。
+- 增强 Windows 平台路径反斜杠与正斜杠在脱靶状态下的比对归一化。
+
 ---
 
 ## [1.0.0] - 首发版本 (2026-09-08)

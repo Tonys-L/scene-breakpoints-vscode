@@ -24,7 +24,7 @@
 
 | 文件 | 业务分类 | 条目数 | 最近更新 |
 |------|----------|--------|----------|
-| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 11 | 2026-09-11 |
+| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 14 | 2026-09-12 |
 
 ---
 
@@ -53,3 +53,5 @@
 | 2026-09-08 | 录入 1.5 TreeView 变灰压缩、1.6 树节点 id 零闪烁、1.7 幽灵场景防御 | Tony.L | KDD-LESSONS-003 |
 | 2026-09-11 | 录入 1.10 esbuild 外部依赖排除模式下模块漏写 vscode 导入引发运行时 ReferenceError | Tony.L | KDD-EXPORT-FIX-001 |
 | 2026-09-11 | 录入 1.11 Content Hash Guard 拦截内部写盘后业务命令层必须主动触发树视图刷新 | Tony.L | KDD-REFRESH-FIX-001 |
+| 2026-09-12 | 录入 1.12 控制流关键字拦截与 1.13 非空拓扑伴随行自愈增强 | Tony.L | KDD-HEALING-TOPO-001 |
+| 2026-09-12 | 录入 1.14 模块调用 Node.js 内置库（如 path）漏写显式导入在 esbuild 下静默打包但运行时 ReferenceError | Tony.L | KDD-PATH-IMPORT-FIX-001 |

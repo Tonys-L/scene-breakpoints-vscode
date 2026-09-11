@@ -121,6 +121,95 @@
         "functionName": "stripJsonComments",
         "desc": "Function Breakpoint: JSON comment stripper"
       }
+    ],
+    "demo-ts": [
+      {
+        "type": "line",
+        "file": "demo/healing-demo.ts",
+        "line": 16,
+        "enabled": true,
+        "desc": "TS: Amount check line",
+        "contextSnippet": {
+          "prev": "console.log(`[Order] Customer name: ${order.customer}`);",
+          "current": "if (order.amount <= 0) {",
+          "next": "throw new Error(\"Invalid order payment amount!\");",
+          "indent": 2,
+          "scopeAnchor": "processOrderPayment"
+        }
+      }
+    ],
+    "demo-python": [
+      {
+        "type": "line",
+        "file": "demo/healing-demo.py",
+        "line": 7,
+        "desc": "aaa",
+        "contextSnippet": {
+          "prev": "print(f\"[Python] Customer: {order.get('customer')}\")",
+          "current": "print(f\"[Python] Customer: {order.get('customer')}\")",
+          "next": "# AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）",
+          "scopeAnchor": "process_transaction",
+          "indent": 8
+        }
+      },
+      {
+        "type": "line",
+        "file": "demo/healing-demo.py",
+        "line": 8,
+        "desc": "bbb",
+        "contextSnippet": {
+          "prev": "# AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）",
+          "current": "if not order.get(\"id\"):",
+          "next": "raise ValueError(\"Order ID missing\")",
+          "scopeAnchor": "process_transaction",
+          "indent": 8
+        }
+      },
+      {
+        "type": "line",
+        "file": "demo/healing-demo copy.py",
+        "line": 14,
+        "desc": "sdafasd",
+        "contextSnippet": {
+          "prev": "currency = order.get(\"currency\", \"USD\")",
+          "current": "print(f\"[Python] Currency detected: {currency}\")",
+          "next": "if (order[\"amount\"] <= 0):",
+          "scopeAnchor": "process_transaction",
+          "indent": 8
+        }
+      }
+    ],
+    "demo-go": [
+      {
+        "type": "line",
+        "file": "demo/healing-demo.go",
+        "line": 14,
+        "enabled": true,
+        "desc": "Go: Receiver method with initialized if statement",
+        "contextSnippet": {
+          "prev": "fmt.Printf(\"[Go] Order amount: %.2f\\n\", amount)",
+          "current": "if err := s.validate(amount); err != nil {",
+          "next": "return fmt.Errorf(\"payment validation failed: %w\", err)",
+          "indent": 4,
+          "scopeAnchor": "ExecutePayment"
+        }
+      }
+    ],
+    "demo-rust": [
+      {
+        "type": "line",
+        "file": "demo/healing-demo.rs",
+        "line": 13,
+        "enabled": true,
+        "desc": "Rust: match statement branch",
+        "contextSnippet": {
+          "prev": "match status {",
+          "current": "PaymentStatus::Approved => {",
+          "next": "println!(\"[Rust] Invoice approved successfully!\");",
+          "indent": 8,
+          "scopeAnchor": "settle_invoice"
+        }
+      }
     ]
   }
 }

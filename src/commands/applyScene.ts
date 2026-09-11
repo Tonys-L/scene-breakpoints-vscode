@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { applySceneBreakpoints, collectCurrentBreakpoints } from "../breakpointAdapter";
 import { getWorkspaceRoot, loadScenesConfig, mergeScenesBreakpoints, saveScenesConfig } from "../configManager";
@@ -128,7 +129,7 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 	const bpsToLoad = mergeScenesBreakpoints(config, targetScenes);
 	const primarySceneLabel = targetScenes.length === 1 ? targetScenes[0] : targetScenes.join(" + ");
 
-	const { loadedCount, healedCount, healedBreakpoints } = await applySceneBreakpoints(
+	const { loadedCount, healedCount, healedBreakpoints, unmatchedBreakpoints } = await applySceneBreakpoints(
 		workspaceRoot,
 		primarySceneLabel,
 		bpsToLoad,
@@ -170,7 +171,43 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 		}
 	}
 
-	if (healedCount > 0) {
+	if (unmatchedBreakpoints && unmatchedBreakpoints.length > 0) {
+		const count = unmatchedBreakpoints.length;
+		const firstItem = unmatchedBreakpoints[0];
+		const summary = unmatchedBreakpoints
+			.slice(0, 3)
+			.map((bp) => `${path.basename(bp.file)}:${bp.line}`)
+			.join(", ");
+		const more = count > 3 ? ` 等 ${count} 处` : "";
+		const viewAction = vscode.l10n.t("Locate Code");
+		vscode.window
+			.showWarningMessage(
+				vscode.l10n.t(
+					"Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}",
+					primarySceneLabel,
+					count,
+					summary,
+					more,
+				),
+				viewAction,
+			)
+			.then(async (selected) => {
+				if (selected === viewAction && firstItem) {
+					const fullPath = path.isAbsolute(firstItem.file)
+						? firstItem.file
+						: path.join(workspaceRoot, firstItem.file);
+					try {
+						const doc = await vscode.workspace.openTextDocument(fullPath);
+						const editor = await vscode.window.showTextDocument(doc);
+						const pos = new vscode.Position(Math.max(0, firstItem.line - 1), 0);
+						editor.selection = new vscode.Selection(pos, pos);
+						editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+					} catch {
+						// 忽略打开失败
+					}
+				}
+			});
+	} else if (healedCount > 0) {
 		vscode.window.showInformationMessage(
 			vscode.l10n.t(
 				"Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",

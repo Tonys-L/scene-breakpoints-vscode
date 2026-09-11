@@ -109,5 +109,9 @@
   "Enter target identifier for duplicated scene": "输入克隆场景的目标标识符",
   "Duplicated scene [{0}] as [{1}]": "已将场景 [{0}] 克隆为副本 [{1}]",
   "Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe.": "检测到 debug-scenes.json 中存在 Git 冲突标记，已保留现有断点设置以确保安全。",
-  "debug-scenes.json root must be an object": "debug-scenes.json 根节点必须是一个 JSON 对象"
+  "debug-scenes.json root must be an object": "debug-scenes.json 根节点必须是一个 JSON 对象",
+  "Locate Code": "定位查看",
+  "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}": "场景 [{0}] 激活完成，但有 {1} 处断点脱靶未匹配目标代码（已临时回退至原行号）：{2}{3}",
+  "Unmatched": "未匹配",
+  "Could not match current code (fell back to original line)": "未能通过上下文指纹匹配当前源码（可能代码已被重构或删除），已回退至原行号"
 }

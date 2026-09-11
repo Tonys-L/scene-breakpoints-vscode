@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- 饱满琥珀黄实心警告三角 (脱靶未匹配断点专属矢量标识) -->
+  <path d="M7.13 2.5a1 1 0 0 1 1.74 0l5.5 9.5A1 1 0 0 1 13.5 13.5h-11a1 1 0 0 1-.87-1.5l5.5-9.5z" fill="#cca700" />
+  <line x1="8" y1="6" x2="8" y2="9.5" stroke="#1e1e1e" stroke-width="1.3" stroke-linecap="round" />
+  <circle cx="8" cy="11.5" r="0.75" fill="#1e1e1e" />
+</svg>

@@ -33,6 +33,7 @@ export async function applySceneBreakpoints(
 		const pathCache = new Map<string, vscode.Uri | null>();
 		// 源码行解析短期缓存：避免同一大文件在自愈时反复进行全量读盘与 split 切行
 		const fileLinesCache = new Map<string, string[]>();
+		const unmatchedBreakpoints: SourceSceneBreakpoint[] = [];
 
 		for (const item of bpsToLoad) {
 			if (!item || typeof item !== "object") continue;
@@ -80,6 +81,8 @@ export async function applySceneBreakpoints(
 				effectiveLine = healResult.healedLine;
 				srcItem.line = effectiveLine;
 				healedCount++;
+			} else if (healResult.status === "unmatched") {
+				unmatchedBreakpoints.push(srcItem);
 			}
 
 			const pos = new vscode.Position(Math.max(0, effectiveLine - 1), 0);
@@ -155,10 +158,17 @@ export async function applySceneBreakpoints(
 			await vscode.debug.addBreakpoints(toAdd);
 		}
 
+		// 将脱靶失联的断点同步到状态机中，驱动侧边栏与交互提示
+		const unmatchedKeys = unmatchedBreakpoints.map(
+			(bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`,
+		);
+		sceneStateManager.setUnmatchedBreakpoints(unmatchedKeys);
+
 		return {
 			loadedCount: targetBreakpoints.length,
 			healedCount,
 			healedBreakpoints: healedCount > 0 ? bpsToLoad : undefined,
+			unmatchedBreakpoints,
 		};
 	} finally {
 		setTimeout(() => {

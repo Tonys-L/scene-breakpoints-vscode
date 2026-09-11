@@ -105,7 +105,30 @@
 **原因**: 工程为防止写盘被系统防病毒软件/文件系统延迟触发二次整树闪烁，在 `fileWatcher` 中设计了 `Content Hash Guard`。内部写盘的内容与最近保存指纹一致时会被 `fileWatcher` 直接拦截放行，不触发 `treeDataProvider.refresh()`。若导入的场景未处于激活态，状态机不会变更，导致树视图完全未收到重绘信号。
 **解决方案**: 任何通过 `saveScenesConfig` 新增或修改配置的命令层逻辑（如剪贴板导入、导出场景），在写盘持久化后必须主动调度 `await vscode.commands.executeCommand("sceneBreakpoints.refreshView");` 显式驱动树视图更新。
 **影响文件**: `src/commands/clipboardSync.ts`, `src/commands/exportScene.ts`
-**日期**: 2026-09-11
+### 1.12 类方法正则误捕获控制流关键字导致作用域回溯中断与得分不足
+
+**问题**: 用户在断点上方插入空行和代码后激活场景，自愈算法未触发，断点依然停留在旧行号。
+**原因**: `extractScopeAnchor` 中的类方法通用正则 `/^\s*([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*[{:]/` 将 JS/TS/Python 的控制流语句（如 `if (cond) {`、`while (x):`、`for (...)`）中的关键字当成了方法名提取并立即返回。导致算法提前终止向上扫描，误判当前作用域为 `"if"`，无法匹配到真实外层函数名，白白丢失 5 分加权，得分跌破置信门槛而安全回退。
+**解决方案**: 在提取作用域正则前，显式拦截并排除通用控制流保留字黑名单（`UNIVERSAL_CONTROL_FLOW_KEYWORDS`：`if`, `for`, `while`, `switch`, `catch`, `with` 等），强制穿透控制流直达真正的外层函数定义行。
+**影响文件**: `src/healingAdapter.ts`
+**日期**: 2026-09-12
+
+### 1.13 纯物理相邻行匹配在代码间插入空行时失效，演进为非空拓扑窗口
+
+**问题**: 开发者或 AI 在断点上方或下方插入单个空行或格式化换行时，断点伴随上下文匹配分数大幅跌落。
+**原因**: 原自愈算法死板比对物理绝对相邻行 `lines[i - 1]` 与 `lines[i + 1]`。一旦中间插入空行，`lines[i - 1]` 变为纯空白文本 `""`，导致原有的 `prev` 代码行在 `lines[i - 2]` 被直接无视，错失 5 分拓扑加分。
+**解决方案**: 引入语言无关的“非空拓扑伴随窗口”机制（`findPrevNonEmptyLine` 与 `findNextNonEmptyLine`），在提取指纹与计算自愈时均自动穿透空白行，寻找最近的有效代码行进行拓扑锚定，彻底免疫任意数量空行、格式化空行的干扰。
+**影响文件**: `src/healingAdapter.ts`
+**日期**: 2026-09-12
+
+### 1.14 模块调用 Node.js 内置模块（如 path）未显式导入在 esbuild 下静默打包但在运行时触发 ReferenceError
+
+**问题**: 用户执行 `sceneBreakpoints.applySceneItem` 激活场景时，VS Code 抛出 `Error running command sceneBreakpoints.applySceneItem: path is not defined`。
+**原因**: 项目采用 esbuild 单文件打包且未在打包配置中强制开启 TypeScript 类型检查。若源码模块内部直接调用了 `path.basename` 或 `path.isAbsolute`，但文件顶部忘记显式写 `import * as path from "node:path"`，esbuild 会将其作为自由全局变量输出。而在 VS Code 宿主运行期，模块闭包作用域中并没有全局 `path` 对象，导致在触发该代码分支（如断点脱靶告警）时抛出 `ReferenceError: path is not defined`。
+**解决方案**: 任何模块只要使用了 Node.js 核心库（`path`、`fs`、`os` 等），必须严格在文件顶部显式声明 `import * as path from "node:path";`。
+**影响文件**: `src/commands/applyScene.ts`
+**日期**: 2026-09-12
+
 
 
 

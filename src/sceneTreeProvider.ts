@@ -74,15 +74,27 @@ export class BreakpointNode extends vscode.TreeItem {
 			this.tooltip = vscode.l10n.t("Function Breakpoint: {0}", funcBp.functionName);
 		} else {
 			const srcBp = breakpoint as SourceSceneBreakpoint;
+			const isUnmatched =
+				sceneStateManager.isSceneActive(sceneName) &&
+				sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
+
 			let extra = srcBp.desc;
 			if (!extra) {
 				if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
 				else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
 				else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
 			}
+			if (isUnmatched) {
+				const unmatchTag = `[${vscode.l10n.t("Unmatched")}]`;
+				extra = extra ? `${unmatchTag}  •  ${extra}` : unmatchTag;
+			}
 			this.description = extra;
 
-			this.tooltip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `\n${srcBp.desc}` : ""}`;
+			let tip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `\n${srcBp.desc}` : ""}`;
+			if (isUnmatched) {
+				tip = `[${vscode.l10n.t("Unmatched")}] ${vscode.l10n.t("Could not match current code (fell back to original line)")}\n${tip}`;
+			}
+			this.tooltip = tip;
 
 			// 单击直接打开源码并高亮选中断点行！
 			const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(workspaceRoot, srcBp.file);
@@ -106,6 +118,21 @@ export class BreakpointNode extends vscode.TreeItem {
 		this.checkboxState = isEnabled
 			? vscode.TreeItemCheckboxState.Checked
 			: vscode.TreeItemCheckboxState.Unchecked;
+
+		const isUnmatched =
+			this.breakpoint.type !== "function" &&
+			sceneStateManager.isSceneActive(this.sceneName) &&
+			sceneStateManager.isBreakpointUnmatched(
+				(this.breakpoint as SourceSceneBreakpoint).file,
+				(this.breakpoint as SourceSceneBreakpoint).line,
+			);
+
+		if (isUnmatched) {
+			const iconFileName = isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
+			this.iconPath = vscode.Uri.file(path.join(this.extensionPath, "media", "icons", iconFileName));
+			this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+			return;
+		}
 
 		let iconBase = "bp-line";
 		if (this.breakpoint.type === "function") {

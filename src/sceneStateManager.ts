@@ -11,6 +11,7 @@ class SceneStateManager {
 	private isDirty = false;
 	private isApplying = false;
 	private baselineBreakpointCount = 0;
+	private unmatchedBreakpointsKeySet = new Set<string>();
 
 	private readonly _onDidChangeState = new vscode.EventEmitter<SceneState>();
 	public readonly onDidChangeState = this._onDidChangeState.event;
@@ -30,6 +31,18 @@ class SceneStateManager {
 
 	public getIsDirty(): boolean {
 		return this.isDirty;
+	}
+
+	public setUnmatchedBreakpoints(keys: string[]): void {
+		this.unmatchedBreakpointsKeySet = new Set(
+			keys.map((k) => k.replace(/\\/g, "/").toLowerCase()),
+		);
+	}
+
+	public isBreakpointUnmatched(file?: string, line?: number): boolean {
+		if (!file || !line) return false;
+		const norm = `${file.trim().replace(/\\/g, "/")}:${line}`.toLowerCase();
+		return this.unmatchedBreakpointsKeySet.has(norm);
 	}
 
 	public setActiveScenes(sceneNames: string[], initialBpCount = 0): void {

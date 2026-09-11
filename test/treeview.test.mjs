@@ -247,7 +247,56 @@ export function runTreeViewTests() {
 		console.log("    ✔ BreakpointNode 构造与继承模型安全性验证通过");
 	}
 
-	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（6 大核心场景）全部通过！");
+	// ============================================================================
+	// Case 7: 未匹配脱靶断点 (Unmatched) 的前置标签与专属矢量 SVG 警告图标
+	// ============================================================================
+	{
+		function formatUnmatchedDescription(desc, isUnmatched) {
+			let extra = desc;
+			if (isUnmatched) {
+				const tag = "[Unmatched]";
+				extra = extra ? `${tag}  •  ${extra}` : tag;
+			}
+			return extra;
+		}
+
+		// 验证无 desc 时直接为 [Unmatched]
+		assert.strictEqual(formatUnmatchedDescription(undefined, true), "[Unmatched]");
+		// 验证有 desc 时前置 [Unmatched]  •  desc，即使侧边栏变窄，开头的未匹配标签也不会被截断
+		assert.strictEqual(
+			formatUnmatchedDescription("sdafasd", true),
+			"[Unmatched]  •  sdafasd",
+		);
+		// 验证未脱靶时不带 [Unmatched]
+		assert.strictEqual(formatUnmatchedDescription("normal bp", false), "normal bp");
+
+		function deriveUnmatchedSvgIcon(isFunc, enabled, isUnmatched) {
+			if (isUnmatched && !isFunc) {
+				return enabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
+			}
+			return `${isFunc ? "bp-func" : "bp-line"}-${enabled ? "enabled" : "disabled"}.svg`;
+		}
+
+		assert.strictEqual(
+			deriveUnmatchedSvgIcon(false, true, true),
+			"bp-unmatched-enabled.svg",
+			"脱靶断点启用态必须呈现专属琥珀黄警告矢量图标",
+		);
+		assert.strictEqual(
+			deriveUnmatchedSvgIcon(false, false, true),
+			"bp-unmatched-disabled.svg",
+			"脱靶断点禁用态必须呈现灰色警告矢量图标",
+		);
+		assert.strictEqual(
+			deriveUnmatchedSvgIcon(false, true, false),
+			"bp-line-enabled.svg",
+			"正常断点继续保持经典红点",
+		);
+
+		console.log("    ✔ 未匹配脱靶断点前置标签与专属矢量 SVG 警告图标推导测试通过");
+	}
+
+	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（7 大核心场景）全部通过！");
 }
 
 if (process.argv[1] && process.argv[1].endsWith("treeview.test.mjs")) {

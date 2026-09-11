@@ -109,5 +109,9 @@
   "Enter target identifier for duplicated scene": "Enter target identifier for duplicated scene",
   "Duplicated scene [{0}] as [{1}]": "Duplicated scene [{0}] as [{1}]",
   "Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe.": "Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe.",
-  "debug-scenes.json root must be an object": "debug-scenes.json root must be an object"
+  "debug-scenes.json root must be an object": "debug-scenes.json root must be an object",
+  "Locate Code": "Locate Code",
+  "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}": "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}",
+  "Unmatched": "Unmatched",
+  "Could not match current code (fell back to original line)": "Could not match current code (fell back to original line)"
 }

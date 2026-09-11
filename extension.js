@@ -613,6 +613,7 @@ var SceneStateManager = class {
   isDirty = false;
   isApplying = false;
   baselineBreakpointCount = 0;
+  unmatchedBreakpointsKeySet = /* @__PURE__ */ new Set();
   _onDidChangeState = new vscode3.EventEmitter();
   onDidChangeState = this._onDidChangeState.event;
   getActiveScenes() {
@@ -627,6 +628,16 @@ var SceneStateManager = class {
   }
   getIsDirty() {
     return this.isDirty;
+  }
+  setUnmatchedBreakpoints(keys) {
+    this.unmatchedBreakpointsKeySet = new Set(
+      keys.map((k) => k.replace(/\\/g, "/").toLowerCase())
+    );
+  }
+  isBreakpointUnmatched(file, line) {
+    if (!file || !line) return false;
+    const norm = `${file.trim().replace(/\\/g, "/")}:${line}`.toLowerCase();
+    return this.unmatchedBreakpointsKeySet.has(norm);
   }
   setActiveScenes(sceneNames, initialBpCount = 0) {
     const uniqueSorted = Array.from(new Set(sceneNames.map((s) => s.trim()).filter(Boolean))).sort();
@@ -735,19 +746,72 @@ var vscode6 = __toESM(require("vscode"));
 var fs2 = __toESM(require("node:fs"));
 var path3 = __toESM(require("node:path"));
 var vscode5 = __toESM(require("vscode"));
-var HEALING_CONFIDENCE_THRESHOLD = 0.68;
+var HEALING_CONFIDENCE_THRESHOLD = 0.6;
 var HEALING_SEARCH_WINDOW = 30;
 var SCOPE_MAX_LOOKUP_LINES = 60;
+var SCOPE_BODY_SEARCH_WINDOW = 150;
 function cleanLine(text) {
   if (typeof text !== "string") return "";
   const normalized = text.trim().replace(/\s+/g, " ");
   return normalized.length > 140 ? normalized.substring(0, 140) : normalized;
+}
+function stripTrailingComment(line) {
+  if (!line) return "";
+  return line.replace(/\s*(?:\/\/|#).*$/, "").trim();
 }
 function countIndent(text) {
   if (typeof text !== "string") return 0;
   const match = text.replace(/\t/g, "  ").match(/^(\s*)/);
   return match ? match[1].length : 0;
 }
+function findPrevNonEmptyLine(lines, fromIdx) {
+  for (let i = fromIdx - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line && line.trim()) {
+      return cleanLine(line);
+    }
+  }
+  return void 0;
+}
+function findNextNonEmptyLine(lines, fromIdx) {
+  for (let i = fromIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line && line.trim()) {
+      return cleanLine(line);
+    }
+  }
+  return void 0;
+}
+function findGeometricParent(lines, fromIdx, currentIndent) {
+  for (let i = fromIdx - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    const ind = countIndent(line);
+    if (ind < currentIndent) {
+      return cleanLine(line);
+    }
+  }
+  return void 0;
+}
+var CONTROL_FLOW_KEYWORDS = /* @__PURE__ */ new Set([
+  "if",
+  "else",
+  "elif",
+  "for",
+  "while",
+  "do",
+  "loop",
+  "switch",
+  "case",
+  "catch",
+  "finally",
+  "with",
+  "select",
+  "defer",
+  "go",
+  "return",
+  "throw"
+]);
 var SCOPE_PATTERNS = [
   // Python: def foo(...) or class Foo(...)
   /^\s*(?:async\s+)?def\s+([a-zA-Z0-9_$]+)/,
@@ -757,8 +821,12 @@ var SCOPE_PATTERNS = [
   /^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/,
   // Rust: fn foo(...) or pub fn foo(...)
   /^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_$]+)/,
+  // 类构造函数 constructor(...)
+  /^\s*(?:public|private|protected)*\s*constructor\b/i,
+  // 类属性访问器 get prop() / set prop(v)
+  /^\s*(?:public|private|protected|static)*\s*(?:get|set)\s+([a-zA-Z0-9_$]+)/i,
   // 类方法或对象方法: methodName(...) { or methodName = (...) =>
-  /^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
+  /^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?(?:<[^>]*>)?\s*\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
   // Class / Struct / Interface
   /^\s*(?:export\s+)?(?:class|struct|interface|type)\s+([a-zA-Z0-9_$]+)/
 ];
@@ -767,12 +835,36 @@ function extractScopeAnchor(lines, lineZeroBased) {
   for (let i = lineZeroBased; i >= maxLookup; i--) {
     const rawLine = lines[i];
     if (!rawLine || !rawLine.trim()) continue;
+    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
+      continue;
+    }
     for (const pattern of SCOPE_PATTERNS) {
       const match = rawLine.match(pattern);
       if (match) {
-        const identifier = match[1] || match[2] || match[3];
-        if (identifier && identifier.trim()) {
+        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
+        if (identifier && identifier.trim() && !CONTROL_FLOW_KEYWORDS.has(identifier.trim())) {
           return identifier.trim();
+        }
+      }
+    }
+  }
+  return void 0;
+}
+function findScopeAnchorLine(lines, scopeAnchor) {
+  if (!scopeAnchor || !scopeAnchor.trim()) return void 0;
+  const target = scopeAnchor.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    if (!rawLine || !rawLine.trim() || !rawLine.includes(target)) continue;
+    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
+      continue;
+    }
+    for (const pattern of SCOPE_PATTERNS) {
+      const match = rawLine.match(pattern);
+      if (match) {
+        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
+        if (identifier && identifier.trim() === target) {
+          return i;
         }
       }
     }
@@ -783,21 +875,13 @@ function extractContextSnippet(doc, lineZeroBased) {
   const currentLineText = doc.lineAt(lineZeroBased).text;
   const current = cleanLine(currentLineText);
   const indent = countIndent(currentLineText);
-  let prev;
-  let next;
-  if (lineZeroBased > 0) {
-    const prevText = cleanLine(doc.lineAt(lineZeroBased - 1).text);
-    if (prevText.trim().length > 0) prev = prevText;
+  const allLines = [];
+  for (let i = 0; i < doc.lineCount; i++) {
+    allLines.push(doc.lineAt(i).text);
   }
-  if (lineZeroBased < doc.lineCount - 1) {
-    const nextText = cleanLine(doc.lineAt(lineZeroBased + 1).text);
-    if (nextText.trim().length > 0) next = nextText;
-  }
-  const sampleLines = [];
-  const startIdx = Math.max(0, lineZeroBased - 60);
-  for (let i = startIdx; i <= lineZeroBased; i++) {
-    sampleLines.push(doc.lineAt(i).text);
-  }
+  const prev = findPrevNonEmptyLine(allLines, lineZeroBased);
+  const next = findNextNonEmptyLine(allLines, lineZeroBased);
+  const sampleLines = allLines.slice(Math.max(0, lineZeroBased - 60), lineZeroBased + 1);
   const scopeAnchor = extractScopeAnchor(sampleLines, sampleLines.length - 1);
   return { prev, current, next, scopeAnchor, indent };
 }
@@ -826,19 +910,79 @@ function calculateSimilarity(strA, strB) {
   }
   return 0;
 }
+function calculateCandidateLineScore(lines, i, snippet, getCandidateScope, distancePenalty) {
+  const lineText = cleanLine(lines[i]);
+  let score = 0;
+  const isCurrentExactMatch = lineText === snippet.targetCurrent;
+  let hasDirectMatch = isCurrentExactMatch;
+  if (isCurrentExactMatch) {
+    score += 10;
+  } else if (snippet.targetCurrent && stripTrailingComment(lineText) === stripTrailingComment(snippet.targetCurrent) && stripTrailingComment(lineText).length > 0) {
+    score += 9;
+    hasDirectMatch = true;
+  }
+  let hasPrevMatch = false;
+  const candPrev = findPrevNonEmptyLine(lines, i);
+  if (snippet.targetPrev && candPrev && (candPrev === snippet.targetPrev || i > 0 && cleanLine(lines[i - 1]) === snippet.targetPrev)) {
+    score += 5;
+    hasPrevMatch = true;
+  }
+  let hasNextMatch = false;
+  const candNext = findNextNonEmptyLine(lines, i);
+  if (snippet.targetNext && candNext && (candNext === snippet.targetNext || i < lines.length - 1 && cleanLine(lines[i + 1]) === snippet.targetNext)) {
+    score += 5;
+    hasNextMatch = true;
+  }
+  let hasContextMatch = hasPrevMatch || hasNextMatch;
+  if (!isCurrentExactMatch && hasContextMatch) {
+    const sim = calculateSimilarity(lineText, snippet.targetCurrent);
+    if (sim >= 0.7) {
+      score += Math.round(sim * 6);
+      hasDirectMatch = true;
+    }
+  }
+  if (hasPrevMatch && hasNextMatch) {
+    hasDirectMatch = true;
+  }
+  let candIndent = 0;
+  if (snippet.targetIndent !== void 0) {
+    candIndent = countIndent(lines[i]);
+    if (candIndent === snippet.targetIndent) {
+      score += 3;
+    } else if (snippet.targetIndent > 0 && candIndent > 0 && (candIndent === snippet.targetIndent * 2 || snippet.targetIndent === candIndent * 2)) {
+      score += 2;
+    }
+  }
+  if (snippet.targetScope && score >= 5) {
+    const candParent = findGeometricParent(lines, i, candIndent);
+    const candidateScope = getCandidateScope(i);
+    if (candidateScope && candidateScope === snippet.targetScope || candParent && (candParent === snippet.targetScope || candParent.includes(snippet.targetScope))) {
+      score += 5;
+      hasContextMatch = true;
+    }
+  }
+  score -= distancePenalty;
+  return { score, hasDirectMatch };
+}
 async function resolveHealedLine(workspaceRoot, item, fileLinesCache) {
   if (!item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
-    return { healedLine: item.line, isHealed: false };
+    return { healedLine: item.line, isHealed: false, status: "matched" };
+  }
+  if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
+    return { healedLine: item.line, isHealed: false, status: "matched" };
   }
   if (!item.file || typeof item.file !== "string") {
-    return { healedLine: item.line, isHealed: false };
+    return { healedLine: item.line, isHealed: false, status: "matched" };
   }
   const filePath = path3.isAbsolute(item.file) ? item.file : path3.join(workspaceRoot, item.file);
+  const normFilePath = path3.normalize(filePath).toLowerCase();
   let lines;
   if (fileLinesCache && fileLinesCache.has(filePath)) {
     lines = fileLinesCache.get(filePath);
   } else {
-    const openDoc = vscode5.workspace.textDocuments.find((d) => d.uri.fsPath === filePath);
+    const openDoc = vscode5.workspace.textDocuments.find(
+      (d) => path3.normalize(d.uri.fsPath).toLowerCase() === normFilePath
+    );
     if (openDoc) {
       lines = [];
       for (let i = 0; i < openDoc.lineCount; i++) {
@@ -849,7 +993,7 @@ async function resolveHealedLine(workspaceRoot, item, fileLinesCache) {
         const content = await fs2.promises.readFile(filePath, "utf-8");
         lines = content.split(/\r?\n/);
       } catch {
-        return { healedLine: item.line, isHealed: false };
+        return { healedLine: item.line, isHealed: false, status: "unmatched" };
       }
     }
     if (lines && fileLinesCache) {
@@ -857,7 +1001,7 @@ async function resolveHealedLine(workspaceRoot, item, fileLinesCache) {
     }
   }
   if (!lines || lines.length === 0) {
-    return { healedLine: item.line, isHealed: false };
+    return { healedLine: item.line, isHealed: false, status: "unmatched" };
   }
   const origIdx = item.line - 1;
   const targetCurrent = cleanLine(item.contextSnippet.current);
@@ -867,7 +1011,7 @@ async function resolveHealedLine(workspaceRoot, item, fileLinesCache) {
   const targetIndent = item.contextSnippet.indent;
   if (origIdx >= 0 && origIdx < lines.length) {
     if (cleanLine(lines[origIdx]) === targetCurrent) {
-      return { healedLine: item.line, isHealed: false };
+      return { healedLine: item.line, isHealed: false, status: "matched", confidence: 1 };
     }
   }
   const offsets = [];
@@ -887,62 +1031,69 @@ async function resolveHealedLine(workspaceRoot, item, fileLinesCache) {
   if (targetNext) maxPossibleScore += 5;
   if (targetScope) maxPossibleScore += 5;
   if (targetIndent !== void 0) maxPossibleScore += 3;
+  const snippetSpec = { targetCurrent, targetPrev, targetNext, targetScope, targetIndent };
   let bestIdx = -1;
   let bestScore = -1;
   for (const offset of offsets) {
     const i = origIdx + offset;
     if (i < 0 || i >= lines.length) continue;
-    const lineText = cleanLine(lines[i]);
-    let score = 0;
-    const isCurrentExactMatch = lineText === targetCurrent;
-    if (isCurrentExactMatch) {
-      score += 10;
-    }
-    let hasContextMatch = false;
-    if (targetPrev && i > 0 && cleanLine(lines[i - 1]) === targetPrev) {
-      score += 5;
-      hasContextMatch = true;
-    }
-    if (targetNext && i < lines.length - 1 && cleanLine(lines[i + 1]) === targetNext) {
-      score += 5;
-      hasContextMatch = true;
-    }
-    if (!isCurrentExactMatch && hasContextMatch) {
-      const sim = calculateSimilarity(lineText, targetCurrent);
-      if (sim >= 0.7) {
-        score += Math.round(sim * 6);
-      }
-    }
-    if (targetIndent !== void 0) {
-      const candidateIndent = countIndent(lines[i]);
-      if (candidateIndent === targetIndent) {
-        score += 3;
-      } else if (targetIndent > 0 && candidateIndent > 0 && (candidateIndent === targetIndent * 2 || targetIndent === candidateIndent * 2)) {
-        score += 2;
-      }
-    }
-    if (targetScope && score >= 5) {
-      const candidateScope = getCandidateScope(i);
-      if (candidateScope && candidateScope === targetScope) {
-        score += 5;
-      }
-    }
-    const distance = Math.abs(offset);
-    score -= distance * 0.05;
-    if (score > bestScore) {
+    const { score, hasDirectMatch } = calculateCandidateLineScore(
+      lines,
+      i,
+      snippetSpec,
+      getCandidateScope,
+      Math.abs(offset) * 0.05
+    );
+    if (hasDirectMatch && score > bestScore) {
       bestScore = score;
       bestIdx = i;
     }
   }
   const confidenceRatio = maxPossibleScore > 0 ? bestScore / maxPossibleScore : 0;
-  if (bestIdx !== -1 && confidenceRatio >= HEALING_CONFIDENCE_THRESHOLD) {
+  if (bestIdx !== -1 && (bestScore >= 12.5 || confidenceRatio >= HEALING_CONFIDENCE_THRESHOLD)) {
     const newHealedLine = bestIdx + 1;
+    const isHealed = newHealedLine !== item.line;
     return {
       healedLine: newHealedLine,
-      isHealed: newHealedLine !== item.line
+      isHealed,
+      status: isHealed ? "healed" : "matched",
+      confidence: confidenceRatio
     };
   }
-  return { healedLine: item.line, isHealed: false };
+  if (targetScope) {
+    const scopeHeaderIdx = findScopeAnchorLine(lines, targetScope);
+    if (scopeHeaderIdx !== void 0) {
+      let p2BestIdx = -1;
+      let p2BestScore = -1;
+      const searchEnd = Math.min(lines.length - 1, scopeHeaderIdx + SCOPE_BODY_SEARCH_WINDOW);
+      for (let i = scopeHeaderIdx; i <= searchEnd; i++) {
+        const distance = Math.abs(i - origIdx);
+        const { score, hasDirectMatch } = calculateCandidateLineScore(
+          lines,
+          i,
+          snippetSpec,
+          getCandidateScope,
+          distance * 0.01
+        );
+        if (hasDirectMatch && score > p2BestScore) {
+          p2BestScore = score;
+          p2BestIdx = i;
+        }
+      }
+      const p2Ratio = maxPossibleScore > 0 ? p2BestScore / maxPossibleScore : 0;
+      if (p2BestIdx !== -1 && (p2BestScore >= 12.5 || p2Ratio >= HEALING_CONFIDENCE_THRESHOLD)) {
+        const newHealedLine = p2BestIdx + 1;
+        const isHealed = newHealedLine !== item.line;
+        return {
+          healedLine: newHealedLine,
+          isHealed,
+          status: isHealed ? "healed" : "matched",
+          confidence: p2Ratio
+        };
+      }
+    }
+  }
+  return { healedLine: item.line, isHealed: false, status: "unmatched", confidence: confidenceRatio };
 }
 
 // src/breakpointAdapter.ts
@@ -960,6 +1111,7 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
     let healedCount = 0;
     const pathCache = /* @__PURE__ */ new Map();
     const fileLinesCache = /* @__PURE__ */ new Map();
+    const unmatchedBreakpoints = [];
     for (const item of bpsToLoad) {
       if (!item || typeof item !== "object") continue;
       const isEnabled = item.enabled ?? true;
@@ -1000,6 +1152,8 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
         effectiveLine = healResult.healedLine;
         srcItem.line = effectiveLine;
         healedCount++;
+      } else if (healResult.status === "unmatched") {
+        unmatchedBreakpoints.push(srcItem);
       }
       const pos = new vscode6.Position(Math.max(0, effectiveLine - 1), 0);
       const location = new vscode6.Location(targetUri, pos);
@@ -1053,10 +1207,15 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
     if (toAdd.length > 0) {
       await vscode6.debug.addBreakpoints(toAdd);
     }
+    const unmatchedKeys = unmatchedBreakpoints.map(
+      (bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`
+    );
+    sceneStateManager.setUnmatchedBreakpoints(unmatchedKeys);
     return {
       loadedCount: targetBreakpoints.length,
       healedCount,
-      healedBreakpoints: healedCount > 0 ? bpsToLoad : void 0
+      healedBreakpoints: healedCount > 0 ? bpsToLoad : void 0,
+      unmatchedBreakpoints
     };
   } finally {
     setTimeout(() => {
@@ -1384,6 +1543,7 @@ async function addBreakpointCommand() {
 }
 
 // src/commands/applyScene.ts
+var path6 = __toESM(require("node:path"));
 var vscode8 = __toESM(require("vscode"));
 
 // src/commands/clearAll.ts
@@ -1491,7 +1651,7 @@ async function applySceneCommand(sceneParam) {
   }
   const bpsToLoad = mergeScenesBreakpoints(config, targetScenes);
   const primarySceneLabel = targetScenes.length === 1 ? targetScenes[0] : targetScenes.join(" + ");
-  const { loadedCount, healedCount, healedBreakpoints } = await applySceneBreakpoints(
+  const { loadedCount, healedCount, healedBreakpoints, unmatchedBreakpoints } = await applySceneBreakpoints(
     workspaceRoot,
     primarySceneLabel,
     bpsToLoad
@@ -1523,7 +1683,35 @@ async function applySceneCommand(sceneParam) {
       saveScenesConfig(workspaceRoot, config);
     }
   }
-  if (healedCount > 0) {
+  if (unmatchedBreakpoints && unmatchedBreakpoints.length > 0) {
+    const count = unmatchedBreakpoints.length;
+    const firstItem = unmatchedBreakpoints[0];
+    const summary = unmatchedBreakpoints.slice(0, 3).map((bp) => `${path6.basename(bp.file)}:${bp.line}`).join(", ");
+    const more = count > 3 ? ` \u7B49 ${count} \u5904` : "";
+    const viewAction = vscode8.l10n.t("Locate Code");
+    vscode8.window.showWarningMessage(
+      vscode8.l10n.t(
+        "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}",
+        primarySceneLabel,
+        count,
+        summary,
+        more
+      ),
+      viewAction
+    ).then(async (selected) => {
+      if (selected === viewAction && firstItem) {
+        const fullPath = path6.isAbsolute(firstItem.file) ? firstItem.file : path6.join(workspaceRoot, firstItem.file);
+        try {
+          const doc = await vscode8.workspace.openTextDocument(fullPath);
+          const editor = await vscode8.window.showTextDocument(doc);
+          const pos = new vscode8.Position(Math.max(0, firstItem.line - 1), 0);
+          editor.selection = new vscode8.Selection(pos, pos);
+          editor.revealRange(new vscode8.Range(pos, pos), vscode8.TextEditorRevealType.InCenter);
+        } catch {
+        }
+      }
+    });
+  } else if (healedCount > 0) {
     vscode8.window.showInformationMessage(
       vscode8.l10n.t(
         "Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
@@ -1547,7 +1735,7 @@ async function applySceneCommand(sceneParam) {
 var vscode10 = __toESM(require("vscode"));
 
 // src/sceneTreeProvider.ts
-var path6 = __toESM(require("node:path"));
+var path7 = __toESM(require("node:path"));
 var vscode9 = __toESM(require("vscode"));
 var SceneNode = class _SceneNode extends vscode9.TreeItem {
   constructor(sceneName, breakpointCount, isActive, isDirty) {
@@ -1584,7 +1772,7 @@ var SceneNode = class _SceneNode extends vscode9.TreeItem {
 var BreakpointNode = class extends vscode9.TreeItem {
   constructor(sceneName, index, breakpoint, workspaceRoot, extensionPath) {
     const isFunc = breakpoint.type === "function";
-    const label = isFunc ? `\u0192 ${breakpoint.functionName}()` : `${path6.basename(breakpoint.file || "")}:${breakpoint.line}`;
+    const label = isFunc ? `\u0192 ${breakpoint.functionName}()` : `${path7.basename(breakpoint.file || "")}:${breakpoint.line}`;
     super(label, vscode9.TreeItemCollapsibleState.None);
     this.sceneName = sceneName;
     this.index = index;
@@ -1599,16 +1787,26 @@ var BreakpointNode = class extends vscode9.TreeItem {
       this.tooltip = vscode9.l10n.t("Function Breakpoint: {0}", funcBp.functionName);
     } else {
       const srcBp = breakpoint;
+      const isUnmatched = sceneStateManager.isSceneActive(sceneName) && sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
       let extra = srcBp.desc;
       if (!extra) {
         if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
         else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
         else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
       }
+      if (isUnmatched) {
+        const unmatchTag = `[${vscode9.l10n.t("Unmatched")}]`;
+        extra = extra ? `${unmatchTag}  \u2022  ${extra}` : unmatchTag;
+      }
       this.description = extra;
-      this.tooltip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `
+      let tip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `
 ${srcBp.desc}` : ""}`;
-      const fullFilePath = path6.isAbsolute(srcBp.file) ? srcBp.file : path6.join(workspaceRoot, srcBp.file);
+      if (isUnmatched) {
+        tip = `[${vscode9.l10n.t("Unmatched")}] ${vscode9.l10n.t("Could not match current code (fell back to original line)")}
+${tip}`;
+      }
+      this.tooltip = tip;
+      const fullFilePath = path7.isAbsolute(srcBp.file) ? srcBp.file : path7.join(workspaceRoot, srcBp.file);
       const targetLine = Math.max(0, srcBp.line - 1);
       this.command = {
         command: "vscode.open",
@@ -1630,6 +1828,16 @@ ${srcBp.desc}` : ""}`;
   updateAppearance() {
     const isEnabled = this.breakpoint.enabled ?? true;
     this.checkboxState = isEnabled ? vscode9.TreeItemCheckboxState.Checked : vscode9.TreeItemCheckboxState.Unchecked;
+    const isUnmatched = this.breakpoint.type !== "function" && sceneStateManager.isSceneActive(this.sceneName) && sceneStateManager.isBreakpointUnmatched(
+      this.breakpoint.file,
+      this.breakpoint.line
+    );
+    if (isUnmatched) {
+      const iconFileName2 = isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
+      this.iconPath = vscode9.Uri.file(path7.join(this.extensionPath, "media", "icons", iconFileName2));
+      this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+      return;
+    }
     let iconBase = "bp-line";
     if (this.breakpoint.type === "function") {
       iconBase = "bp-func";
@@ -1652,7 +1860,7 @@ ${srcBp.desc}` : ""}`;
       }
     }
     const iconFileName = `${iconBase}-${isEnabled ? "enabled" : "disabled"}.svg`;
-    this.iconPath = vscode9.Uri.file(path6.join(this.extensionPath, "media", "icons", iconFileName));
+    this.iconPath = vscode9.Uri.file(path7.join(this.extensionPath, "media", "icons", iconFileName));
     this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
   }
 };

@@ -67,7 +67,7 @@
 |------|-----------|--------------|
 | **INV-001** | **断点在场景内的局部唯一性 (Upsert 语义)**：在同一场景中，相同文件+行号，或相同函数名，必须只有一条记录。后录入的配置安全覆盖先前配置。 | `src/configManager.ts` (`upsertBreakpointToScene`) |
 | **INV-002** | **场景激活的纯净隔离性**：激活目标场景时，必须先清除工作区内现存的所有断点（无论散落断点还是其他场景断点），确保无无关调试断点残留。 | `src/breakpointAdapter.ts` (`applySceneBreakpoints`) |
-| **INV-003** | **自愈算法的全维协同、性能安全与上下文硬门禁**：必须保留前导缩进（支持 Python/Go 语义），仅压缩非行首连续空白为单空格（抵御 Prettier/ESLint 格式化）；按交替辐射顺序向下优先探测（±30行）；结合当前行（10分）、上行（5分）、下行（5分）、函数作用域锚点（5分，门禁按需延迟计算+局部缓存杜绝 $O(n^2)$ 卡顿）、缩进深度（3分）全维评分；软相似度必须受**上下文硬门禁（Context Guard）**保护，仅当至少一行上下文精准命中且词法相似度达标时才计算软分，杜绝单行误判（如 `return true` 误选为 `return false`）；采用动态满分置信度比率 $\ge 68\%$ 作为通过门槛，未达标必须安全回退原行。 | `src/healingAdapter.ts` (`resolveHealedLine`) |
+| **INV-003** | **自愈算法的两阶段全维协同、大跨度重锚定、当前行本体守卫与性能安全**：必须保留前导缩进（支持 Python/Go 语义），仅压缩非行首连续空白为单空格（抵御 Prettier/ESLint 格式化）；采用**两阶段自愈引擎**：阶段一以原行号为中心执行双向交替辐射探测（±30行），阶段二当位移超出视距时利用 `scopeAnchor` 全文定位函数声明行，以函数体（最大 150 行）为基点展开作用域巡航动态重锚定；结合当前行（10分/剥离注释9分）、非空拓扑伴随行（各5分）、作用域/几何父节点（5分，延迟计算+局部缓存杜绝 $O(n^2)$ 卡顿）、缩进深度（3分）全维评分；建立**当前行本体守卫 (Target Existence Guard)**：候选行必须具备当前行本体证据（精确匹配、剥离注释吻合、软相似度 $\ge 70\%$ 或双侧上下文强闭环夹逼），严禁仅凭单侧上下文将断点误挂于相异代码行；采用动态满分置信度比率 $\ge 60\%$ 作为通过门槛，未达标安全标记为 `unmatched` 脱靶并平滑回退原行。 | `src/healingAdapter.ts` (`resolveHealedLine`) |
 | **INV-004** | **单一事实来源 (SSOT) 与视图被动响应性**：状态栏仅作为视图观察者（View），绝不直接持有全局激活场景主状态。全局场景状态机由 `SceneStateManager` 统一定义，通过事件单向流驱动 UI。 | `src/sceneStateManager.ts` 与 `src/statusBar.ts` |
 | **INV-005** | **场景切换过程的原子防竞态 (Race Guard)**：在 `applySceneBreakpoints` 移除旧断点并装载新断点期间，原子锁 `isApplying` 必须为 `true`。在此期间，`onDidChangeBreakpoints` 监听器严禁误将全局激活场景置为 `(None)`，杜绝状态栏闪烁。 | `src/breakpointAdapter.ts` 与 `src/extension.ts` |
 | **INV-006** | **防御性输入守卫 (Defensive Barrier)**：处理任意外部输入（读取用户手写的 `debug-scenes.json`、非合法对象、单文件无工作区模式）时，必须建立类型守卫，不可抛出未捕获的 `TypeError` 或 `NullPointer`。 | `src/configManager.ts` 与 `src/breakpointAdapter.ts` |
@@ -142,6 +142,9 @@
 | 2026-09-08 | 落地 DAP 增量 Diff 装配引擎、即刻点亮与模糊寻道短期缓存约束 | Tony.L | KDD-DAP-DIFF-001 |
 | 2026-09-08 | 确立自愈持久化闭环 (Self-Healing Loopback)、文件行内存缓存与监听防抖规范 | Tony.L | KDD-HEALING-LOOP-001 |
 | 2026-09-08 | 确立 CodeLens 兼容 JSONC 注释与激活态感知、剪贴板导入多场景保真 DAP 注入规范 | Tony.L | KDD-CODELENS-CLIP-001 |
+| 2026-09-12 | 确立自愈算法两阶段全维协同、大跨度 scopeAnchor 巡航动态重锚定与未匹配脱靶标记规范 (INV-003) | Tony.L | KDD-SCOPE-CRUISE-001 |
+| 2026-09-12 | 确立脱靶断点专属矢量 SVG 警告图标与 [未匹配] 标签前置规范，杜绝省略号截断与 emoji 滥用 | Tony.L | KDD-UNMATCHED-ICON-001 |
+| 2026-09-12 | 确立当前行本体守卫 (Target Existence Guard)，拦截目标行被删时单侧上下文引发的误自愈 (INV-003) | Tony.L | KDD-TARGET-EXIST-001 |
 
 
 

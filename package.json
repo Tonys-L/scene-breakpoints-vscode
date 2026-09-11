@@ -2,7 +2,7 @@
   "name": "scene-breakpoints-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "tony-l",
   "author": "Tony.L <286269159@qq.com>",
   "license": "MIT",
@@ -203,7 +203,6 @@
           "when": "view == sceneBreakpointsView && viewItem == activeSceneItem",
           "group": "inline@1"
         },
-
         {
           "command": "sceneBreakpoints.copySceneToClipboard",
           "when": "view == sceneBreakpointsView && (viewItem == sceneItem || viewItem == activeSceneItem)",
@@ -234,7 +233,6 @@
           "when": "view == sceneBreakpointsView && (viewItem == sceneItem || viewItem == activeSceneItem)",
           "group": "2_sceneActions@3"
         },
-
         {
           "command": "sceneBreakpoints.toggleBreakpointItem",
           "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
@@ -305,5 +303,4 @@
     "test": "node test/run-all.mjs",
     "package": "npx -y @vscode/vsce package"
   }
-
 }
