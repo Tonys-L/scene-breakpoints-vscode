@@ -4,7 +4,7 @@ All notable changes to the "scene-breakpoints-vscode" extension will be document
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-<p><b>English</b> | <a href="./CHANGELOG_zh.md">简体中文</a></p>
+<p><b>English</b> | <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG_zh.md">简体中文</a></p>
 
 ---
 

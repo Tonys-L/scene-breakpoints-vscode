@@ -5,8 +5,8 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-仓库-blue?logo=github" alt="GitHub" /></a>
-    <a href="./LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-green.svg" alt="License" /></a>
-    <a href="./docs/guide_zh.md"><img src="https://img.shields.io/badge/文档-使用指南-orange" alt="用户指南" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-green.svg" alt="License" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md"><img src="https://img.shields.io/badge/文档-使用指南-orange" alt="用户指南" /></a>
   </p>
 
   <p><a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/README.md">English</a> | <b>简体中文</b></p>
@@ -131,11 +131,11 @@
 
 ## 📖 更多文档
 
-- 📕 [完整使用指南与常见问题 (FAQ)](./docs/guide_zh.md)
-- 📝 [版本更新日志 (CHANGELOG.md)](./CHANGELOG.md)
+- 📕 [完整使用指南与常见问题 (FAQ)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md)
+- 📝 [版本更新日志 (CHANGELOG_zh.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG_zh.md)
 
 ---
 
 ## 📄 开源许可
 
-[MIT License](./LICENSE) © 2026 Tony.L
+[MIT License](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE) © 2026 Tony.L

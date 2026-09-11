@@ -5,8 +5,8 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
-    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
-    <a href="./docs/guide.md"><img src="https://img.shields.io/badge/Docs-User%20Guide-orange" alt="User Guide" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md"><img src="https://img.shields.io/badge/Docs-User%20Guide-orange" alt="User Guide" /></a>
   </p>
 
   <p><b>English</b> | <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/README_zh.md">简体中文</a></p>
@@ -131,11 +131,11 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
 
 ## 📖 Documentation
 
-- 📘 [Complete User Guide & FAQ](./docs/guide.md)
-- 📝 [Changelog (CHANGELOG.md)](./CHANGELOG.md)
+- 📘 [Complete User Guide & FAQ](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md)
+- 📝 [Changelog (CHANGELOG.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG.md)
 
 ---
 
 ## 📄 License
 
-[MIT License](./LICENSE) © 2026 Tony.L
+[MIT License](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE) © 2026 Tony.L

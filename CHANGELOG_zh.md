@@ -4,7 +4,7 @@
 
 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范。
 
-<p><b>简体中文</b> | <a href="./CHANGELOG.md">English</a></p>
+<p><b>简体中文</b> | <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG.md">English</a></p>
 
 ---
 

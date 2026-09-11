@@ -4,6 +4,8 @@ src/**
 test/**
 docs/**
 !docs/images/**
+!docs/guide.md
+!docs/guide_zh.md
 node_modules/**
 build.mjs
 install.bat
