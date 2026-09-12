@@ -5,7 +5,7 @@ import { clearAllCommand } from "./clearAll";
 import { exportSceneCommand } from "./exportScene";
 import { showMenuCommand } from "./showMenu";
 import { copySceneToClipboardCommand, importSceneFromClipboardCommand } from "./clipboardSync";
-import { installSkillCommand, diagnoseAiIntegrationCommand } from "./skillCommands";
+import { installSkillCommand, diagnoseAiIntegrationCommand, checkAndPromptSkillUpdates } from "./skillCommands";
 import { registerTreeCommands } from "./treeCommands";
 import { SceneTreeDataProvider } from "../../infra/vscode/sceneTreeProvider";
 
@@ -57,5 +57,6 @@ export {
 	importSceneCommand,
 	installSkillCommand,
 	diagnoseAiIntegrationCommand,
+	checkAndPromptSkillUpdates,
 	registerTreeCommands,
 };

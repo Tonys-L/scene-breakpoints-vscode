@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
-import { registerAllCommands } from "./commands";
-import { checkAndPromptSkillUpdates } from "./commands/skillCommands";
-import { getWorkspaceRoot } from "./config/configManager";
 import {
+	registerAllCommands,
+	checkAndPromptSkillUpdates,
 	registerBreakpointSyncService,
 	registerChatSkillService,
 	registerConfigFileWatcherService,
@@ -10,15 +9,17 @@ import {
 	registerDebugPauseService,
 	registerSessionLifecycleService,
 	registerTreeInteractionService,
-} from "./services";
-import { sceneStateManager } from "./core/sceneStateManager";
+} from "./policy";
+import { sceneStateManager } from "./core";
 import {
 	SceneCodeLensProvider,
 	SceneTreeDataProvider,
 	TemplateContentProvider,
 	templateContentProvider,
-} from "./providers";
-import { getStatusBarItem, initStatusBarItem } from "./views/statusBar";
+	getStatusBarItem,
+	initStatusBarItem,
+	getWorkspaceRoot,
+} from "./infra";
 
 /**
  * 插件主激活入口 (Composition Root)

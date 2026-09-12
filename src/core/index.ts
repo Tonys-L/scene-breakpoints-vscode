@@ -10,5 +10,6 @@ export * from "./sceneStateManager";
 export * from "./activationResolver";
 export * from "./sceneOperations";
 export * from "./skillLifecycleResolver";
+export * from "./launchResolver";
 
 

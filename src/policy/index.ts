@@ -8,4 +8,5 @@ export * from "./schedulers/debugLaunchPolicy";
 export * from "./schedulers/debugPausePolicy";
 export * from "./schedulers/sessionLifecyclePolicy";
 export * from "./schedulers/treeInteractionPolicy";
+export * from "./payloadSerializer";
 export * from "./commands/index";

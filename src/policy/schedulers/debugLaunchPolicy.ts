@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { applySceneCommand } from "../commands/applyScene";
-import { resolveLaunchBoundScenes } from "../../config/launchResolver";
+import { resolveLaunchBoundScenes } from "../../core/launchResolver";
 import { getWorkspaceRoot, loadScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
 import { sceneStateManager } from "../../core/sceneStateManager";
 
