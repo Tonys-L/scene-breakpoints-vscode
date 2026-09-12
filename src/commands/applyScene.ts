@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { applySceneBreakpoints, collectCurrentBreakpoints } from "../breakpointAdapter";
 import { getWorkspaceRoot, loadScenesConfig, mergeScenesBreakpoints, saveScenesConfig } from "../configManager";
 import { sceneStateManager } from "../sceneStateManager";
+import { syncCoordinator } from "../syncCoordinator";
 import { clearAllCommand } from "./clearAll";
 
 export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
@@ -128,6 +129,19 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 	// 聚合多场景断点并去重 (INV-001)
 	const bpsToLoad = mergeScenesBreakpoints(config, targetScenes);
 	const primarySceneLabel = targetScenes.length === 1 ? targetScenes[0] : targetScenes.join(" + ");
+
+	// SSOT 强制约束：回写顺序必须严格遵守先落盘 activeScenes，确保磁盘始终是权威 SSOT，后装配 DAP 断点
+	const currentDiskActives = config.activeScenes;
+	const isSameActive =
+		Array.isArray(currentDiskActives) &&
+		currentDiskActives.length === targetScenes.length &&
+		currentDiskActives.every((s, i) => s === targetScenes[i]);
+
+	if (!isSameActive) {
+		config.activeScenes = targetScenes;
+		syncCoordinator.markInternalSaving();
+		saveScenesConfig(workspaceRoot, config);
+	}
 
 	const { loadedCount, healedCount, healedBreakpoints, unmatchedBreakpoints } = await applySceneBreakpoints(
 		workspaceRoot,

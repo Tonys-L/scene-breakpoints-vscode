@@ -13,6 +13,25 @@
       "description": "Schema version indicator",
       "default": "1.0"
     },
+    "activeScenes": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of active debug scene names to activate and layer"
+        },
+        {
+          "type": "string",
+          "description": "Single active debug scene name (fallback compatibility)"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Currently activated debug scene(s). Modifying this triggers declarative scene switching."
+    },
     "bindings": {
       "type": "object",
       "description": "Map debug launch configuration names (from launch.json) to scene names",

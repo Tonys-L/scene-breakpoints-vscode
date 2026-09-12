@@ -7,3 +7,5 @@ export * from "./config/configStorage";
 export * from "./config/sceneOperations";
 export * from "./config/payloadSerializer";
 export * from "./config/launchResolver";
+export * from "./config/aiActivationResolver";
+

@@ -38,13 +38,13 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 
 ## 项目阶段
 
-**Production (v0.5.9)**
-- 核心三层隔离架构（SOLID/SoC）全面实施；
-- 自愈算法与防御性 I/O 屏障已就绪；
+**Production (v1.0.2) / Next: v1.1.0**
+- 核心三层隔离架构（SOLID/SoC）与 coordinators 协同调度层全面实施；
+- 两阶段自愈算法（近距辐射 + 作用域巡航大跨度重锚定）、当前行本体守卫与脱靶警告告警已就绪；
 - 状态机单向数据流、多场景叠加激活（Layered Activation）与防竞态锁已全面落地；
 - 调试启动配置智能联动（Launch Hook）与全双工双向实时同步就绪；
 - 侧边栏专属树视图（TreeView）具备 16x16 矢量 SVG 矩阵（彻底根治选中变灰）、稳定 `id` 原生 DOM Diff 就地更新（彻底杜绝整树重绘闪烁）；
-- 启动推导与场景激活双重虚假拦截守卫已就绪。
+- AI 免 MCP 声明式场景激活（`activeScenes`）、主流 VS Code AI Agent Skill 矩阵及拓扑快照防回环中枢就绪。
 
 ---
 

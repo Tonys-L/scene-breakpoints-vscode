@@ -126,15 +126,27 @@
       {
         "type": "line",
         "file": "demo/healing-demo.ts",
-        "line": 16,
-        "enabled": true,
-        "desc": "TS: Amount check line",
+        "line": 14,
+        "desc": "log",
         "contextSnippet": {
-          "prev": "console.log(`[Order] Customer name: ${order.customer}`);",
-          "current": "if (order.amount <= 0) {",
-          "next": "throw new Error(\"Invalid order payment amount!\");",
-          "indent": 2,
-          "scopeAnchor": "processOrderPayment"
+          "prev": "console.log(`[Order] Preparing to process payment for order ${order.id}`);",
+          "current": "console.log(`[Order] Customer name: ${order.customer}`);",
+          "next": "if (order.amount <= 0) {",
+          "scopeAnchor": "processOrderPayment",
+          "indent": 2
+        }
+      },
+      {
+        "type": "line",
+        "file": "demo/healing-demo.ts",
+        "line": 20,
+        "desc": "transactionId",
+        "contextSnippet": {
+          "prev": "}",
+          "current": "const transactionId = `TX-${Date.now()}`;",
+          "next": "console.log(`[Order] Payment successful! Transaction: ${transactionId}`);",
+          "scopeAnchor": "processOrderPayment",
+          "indent": 2
         }
       }
     ],

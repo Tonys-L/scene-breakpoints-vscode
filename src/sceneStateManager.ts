@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 
 export interface SceneState {
 	activeScenes: string[];
-	activeScene?: string; // 兼容旧版视图
 	isDirty: boolean;
 }
 
@@ -22,11 +21,6 @@ class SceneStateManager {
 
 	public isSceneActive(sceneName: string): boolean {
 		return this.currentActiveScenes.includes(sceneName);
-	}
-
-	public getActiveScene(): string | undefined {
-		if (this.currentActiveScenes.length === 0) return undefined;
-		return this.currentActiveScenes[0];
 	}
 
 	public getIsDirty(): boolean {
@@ -53,7 +47,6 @@ class SceneStateManager {
 
 		this._onDidChangeState.fire({
 			activeScenes: this.currentActiveScenes,
-			activeScene: this.getActiveScene(),
 			isDirty: this.isDirty,
 		});
 	}
@@ -80,7 +73,6 @@ class SceneStateManager {
 			this.isDirty = dirty;
 			this._onDidChangeState.fire({
 				activeScenes: this.currentActiveScenes,
-				activeScene: this.getActiveScene(),
 				isDirty: this.isDirty,
 			});
 		}
@@ -100,7 +92,32 @@ class SceneStateManager {
 		this.isApplying = applying;
 	}
 
+	private lastAppliedTopologyHash = "";
+	private pendingTopologyUpdate = false;
+
+	public getLastAppliedTopologyHash(): string {
+		return this.lastAppliedTopologyHash;
+	}
+
+	public setLastAppliedTopologyHash(hash: string): void {
+		this.lastAppliedTopologyHash = hash;
+	}
+
+	public clearLastAppliedTopologyHash(): void {
+		this.lastAppliedTopologyHash = "";
+	}
+
+	public isPendingTopologyUpdate(): boolean {
+		return this.pendingTopologyUpdate;
+	}
+
+	public setPendingTopologyUpdate(pending: boolean): void {
+		this.pendingTopologyUpdate = pending;
+	}
+
 	public dispose(): void {
+		this.clearLastAppliedTopologyHash();
+		this.pendingTopologyUpdate = false;
 		this._onDidChangeState.dispose();
 	}
 }

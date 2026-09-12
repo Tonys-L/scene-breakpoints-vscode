@@ -19,7 +19,11 @@
   "command.enableAllBreakpointsInScene": "Enable All Breakpoints in Scene",
   "command.disableAllBreakpointsInScene": "Disable All Breakpoints in Scene",
   "command.duplicateScene": "Duplicate Scene...",
+  "command.diagnoseAiIntegration": "Diagnose AI Integration...",
+  "command.installSkill": "Install AI Agent Skill...",
   "config.autoActivateOnLaunch": "Automatically activate bound scene breakpoints when a debug launch configuration is started",
+  "config.allowAiFileActivation": "Allow AI Agent to declaratively activate and switch scenes by modifying activeScenes in debug-scenes.json",
+  "config.autoInstallSkill": "Prompt to install AI Skill when an AI Agent workspace is detected",
   "view.sceneBreakpoints": "Scene Breakpoints"
 }
 

@@ -1,13 +1,7 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { SceneCodeLensProvider } from "./codeLensProvider";
-import { addBreakpointCommand } from "./commands/addBreakpoint";
-import { applySceneCommand } from "./commands/applyScene";
-import { clearAllCommand } from "./commands/clearAll";
-import { copySceneToClipboardCommand, importSceneFromClipboardCommand } from "./commands/clipboardSync";
-import { exportSceneCommand } from "./commands/exportScene";
-import { showMenuCommand } from "./commands/showMenu";
-import { registerTreeCommands } from "./commands/treeCommands";
+import { applySceneCommand, registerAllCommands } from "./commands";
 import { initStatusBarItem } from "./statusBar";
 import { sceneStateManager } from "./sceneStateManager";
 import { syncCoordinator } from "./syncCoordinator";
@@ -22,20 +16,24 @@ import {
 	saveScenesConfig,
 	syncEditorBreakpointChangesToConfig,
 } from "./configManager";
+import { handleExternalScenesFileChange } from "./coordinators/aiActivationCoordinator";
 import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "./sceneTreeProvider";
 
 export function activate(context: vscode.ExtensionContext) {
 	// 1. 初始化底部常驻状态栏
 	initStatusBarItem(context);
 
-	// 2. 注册核心交互命令
-	const addBpCmd = vscode.commands.registerCommand("sceneBreakpoints.addBreakpoint", addBreakpointCommand);
-	const applySceneCmd = vscode.commands.registerCommand("sceneBreakpoints.applyScene", applySceneCommand);
-	const clearAllCmd = vscode.commands.registerCommand("sceneBreakpoints.clearAll", clearAllCommand);
-	const exportSceneCmd = vscode.commands.registerCommand("sceneBreakpoints.exportScene", exportSceneCommand);
-	const showMenuCmd = vscode.commands.registerCommand("sceneBreakpoints.showMenu", showMenuCommand);
+	// 2. 注册左侧调试面板专属场景管理树视图 (Run & Debug View)
+	const treeDataProvider = new SceneTreeDataProvider(context.extensionPath);
+	const treeView = vscode.window.createTreeView("sceneBreakpointsView", {
+		treeDataProvider,
+		showCollapseAll: true,
+	});
 
-	// 3. 注册调试配置提供者：在调试启动前根据优先级联动激活目标场景 (带幂等防护)
+	// 3. 注册扩展全部用户命令 (通过表驱动命令注册中枢统一管理)
+	registerAllCommands(context, { treeDataProvider });
+
+	// 4. 注册调试配置提供者：在调试启动前根据优先级联动激活目标场景 (带幂等防护)
 	const debugConfigProvider = vscode.debug.registerDebugConfigurationProvider("*", {
 		async resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration) {
 			const autoActivate = vscode.workspace
@@ -93,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (event.changed && event.changed.length > 0) {
-			const activeScenes = sceneStateManager.activeScenes;
+			const activeScenes = sceneStateManager.getActiveScenes();
 			if (activeScenes.length > 0) {
 				const workspaceRoot = getWorkspaceRoot(false);
 				if (workspaceRoot) {
@@ -114,13 +112,6 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		sceneStateManager.checkDirtyWithCount(currentCount);
-	});
-
-	// 6. 注册左侧调试面板专属场景管理树视图 (Run & Debug View)
-	const treeDataProvider = new SceneTreeDataProvider(context.extensionPath);
-	const treeView = vscode.window.createTreeView("sceneBreakpointsView", {
-		treeDataProvider,
-		showCollapseAll: true,
 	});
 
 	// 记录用户手动展开/折叠的场景状态，防止任何刷新导致折叠状态被粗暴重置
@@ -210,43 +201,57 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			treeDataProvider.refresh();
-			// 若为用户手动编辑保存 debug-scenes.json 且当前存在激活场景，自动静默重新装载当前激活场景断点
-			if (!sceneStateManager.isApplyingScene()) {
-				const activeScenes = sceneStateManager.activeScenes;
-				if (activeScenes.length > 0) {
-					const workspaceRoot = getWorkspaceRoot(false);
-					if (workspaceRoot) {
-						const config = loadScenesConfig(workspaceRoot);
-						const merged = mergeScenesBreakpoints(config, activeScenes);
-						await applySceneBreakpoints(workspaceRoot, activeScenes.join("+"), merged);
-					}
-				}
+			// 调度领域层处理外部文件变更（支持 AI activeScenes 声明式自动激活与热重载）
+			const workspaceRoot = getWorkspaceRoot(false);
+			if (workspaceRoot) {
+				await handleExternalScenesFileChange(workspaceRoot);
 			}
+			treeDataProvider.refresh();
 		}, 100);
 	});
 	fileWatcher.onDidCreate(() => treeDataProvider.refresh());
 	fileWatcher.onDidDelete(() => treeDataProvider.refresh());
 
-	// 7. 注册树视图所有交互与上下文命令 (通过 treeCommands 独立模块收敛)
-	registerTreeCommands(context, treeDataProvider);
+	const terminateSessionListener = vscode.debug.onDidTerminateDebugSession(async () => {
+		// 调试会话结束后，核心断点拓扑快照失效清空
+		sceneStateManager.clearLastAppliedTopologyHash();
+		// 调试会话结束后，若存在挂起的断点拓扑更新，平滑自动执行重刷
+		if (sceneStateManager.isPendingTopologyUpdate()) {
+			sceneStateManager.setPendingTopologyUpdate(false);
+			const workspaceRoot = getWorkspaceRoot(false);
+			if (workspaceRoot) {
+				await handleExternalScenesFileChange(workspaceRoot);
+			}
+		}
+	});
 
-	const copySceneCmd = vscode.commands.registerCommand(
-		"sceneBreakpoints.copySceneToClipboard",
-		copySceneToClipboardCommand,
-	);
-
-	const importSceneCmd = vscode.commands.registerCommand(
-		"sceneBreakpoints.importSceneFromClipboard",
-		importSceneFromClipboardCommand,
-	);
+	// 若宿主环境支持实验性 Chat Skill Provider API，执行动态注入
+	if (typeof (vscode as any).chat?.registerSkillProvider === "function") {
+		const skillProvider = {
+			onDidChangeSkills: new vscode.EventEmitter<void>().event,
+			provideSkills(): any[] {
+				return [
+					{
+						uri: vscode.Uri.joinPath(
+							context.extensionUri,
+							"skills",
+							"manage-scenes",
+							"SKILL.md",
+						),
+					},
+				];
+			},
+		};
+		try {
+			context.subscriptions.push(
+				(vscode as any).chat.registerSkillProvider(skillProvider),
+			);
+		} catch {
+			// 忽略实验性 API 不兼容异常
+		}
+	}
 
 	context.subscriptions.push(
-		addBpCmd,
-		applySceneCmd,
-		clearAllCmd,
-		exportSceneCmd,
-		showMenuCmd,
 		debugConfigProvider,
 		codeLensProvider,
 		bpChangeListener,
@@ -254,8 +259,7 @@ export function activate(context: vscode.ExtensionContext) {
 		checkboxChangeListener,
 		stateChangeListener,
 		fileWatcher,
-		copySceneCmd,
-		importSceneCmd,
+		terminateSessionListener,
 		{ dispose: () => sceneStateManager.dispose() },
 	);
 }

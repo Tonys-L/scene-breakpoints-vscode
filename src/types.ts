@@ -34,6 +34,8 @@ export interface FunctionSceneBreakpoint extends BaseBreakpoint {
 export type SceneBreakpoint = SourceSceneBreakpoint | FunctionSceneBreakpoint;
 
 export interface ScenesConfig {
+	$schema?: string;
+	activeScenes?: string[]; // 当前激活的一个或多个场景名称（支持多场景叠加）
 	bindings?: Record<string, string | string[]>; // launch.json 配置名称与场景的映射关系
 	scenes: Record<string, SceneBreakpoint[]>;
 }

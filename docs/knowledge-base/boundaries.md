@@ -160,6 +160,34 @@
 
 ---
 
+### AI 声明式免 MCP 场景激活与 Agent 矩阵分发能力 (Declarative AI Orchestration & Multi-Agent Matrix)
+
+**能力定义**: AI Agent 无需借助外部 MCP Server，直接通过声明式读写工作区 `.vscode/debug-scenes.json` 的 `activeScenes` 根级字段驱动插件响应式激活；支持跨主流 VS Code AI Agent 环境的一键 Skill/Rules 矩阵分发与全维集成诊断。
+
+**业务规则**:
+- **根级 `activeScenes` 字段语义**：支持 `string[]` 或单个 `string`（防御性自动装箱），设置为空数组 `[]` 或删除该字段时安全卸载工作区断点并复位状态为 None；
+- **自愈指纹 `contextSnippet` 推荐缺省策略**：AI 生成新场景断点时，强烈推荐缺省不填 `contextSnippet`，只需提供 `type`、`file`、`line` 及业务意图 `desc`。插件底层具备原样信任行号的平滑降级支持，并在场景激活、断点微调或反向同步时由插件自动读取磁盘真实源码反向提取并持久化补齐指纹闭环，消除 Token 浪费与模型格式化幻觉；
+- **严格先到先得与 enabled 覆盖规范 (INV-011)**：多场景叠加激活时以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，首个声明该位置的断点生效，其 `enabled: false` 同样优先锁定，后声明的同位置断点直接忽略；
+- **双重保护防线 (INV-012)**：调试会话进行中（`activeDebugSession`）修改断点拓扑时采用挂起策略（策略 A），待会话终止后自动平滑补偿；核心断点拓扑 Diff (`computeBreakpointsTopologyHash`) 阻断无实质断点变动（如仅改 `desc`、`bindings` 或未激活闲置场景）的 DAP 重刷；
+- **8 大主流 VS Code AI Agent 集成矩阵一键分发**：支持将断点编排 Skill 一键分发至工作区：
+  1. Cursor：`.cursor/rules/manage-scenes.mdc`（含 YAML Frontmatter 契约）
+  2. Windsurf：`.windsurf/rules/manage-scenes.md`
+  3. Cline：`.clinerules/manage-scenes.md`
+  4. Roo Code：`.roorules/manage-scenes.md`
+  5. Continue：`.continue/prompts/manage-scenes.prompt`
+  6. VS Code / GitHub Copilot：`.github/skills/manage-scenes/SKILL.md`
+  7. Trae IDE：`.trae/skills/manage-scenes/SKILL.md`
+  8. Antigravity：`.agents/skills/manage-scenes/SKILL.md`
+- **VS Code Chat Skill Provider 宿主动态注入**：检测宿主 `vscode.chat.registerSkillProvider` 能力，支持内存动态虚拟挂载，无需落盘物理文件；
+- **全维集成状态诊断 (`diagnoseAiIntegration`)**：集中诊断 `allowAiFileActivation` 授权开关、当前激活场景列表与 8 大 Agent 路径部署状态，并提供交互式一键修复与安装。
+
+**对应代码**:
+- `src/config/aiActivationResolver.ts` (`handleExternalScenesFileChange`, `resolveActiveScenesDiff`, `computeBreakpointsTopologyHash`)
+- `src/commands/skillCommands.ts` (`installSkillCommand`, `diagnoseAiIntegrationCommand`)
+- `src/extension.ts` (Chat Skill Provider 动态注入与 FileWatcher 调度)
+
+---
+
 ## 外部依赖能力
 
 | 依赖 | 用途 | 替换/解耦成本 |
@@ -184,7 +212,8 @@
 - 三行代码指纹的提取与行号漂移计算；
 - 状态机单向数据流与状态栏响应式渲染；
 - 调试侧边栏原生树视图层级编排与跳转指令下发；
-- 剪贴板 Payload 标准化序列化与外部输入防御性清洗过滤。
+- 剪贴板 Payload 标准化序列化与外部输入防御性清洗过滤；
+- 跨 Agent 环境 Skill 与 Rules 资产一键部署分发及全维状态诊断（`sceneBreakpoints.installSkill`、`sceneBreakpoints.diagnoseAiIntegration`，支持 Cursor, Windsurf, Cline, Roo Code, Continue, Copilot, Trae, Antigravity）。
 
 ### 系统外（宿主与调试器负责）
 - 实际断点命中的暂停控制、调用栈回溯与变量查看（由语言特定 Debug Adapter 负责，如 Python debugpy、Node.js inspector）；
@@ -202,16 +231,21 @@
 | 2026-09-08 | 落地多场景动态多选叠加激活能力 (Layered Activation) | Tony.L | KDD-MULTI-ACTIVATE-001 |
 | 2026-09-08 | 新增调试启动配置自动联动激活能力 (Launch.json Binding Hook) | Tony.L | KDD-LAUNCH-HOOK-001 |
 | 2026-09-08 | 建立断点状态全双工实时同步与文件变动联动能力 (Full-Duplex Sync) | Tony.L | KDD-SYNC-001 |
-| 2026-09-08 | 确立 16x16 矢量 SVG 矩阵色彩保真规范 (v0.5.7) | Tony.L | KDD-UI-003 |
-| 2026-09-08 | 确立幽灵场景存在性推导校验与拦截守卫 (INV-009, v0.5.8) | Tony.L | KDD-DEFENSE-001 |
-| 2026-09-08 | 确立树节点稳定 id 契约与 DOM Diff 零闪烁规范 (v0.5.9) | Tony.L | KDD-TREE-002 |
-| 2026-09-08 | 落地 DAP 增量 Diff 装配引擎、即刻点亮与模糊寻道缓存 | Tony.L | KDD-DAP-DIFF-001 |
-| 2026-09-08 | 落地自愈持久化闭环 (Self-Healing Loopback)、文件行内存缓存与文件监听防抖 | Tony.L | KDD-HEALING-LOOP-001 |
-| 2026-09-08 | CodeLens 兼容 JSONC 注释与激活态感知、剪贴板导入多场景保真 DAP 注入与状态栏自适应 | Tony.L | KDD-CODELENS-CLIP-001 |
+| 2026-09-08 | 确立 16x16 矢量 SVG 矩阵色彩保真规范 (v1.0.0) | Tony.L | KDD-UI-003 |
+| 2026-09-08 | 确立幽灵场景存在性推导校验与拦截守卫 (INV-009, v1.0.0) | Tony.L | KDD-DEFENSE-001 |
+| 2026-09-08 | 确立树节点稳定 id 契约与 DOM Diff 零闪烁规范 (v1.0.0) | Tony.L | KDD-TREE-002 |
+| 2026-09-08 | 落地 DAP 增量 Diff 装配引擎、即刻点亮与模糊寻道缓存 (v1.0.0) | Tony.L | KDD-DAP-DIFF-001 |
+| 2026-09-08 | 落地自愈持久化闭环 (Self-Healing Loopback)、文件行内存缓存与文件监听防抖 (v1.0.0) | Tony.L | KDD-HEALING-LOOP-001 |
+| 2026-09-08 | CodeLens 兼容 JSONC 注释与激活态感知、剪贴板导入多场景保真 DAP 注入与状态栏自适应 (v1.0.0) | Tony.L | KDD-CODELENS-CLIP-001 |
 | 2026-09-11 | 剪贴板导入增强：Markdown 代码块自动剥离与交互式支持格式指引 | Tony.L | KDD-CLIP-FORMAT-001 |
-| 2026-09-12 | 自愈引擎升级：穿透空行的非空拓扑伴随窗口与语言无关几何缩进父结构 | Tony.L | KDD-HEALING-TOPO-001 |
-| 2026-09-12 | 新增断点脱靶失联探测、激活警告弹窗与侧边栏视觉标记 | Tony.L | KDD-UNMATCHED-WARN-001 |
-| 2026-09-12 | 确立两阶段自愈引擎：近距辐射 + 作用域巡航大跨度重锚定 (突破 30 行限制) | Tony.L | KDD-SCOPE-CRUISE-001 |
+| 2026-09-12 | 自愈引擎升级：穿透空行的非空拓扑伴随窗口与语言无关几何缩进父结构 (v1.0.1) | Tony.L | KDD-HEALING-TOPO-001 |
+| 2026-09-12 | 新增断点脱靶失联探测、激活警告弹窗与侧边栏视觉标记 (v1.0.1) | Tony.L | KDD-UNMATCHED-WARN-001 |
+| 2026-09-12 | 确立两阶段自愈引擎：近距辐射 + 作用域巡航大跨度重锚定 (突破 30 行限制, v1.0.1) | Tony.L | KDD-SCOPE-CRUISE-001 |
+| 2026-09-12 | 完善插件市场文档在线绝对链接、分发包放行使用指南并增强树节点热重载空值安全守卫 (v1.0.2) | Tony.L | KDD-DOCS-PKG-001 |
+| 2026-09-12 | 落地 AI 免 MCP 声明式场景激活 (activeScenes) 与多端 Skill 一键分发体系 (v1.1.0) | Tony.L | KDD-AI-SKILL-001 |
+| 2026-09-12 | 扩充主流 VS Code AI Agent 集成矩阵至 8 大基于 VS Code 平台，剔除 CLI 终端工具 (v1.1.0) | Tony.L | KDD-AI-AGENT-EXPAND-001 |
+| 2026-09-12 | 架构解耦：建立 coordinators 协同调度层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
+| 2026-09-12 | 沉淀 skill_design.md 规范至能力边界：明确 contextSnippet 推荐缺省策略、严格先到先得及 8 大 Agent 矩阵细则 | Tony.L | KDD-SKILL-MIGRATE-001 |
 
 
 

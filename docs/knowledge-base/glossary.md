@@ -21,6 +21,9 @@
 #### 上下文伴随指纹 (Context Snippet / Context Triple)
 在保存断点时自动抓取的目标代码行核心文本（`current`），以及可选的前一行（`prev`）和后一行（`next`）文本。用于在行号漂移时进行高置信度的上下文协同验证。
 
+#### 核心断点拓扑 Diff (Core Breakpoints Topology Diff)
+基于断点运行期关键字段（`file+line+type+condition+hitCondition+logMessage+enabled`）计算拓扑 Hash，外部文件变更时比对新旧拓扑，若仅修改说明备注（`desc`）或闲置未激活场景，则阻断重刷。
+
 ---
 
 ### D
@@ -68,6 +71,13 @@
 
 ---
 
+### P
+
+#### 挂起拓扑更新 / 调试会话保护 (Pending Topology Update / Debug Session Guard)
+当 VS Code 调试会话正在运行时，将外部断点拓扑变更挂起暂存（`pendingTopologyUpdate = true`），避免打断调试现场，待会话结束后自动补偿装配。
+
+---
+
 ### S
 
 #### 场景 (Scene)
@@ -105,3 +115,4 @@
 | 2026-09-08 | 初始版本 | Tony.L | KDD-INIT-001 |
 | 2026-09-08 | 补充 DOM Diff 节点复用与幽灵场景拦截守卫术语定义 | Tony.L | KDD-GLOSSARY-002 |
 | 2026-09-12 | 新增断点脱靶/失联断点 (Unmatched Breakpoint) 术语定义 | Tony.L | KDD-UNMATCHED-WARN-001 |
+| 2026-09-12 | 补充核心断点拓扑 Diff 与挂起拓扑更新/调试会话保护术语定义 | Tony.L | KDD-SKILL-MIGRATE-001 |

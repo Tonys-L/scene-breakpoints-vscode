@@ -45,10 +45,32 @@
           "type": "boolean",
           "default": true,
           "description": "%config.autoActivateOnLaunch%"
+        },
+        "sceneBreakpoints.allowAiFileActivation": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.allowAiFileActivation%"
+        },
+        "sceneBreakpoints.autoInstallSkill": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.autoInstallSkill%"
         }
       }
     },
     "commands": [
+      {
+        "command": "sceneBreakpoints.diagnoseAiIntegration",
+        "title": "%command.diagnoseAiIntegration%",
+        "icon": "$(pulse)",
+        "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.installSkill",
+        "title": "%command.installSkill%",
+        "icon": "$(hubot)",
+        "category": "Scene"
+      },
       {
         "command": "sceneBreakpoints.addBreakpoint",
         "title": "%command.addBreakpoint%",
@@ -153,6 +175,18 @@
         "title": "%command.duplicateScene%",
         "icon": "$(files)",
         "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.installSkill",
+        "title": "%command.installSkill%",
+        "icon": "$(tools)",
+        "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.diagnoseAiIntegration",
+        "title": "%command.diagnoseAiIntegration%",
+        "icon": "$(sparkle)",
+        "category": "Scene"
       }
     ],
     "views": {
@@ -187,9 +221,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "sceneBreakpoints.refreshView",
+          "command": "sceneBreakpoints.diagnoseAiIntegration",
           "when": "view == sceneBreakpointsView",
           "group": "navigation@5"
+        },
+        {
+          "command": "sceneBreakpoints.refreshView",
+          "when": "view == sceneBreakpointsView",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [

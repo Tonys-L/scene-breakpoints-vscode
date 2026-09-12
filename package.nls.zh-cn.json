@@ -19,7 +19,11 @@
   "command.enableAllBreakpointsInScene": "启用场景内全部断点",
   "command.disableAllBreakpointsInScene": "禁用场景内全部断点",
   "command.duplicateScene": "克隆场景副本...",
+  "command.diagnoseAiIntegration": "诊断 AI Agent 集成状态...",
+  "command.installSkill": "安装 AI Agent 断点场景管理 Skill...",
   "config.autoActivateOnLaunch": "启动调试配置时自动联动激活关联的场景断点",
+  "config.allowAiFileActivation": "允许 AI Agent 通过直接修改 debug-scenes.json 中的 activeScenes 字段声明式自动激活与切换场景",
+  "config.autoInstallSkill": "检测到 AI Agent 工作区目录时提示安装场景管理 Skill",
   "view.sceneBreakpoints": "场景断点 (Scene Breakpoints)"
 }
 

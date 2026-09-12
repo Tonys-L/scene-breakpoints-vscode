@@ -17,10 +17,6 @@ class MockSceneStateManager {
 		return this.currentActiveScenes.includes(name);
 	}
 
-	getActiveScene() {
-		return this.currentActiveScenes[0];
-	}
-
 	getIsDirty() {
 		return this.isDirty;
 	}
@@ -32,7 +28,6 @@ class MockSceneStateManager {
 		this.events.push({
 			type: "change",
 			activeScenes: this.currentActiveScenes,
-			activeScene: this.getActiveScene(),
 			isDirty: this.isDirty,
 		});
 	}
@@ -56,7 +51,6 @@ class MockSceneStateManager {
 			this.events.push({
 				type: "dirtyChange",
 				activeScenes: this.currentActiveScenes,
-				activeScene: this.getActiveScene(),
 				isDirty: this.isDirty,
 			});
 		}
@@ -79,7 +73,6 @@ export function runStateTests() {
 	// 1. 初始状态为 None 且 Clean
 	const sm = new MockSceneStateManager();
 	assert.deepStrictEqual(sm.getActiveScenes(), []);
-	assert.strictEqual(sm.getActiveScene(), undefined);
 	assert.strictEqual(sm.getIsDirty(), false);
 
 	// 2. 无激活场景时增删断点绝不触发 Dirty (无基线场景)
@@ -126,7 +119,6 @@ export function runStateTests() {
 	// 10. 用户清空所有断点，完全复位为 None
 	sm.setActiveScenes([], 0);
 	assert.deepStrictEqual(sm.getActiveScenes(), []);
-	assert.strictEqual(sm.getActiveScene(), undefined);
 	// 11. 状态栏标签自适应拼接格式化测试 (formatScenesLabel)
 	{
 		function formatScenesLabel(scenes) {
