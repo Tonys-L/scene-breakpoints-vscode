@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.3] - 2026-09-12
+
+### Added
+- **AI Agent Deep Integration & One-Click Skill Matrix**:
+  - **Declarative Scene Activation (`activeScenes`)**: AI Agents can directly switch active breakpoint scenarios silently by updating the `activeScenes` field in `.vscode/debug-scenes.json`, without requiring extra MCP servers or complex tool calls. The extension listens for changes and mounts breakpoints immediately.
+  - **One-Click Agent Skill Installation**: Added the `Scene Breakpoints: Install AI Agent Skill...` command (`sceneBreakpoints.installAgentSkill`) to deploy the battle-tested `scene-breakpoints` skill matrix into the workspace with standard YAML frontmatter.
+  - **Universal AI Assistant Support**: Out-of-the-box support for Antigravity (`.agents/skills/scene-breakpoints/SKILL.md`), Cursor (`.cursor/rules/scene-breakpoints.mdc`), Windsurf (`.windsurfrules`), GitHub Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), Roo Code, Cline, and Continue.
+- **Polyglot Scope Self-Healing**:
+  - Upgraded the Scope Cruise engine (Phase 2) to natively recognize function and class boundaries across diverse languages, including Python (`def`/`class`), Go (`func`), Rust (`fn`/`impl`), Java, C++, C#, and PHP.
+
+### Improvements & Infrastructure
+- **Automated CI/CD & Quality Gates**:
+  - Added comprehensive GitHub Actions CI workflows featuring multi-platform test matrices (Linux & Windows) with virtual headless displays (`xvfb`).
+  - Added full automated E2E coverage for all 8 Command Palette commands and keybindings.
+  - Configured automated GitHub Release packaging workflow triggered by version tags.
+- **Documentation & Community Support**:
+  - Streamlined README layout and highlighted real-world AI debugging pain points.
+  - Added direct links in README footer for Visual Studio Marketplace rating ⭐, Open VSX, and GitHub Issues.
+
+---
+
 ## [1.0.2] - 2026-09-12
 
 ### Fixed

@@ -1,12 +1,10 @@
 <div align="center">
   <img src="./icon.png" width="128" height="128" alt="Scene Breakpoints Logo" />
   <h1>场景断点 (Scene Breakpoints)</h1>
-  <p><b>专为代码研读与复杂链路排查打造的 VS Code 场景化断点管理工具</b></p>
+  <p><b>专为代码研读、复杂链路排查与 AI Agent 协同打造的 VS Code 场景化断点管理工具</b></p>
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-仓库-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/Tony-L.scene-breakpoints-vscode?label=VS%20应用市场&logo=visual-studio-code" alt="VS Marketplace" /></a>
-    <a href="https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode"><img src="https://img.shields.io/open-vsx/v/tony-l/scene-breakpoints-vscode?label=Open%20VSX&logo=eclipse-ide" alt="Open VSX" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=版本发布&logo=github" alt="GitHub Release" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-green.svg" alt="License" /></a>
@@ -24,9 +22,10 @@
 1. **断点太多舍不得删，调试时到处乱停**：平时查各种问题留了几十个断点，查新 Bug 时走两步就误停一次，烦躁得不行；
 2. **复杂调用链理顺了，过两天就忘光**：好不容易理清一条横跨十几个文件的复杂业务链路，过两周又忘了关键步骤在哪，新人接手更是一头雾水；
 3. **Pull 一下代码或改了几行，断点全偏了**：代码行号一变，原来的断点全停在空行或注释上，彻底失效；
-4. **想把断点分享给同事，换电脑断点全丢**：只能打字告诉同事“你在 xx 文件的 88 行打个断点”，换台电脑之前打的断点全没了。
+4. **想把断点分享给同事，换电脑断点全丢**：只能打字告诉同事“你在 xx 文件的 88 行打个断点”，换台电脑之前打的断点全没了；
+5. **AI 帮我梳理了业务流程，却没法直接把断点布置到编辑器**：让 AI 查 Bug 或理顺复杂逻辑，AI 找出了关键函数与条件分支，但只能文字回复“建议在 a.ts 第 20 行打断点”，开发者还得人工一个个文件去跳转并手动打断点。
 
-**Scene Breakpoints** 就是你的**断点分组与链路导览器**：把断点按业务场景分组，带上步骤备注，随切随用，自动随 Git 团队共享。
+**Scene Breakpoints** 就是你的**断点分组与链路导览器**：把断点按业务场景分组，带上步骤备注，随切随用，自动随 Git 团队共享，更支持 AI Agent 一键直接写入与激活。
 
 ---
 
@@ -53,6 +52,9 @@
 
 - ⚡ **按 F5 启动调试，自动加载对应断点**
   在 `launch.json` 里配好名字，按 F5 启动调试时，自动把关联场景的断点打好，不用每次手动切。
+
+- 🤖 **AI 自动生成场景断点，调用链路一键落盘**
+  让 AI 分析 Bug 或梳理业务时，AI 梳理完关键步骤可直接生成一套带有步骤备注的场景断点并自动激活。告别对照聊天记录人肉翻文件打断点的麻烦，按 F5 就能直接顺着链路调试。
 
 ---
 
@@ -137,7 +139,7 @@
 
 Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接帮你管理断点场景：
 
-### 1. 8 大主流 VS Code AI Agent Skill 一键部署
+### 1. 8 主流 VS Code AI Agent Skill 一键部署
 按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，即可一键将 `scene-breakpoints` 专属技能部署到工作区：
 - **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
 - **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
@@ -159,6 +161,17 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 
 - 📕 [完整使用指南与常见问题 (FAQ)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md)
 - 📝 [版本更新日志 (CHANGELOG_zh.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG_zh.md)
+
+---
+
+## 💖 支持与反馈
+
+如果这个插件对你有帮助，欢迎在 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) 或 [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode) 给个评分 ⭐。  
+遇到问题或有任何建议，欢迎[提交 Issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues)。
+
+---
+
+> 🏷️ **核心标签**：`断点管理` `场景调试` `AI Agent 协同` `Agent Skill` `断点自愈` `断点防漂移` `代码导览`
 
 ---
 

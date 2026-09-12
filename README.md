@@ -1,12 +1,10 @@
 <div align="center">
   <img src="./icon.png" width="128" height="128" alt="Scene Breakpoints Logo" />
   <h1>Scene Breakpoints</h1>
-  <p><b>Lightweight scenario-driven breakpoint orchestrator for code reading and complex debugging</b></p>
+  <p><b>Lightweight scenario-driven breakpoint orchestrator for code reading, execution tracing, and AI Agent workflows</b></p>
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/Tony-L.scene-breakpoints-vscode?label=VS%20Marketplace&logo=visual-studio-code" alt="Visual Studio Marketplace" /></a>
-    <a href="https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode"><img src="https://img.shields.io/open-vsx/v/tony-l/scene-breakpoints-vscode?label=Open%20VSX&logo=eclipse-ide" alt="Open VSX" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=Release&logo=github" alt="GitHub Release" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
@@ -25,8 +23,9 @@ Every developer debugging in VS Code runs into these frustrations:
 2. **Complex call chains are easily forgotten**: You spend hours tracing a multi-file execution path, but forget key steps weeks later. Onboarding teammates face the same steep curve.
 3. **Pulling git or editing code breaks your breakpoints**: Whenever lines shift, your saved breakpoints end up on empty lines or comments.
 4. **Impossible to share or sync across computers**: Native breakpoints vanish when you switch laptops, and sharing a debug setup with teammates means manually typing out file paths and line numbers.
+5. **AI understands your code, but can't set breakpoints for you directly**: When asking an AI assistant to analyze a bug or trace a flow, it can suggest key functions in chat, but you still have to manually find the files and click line numbers one by one.
 
-**Scene Breakpoints** is your **breakpoint organizer & execution tour guide**: group breakpoints by feature with descriptive notes, switch them in seconds, and share them via Git.
+**Scene Breakpoints** is your **breakpoint organizer & execution tour guide**: group breakpoints by feature with descriptive notes, switch them in seconds, share them via Git, and let AI agents create and activate them seamlessly.
 
 ---
 
@@ -53,6 +52,9 @@ Every developer debugging in VS Code runs into these frustrations:
 
 - ⚡ **Auto-Load on F5**
   Link your launch profiles to a scene. Pressing F5 automatically prepares the right breakpoints before the debugger starts.
+
+- 🤖 **AI-Generated Breakpoint Scenes, Ready in Seconds**
+  When asking an AI agent to analyze a bug or trace an execution path, it can directly generate a complete breakpoint scene with step-by-step notes and activate it immediately—no more manual file jumping or clicking line numbers.
 
 ---
 
@@ -159,6 +161,17 @@ Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform s
 
 - 📕 [Comprehensive User Guide & FAQ](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md)
 - 📝 [Changelog (CHANGELOG.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG.md)
+
+---
+
+## 💖 Support & Feedback
+
+If this extension is helpful to you, please consider leaving a ⭐ rating on [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) or [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode).  
+Found a bug or have a suggestion? Feel free to [open an issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues).
+
+---
+
+> 🏷️ **Keywords**: `breakpoints` `breakpoint-manager` `scene-breakpoints` `scenario-debugging` `ai-agent` `agent-skill` `breakpoint-healing` `anti-drift` `code-tour`
 
 ---
 

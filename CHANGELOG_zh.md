@@ -8,6 +8,27 @@
 
 ---
 
+## [1.0.3] - 2026-09-12
+
+### 新增 (Added)
+- **AI Agent 深度协同与一键 Skill 矩阵**：
+  - **声明式场景激活 (`activeScenes`)**：AI Agent 可直接通过修改 `.vscode/debug-scenes.json` 中的 `activeScenes` 字段静默激活指定断点场景，无需复杂的工具调用或 MCP 服务，插件内部自动监听并即时挂载断点。
+  - **一键安装 Agent Skill**：新增命令 `Scene Breakpoints: Install AI Agent Skill...` (`sceneBreakpoints.installAgentSkill`)，可将经过严格优化的 `scene-breakpoints` 技能矩阵一键安装至当前工作区。
+  - **主流 AI 助手全面兼容**：开箱即用支持 Antigravity (`.agents/skills/scene-breakpoints/SKILL.md`)、Cursor (`.cursor/rules/scene-breakpoints.mdc`)、Windsurf (`.windsurfrules`)、GitHub Copilot (`.github/copilot-instructions.md`)、Claude Code (`CLAUDE.md`)、Roo Code、Cline、Continue 等 8 大主流 AI 编程助手，并标准化 YAML 技能元数据。
+- **多语言语法自愈扩展 (Polyglot Self-Healing)**：
+  - 增强作用域巡航引擎（Phase 2 Scope Cruise）对多种主流语言的作用域识别能力，现已原生支持 Python (`def`/`class`)、Go (`func`)、Rust (`fn`/`impl`)、Java / C++ / C# / PHP 等语法块，在跨文件、多语言重构时实现精准自愈。
+
+### 优化与基础设施 (Improvements & Infrastructure)
+- **CI/CD 自动化与质量门禁**：
+  - 新增完整的 GitHub Actions 持续集成工作流（支持 Linux/Windows 矩阵测试与 xvfb 无头端到端测试）。
+  - 完善命令面板所有 8 大交互命令及核心快捷键的自动化测试覆盖，保障版本稳定性。
+  - 建立自动化 Release 工作流，推送版本标签自动触发构建与 `.vsix` 离线包发布。
+- **文档与社区支持**：
+  - 精简 README 视觉层级，新增关于 AI 调试断点布置痛点的场景说明。
+  - 文档底部增加 Marketplace、Open VSX 评分 ⭐ 与 GitHub Issue 快速反馈通道。
+
+---
+
 ## [1.0.2] - 2026-09-12
 
 ### 修复 (Fixed)

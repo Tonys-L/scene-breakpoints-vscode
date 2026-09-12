@@ -1,6 +1,6 @@
 {
   "extension.displayName": "场景断点 (Scene Breakpoints)",
-  "extension.description": "把断点按场景分组管理，一键切换、代码改了自动找回、随 Git 共享给团队。",
+  "extension.description": "按业务场景分组管理断点，一键切换、代码变动断点自动自愈、无缝协同 AI Agent，随 Git 团队共享。",
   "command.addBreakpoint": "保存当前断点到调试场景 (Add to Scene)...",
   "command.applyScene": "激活指定场景断点 (清理杂散断点)...",
   "command.clearAll": "清空所有断点 (Clear All)",

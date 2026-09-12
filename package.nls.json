@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Scene Breakpoints",
-  "extension.description": "Group breakpoints by scenario, switch with one click, auto-heal after code changes, and share via Git.",
+  "extension.description": "Group breakpoints by scenario, switch with one click, auto-heal shifted breakpoints, seamlessly collaborate with AI agents, and share via Git.",
   "command.addBreakpoint": "Add to Debug Scene...",
   "command.applyScene": "Activate Scene Breakpoints...",
   "command.clearAll": "Clear All Breakpoints",
