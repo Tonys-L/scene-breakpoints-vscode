@@ -5,6 +5,8 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/Tony-L.scene-breakpoints-vscode?label=VS%20Marketplace&logo=visual-studio-code" alt="Visual Studio Marketplace" /></a>
+    <a href="https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode"><img src="https://img.shields.io/open-vsx/v/tony-l/scene-breakpoints-vscode?label=Open%20VSX&logo=eclipse-ide" alt="Open VSX" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=Release&logo=github" alt="GitHub Release" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
