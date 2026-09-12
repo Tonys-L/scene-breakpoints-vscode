@@ -1,11 +1,9 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { applySingleBreakpointToEditor } from "../../infra/vscode/vscodeBreakpointBridge";
-import { loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { upsertBreakpointToScene } from "../../core/sceneOperations";
-import { extractContextSnippet } from "../../core/healingEngine";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../core/types";
+import { addBreakpointPolicy } from "../../../policy/addBreakpointPolicy";
+import { loadScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { extractContextSnippet } from "../../../core/healingEngine";
+import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../../core/types";
 
 export async function addBreakpointCommand(): Promise<void> {
 	const editor = vscode.window.activeTextEditor;
@@ -155,14 +153,11 @@ export async function addBreakpointCommand(): Promise<void> {
 		} as SourceSceneBreakpoint;
 	}
 
-	upsertBreakpointToScene(config, targetScene, newEntry);
-	saveScenesConfig(workspaceRoot, config);
-
-	// 若当前添加的目标场景正是处于激活状态的场景，立即向编辑器注入该断点并点亮红点
-	if (sceneStateManager.isSceneActive(targetScene)) {
-		await applySingleBreakpointToEditor(workspaceRoot, newEntry);
-		sceneStateManager.setActiveScene(targetScene, config.scenes[targetScene]?.length || 0);
-	}
+	await addBreakpointPolicy({
+		workspaceRoot,
+		targetScene,
+		breakpoint: newEntry,
+	});
 
 	const summaryLabel = bpType === "function" ? functionName : `${fileNameOnly}:${currentLine}`;
 	vscode.window.showInformationMessage(

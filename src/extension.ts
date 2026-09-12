@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { sceneStateManager } from "./core";
 import {
 	registerAllCommands,
 	checkAndPromptSkillUpdates,
@@ -9,9 +10,6 @@ import {
 	registerDebugPauseService,
 	registerSessionLifecycleService,
 	registerTreeInteractionService,
-} from "./policy";
-import { sceneStateManager } from "./core";
-import {
 	SceneCodeLensProvider,
 	SceneTreeDataProvider,
 	TemplateContentProvider,

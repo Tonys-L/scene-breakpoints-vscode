@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
-import { syncBreakpointEnabledToEditor } from "../../infra/vscode/vscodeBreakpointBridge";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import { BreakpointNode, SceneNode, SceneTreeDataProvider, SceneTreeItem } from "../../infra/vscode/sceneTreeProvider";
-import { saveLoopGuard } from "../saveLoopGuard";
+import { syncBreakpointEnabledToEditor } from "../vscodeBreakpointBridge";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import { BreakpointNode, SceneNode, SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
+import { saveLoopGuard } from "../../storage/saveLoopGuard";
+import type { SceneBreakpoint } from "../../../core/types";
+
 const syncCoordinator = saveLoopGuard;
-import type { SceneBreakpoint } from "../../core/types";
 
 /**
- * 树视图交互与复选框协同服务 (Tree Interaction Service)
+ * 树视图交互与复选框协同服务 (Tree Interaction Listener)
  * 职责：专职负责树节点折叠/展开记忆、状态机变动响应式重绘，以及用户点击原生复选框时的写盘与局部精准 0 闪烁属性刷新
  */
 export function registerTreeInteractionService(
@@ -88,4 +89,3 @@ export function registerTreeInteractionService(
 }
 
 export const registerTreeInteractionCoordinator = registerTreeInteractionService;
-

@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
-import { applySceneCommand } from "../commands/applyScene";
-import { resolveLaunchBoundScenes } from "../../core/launchResolver";
-import { getWorkspaceRoot, loadScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
+import { applySceneCommand } from "../controllers/applyScene";
+import { resolveLaunchBoundScenes } from "../../../core/launchResolver";
+import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
 
 /**
- * 调试启动联动服务 (Debug Launch Service)
+ * 调试启动联动服务 (Debug Launch Listener)
  * 职责：专职负责在调试配置启动前，依据三级优先级推导关联场景，并在满足非重复条件时幂等激活目标场景
  */
 export function registerDebugLaunchService(): vscode.Disposable {

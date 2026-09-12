@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { applySceneBreakpoints } from "../../infra/vscode/vscodeBreakpointBridge";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { mergeScenesBreakpoints, upsertBreakpointToScene } from "../../core/sceneOperations";
-import { getSupportedFormatsTemplate, parseScenePayload, serializeScenePayload } from "../payloadSerializer";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import { SceneNode } from "../../infra/vscode/sceneTreeProvider";
+import { applySceneBreakpoints } from "../vscodeBreakpointBridge";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { mergeScenesBreakpoints, upsertBreakpointToScene } from "../../../core/sceneOperations";
+import { getSupportedFormatsTemplate, parseScenePayload, serializeScenePayload } from "../../../policy/payloadSerializer";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import { SceneNode } from "../sceneTreeProvider";
 import { applySceneCommand } from "./applyScene";
 
 /**

@@ -1,13 +1,14 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
-import { getWorkspaceRoot, isContentMatchingLastSaved } from "../../infra/storage/jsonFileSceneRepository";
-import { SceneTreeDataProvider } from "../../infra/vscode/sceneTreeProvider";
-import { saveLoopGuard } from "../saveLoopGuard";
+import { getWorkspaceRoot, isContentMatchingLastSaved } from "../../storage/jsonFileSceneRepository";
+import { SceneTreeDataProvider } from "../sceneTreeProvider";
+import { saveLoopGuard } from "../../storage/saveLoopGuard";
+import { handleExternalScenesFileChange } from "./aiActivationListener";
+
 const syncCoordinator = saveLoopGuard;
-import { handleExternalScenesFileChange } from "./aiActivationPolicy";
 
 /**
- * 配置文件文件系统监听服务 (Config File Watcher Service)
+ * 配置文件文件系统监听服务 (Config File Watcher Listener)
  * 职责：专职负责监听 debug-scenes.json 磁盘文件变化，施加防抖与内部写盘指纹拦截，调度外部变更并刷新树视图
  */
 export function registerConfigFileWatcherService(
@@ -55,4 +56,3 @@ export function registerConfigFileWatcherService(
 }
 
 export const registerConfigFileWatcher = registerConfigFileWatcherService;
-

@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import type { SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";
 import { stripJsonComments } from "../infra/storage/jsonFileSceneRepository";
 
@@ -41,14 +40,21 @@ export function stripMarkdownCodeBlocks(text: string): string {
 	return trimmed;
 }
 
+export interface SupportedFormatsTitles {
+	title?: string;
+	format1Title?: string;
+	format2Title?: string;
+	format3Title?: string;
+}
+
 /**
- * 动态获取当前 VS Code 语言环境下的支持格式示例模板
+ * 获取支持格式示例模板 (纯文本协议)
  */
-export function getSupportedFormatsTemplate(): string {
-	const title = vscode.l10n.t("Scene Breakpoints: Supported Clipboard Formats");
-	const format1Title = vscode.l10n.t("Format 1: Standard Scene Payload (Recommended)");
-	const format2Title = vscode.l10n.t("Format 2: scenes dictionary (debug-scenes.json snippet)");
-	const format3Title = vscode.l10n.t("Format 3: Raw breakpoint array");
+export function getSupportedFormatsTemplate(titles: SupportedFormatsTitles = {}): string {
+	const title = titles.title || "Scene Breakpoints: Supported Clipboard Formats";
+	const format1Title = titles.format1Title || "Format 1: Standard Scene Payload (Recommended)";
+	const format2Title = titles.format2Title || "Format 2: scenes dictionary (debug-scenes.json snippet)";
+	const format3Title = titles.format3Title || "Format 3: Raw breakpoint array";
 
 	return `// ========================================================
 // ${title}

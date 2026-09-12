@@ -1,13 +1,14 @@
 import * as vscode from "vscode";
-import { syncEditorBreakpointChangesToConfig } from "../../core/sceneOperations";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import { SceneTreeDataProvider } from "../../infra/vscode/sceneTreeProvider";
-import { saveLoopGuard } from "../saveLoopGuard";
+import { syncEditorBreakpointChangesToConfig } from "../../../core/sceneOperations";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import { SceneTreeDataProvider } from "../sceneTreeProvider";
+import { saveLoopGuard } from "../../storage/saveLoopGuard";
+
 const syncCoordinator = saveLoopGuard;
 
 /**
- * 断点全双工同步与脏状态服务 (Breakpoint Sync Service)
+ * 断点全双工同步与脏状态服务 (Breakpoint Sync Listener)
  * 职责：专职负责监听 VS Code 编辑器原生断点变动事件，受原子锁与内部写盘防回环保护，将启用/禁用变更反向同步至激活场景并检查脏状态
  */
 export function registerBreakpointSyncService(
@@ -50,4 +51,3 @@ export function registerBreakpointSyncService(
 }
 
 export const registerBreakpointSyncCoordinator = registerBreakpointSyncService;
-

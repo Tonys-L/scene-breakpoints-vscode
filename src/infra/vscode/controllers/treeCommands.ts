@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { syncBreakpointEnabledToEditor } from "../../infra/vscode/vscodeBreakpointBridge";
+import { syncBreakpointEnabledToEditor } from "../vscodeBreakpointBridge";
 import {
 	deleteSceneFromConfig,
 	duplicateSceneInConfig,
@@ -11,11 +11,11 @@ import {
 	removeBreakpointFromConfig,
 	setAllBreakpointsEnabledInScene,
 	toggleBreakpointEnabledInConfig,
-} from "../../core/sceneOperations";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../../infra/vscode/sceneTreeProvider";
-import { saveLoopGuard } from "../saveLoopGuard";
+} from "../../../core/sceneOperations";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../sceneTreeProvider";
+import { saveLoopGuard } from "../../storage/saveLoopGuard";
 const syncCoordinator = saveLoopGuard;
 import { applySceneCommand } from "./applyScene";
 

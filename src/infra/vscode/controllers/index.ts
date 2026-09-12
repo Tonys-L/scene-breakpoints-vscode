@@ -7,7 +7,7 @@ import { showMenuCommand } from "./showMenu";
 import { copySceneToClipboardCommand, importSceneFromClipboardCommand } from "./clipboardSync";
 import { installSkillCommand, diagnoseAiIntegrationCommand, checkAndPromptSkillUpdates } from "./skillCommands";
 import { registerTreeCommands } from "./treeCommands";
-import { SceneTreeDataProvider } from "../../infra/vscode/sceneTreeProvider";
+import { SceneTreeDataProvider } from "../sceneTreeProvider";
 
 export interface CommandDependencies {
 	treeDataProvider?: SceneTreeDataProvider;

@@ -58,35 +58,32 @@
   ```text
   src/infra/
   ├── vscode/                     # VS Code 宿主具体技术实现
+  │   ├── controllers/            # [Driving Adapters] 入站命令交互适配器 (applyScene, addBreakpoint, clearAll 等)
+  │   ├── listeners/              # [Event Listeners] 宿主事件监听器 (configFileWatcher, breakpointSync, debugLaunch 等)
   │   ├── vscodeBreakpointBridge.ts # 实现 IBreakpointBridge (封装 vscode.debug.breakpoints)
   │   ├── sceneTreeProvider.ts      # 实现 vscode.TreeDataProvider (侧边栏树视图渲染与跟随)
   │   ├── sceneCodeLensProvider.ts  # 实现 vscode.CodeLensProvider (debug-scenes.json 透镜)
   │   ├── templateContentProvider.ts# 实现 vscode.TextDocumentContentProvider (Skill 虚拟文档)
   │   └── statusBarView.ts          # 底部状态栏控件渲染
   └── storage/                    # 存储基础设施实现
-      └── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的互斥队列写盘)
+      ├── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的互斥队列写盘)
+      └── saveLoopGuard.ts        # 内部写盘时间窗与指纹防回环守卫
   ```
 
 ---
 
 ### 3. 策略层 (Policy Layer) — `src/policy/`
 - **定位**：易变、面向用例、回答“选择怎么做”。
-- **职责**：路由用户指令、调度生命周期事件、制定重试与选择策略。装配技术层实现并驱动核心层状态。
+- **职责**：纯业务用例编排（Use Cases），协调核心层领域算法与端口契约，**0 处 VS Code 宿主依赖**。
 - **文件结构**：
   ```text
   src/policy/
-  ├── commands/                   # 用户交互触发的策略路由
-  │   ├── activateScenePolicy.ts  # 激活场景策略 (清空旧断点 -> 查场景 -> 驱动装配)
-  │   ├── captureScenePolicy.ts   # 抓取场景策略 (采集当前断点 -> 去重合并 -> 驱动落盘)
-  │   ├── clearActivePolicy.ts    # 清空激活场景策略
-  │   └── treeActionPolicy.ts     # 树视图交互策略 (复选框就地更新、断点微调排序、行号跳转)
-  ├── schedulers/                 # 事件驱动的自动化调度策略
-  │   ├── externalChangePolicy.ts # 外部文件变更调度策略 (拓扑比对、会话保护挂起)
-  │   ├── launchSelectionPolicy.ts# F5 启动项三级优先级推导与幂等激活策略
-  │   ├── debugPauseFollowPolicy.ts# 调试运行时暂停自动展开与高亮跟随策略
-  │   └── breakpointSyncPolicy.ts # 编辑器原生断点全双工反向同步策略
-  └── guards/                     # 安全窗与防回环策略
-      └── saveLoopGuard.ts        # 内部写盘时间窗与指纹防回环守卫
+  ├── activateScenePolicy.ts  # 纯用例：存在性校验、多场景合并、落盘 activeScenes (SSOT 先落盘)、装配与自愈回环
+  ├── addBreakpointPolicy.ts   # 纯用例：upsert 断点到场景、保存配置、激活态即刻点亮并更新基准数
+  ├── clearAllPolicy.ts        # 纯用例：清空配置 activeScenes、清空宿主原生断点并复位状态机
+  ├── exportScenePolicy.ts     # 纯用例：抓取断点并持久化（覆盖/追加）
+  ├── externalChangePolicy.ts  # 纯用例：比对差异 -> 调度激活/清空 -> 会话保护与核心拓扑 Diff
+  └── payloadSerializer.ts     # 纯工具：场景断点数据序列化与反序列化
   ```
 
 ---

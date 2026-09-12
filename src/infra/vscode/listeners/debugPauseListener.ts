@@ -1,8 +1,12 @@
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { SceneTreeDataProvider, SceneTreeItem } from "../../infra/vscode/sceneTreeProvider";
+import { SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
+import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import type { SourceSceneBreakpoint } from "../../../core/types";
 
 /**
- * 调试暂停协同服务 (Debug Pause Service)
+ * 调试暂停协同服务 (Debug Pause Listener)
  * 职责：专职负责在调试运行时捕获断点命中与单步暂停事件，向树视图下发高亮位置与驱动跟随
  */
 export function registerDebugPauseService(
@@ -104,4 +108,3 @@ export function registerDebugPauseService(
 }
 
 export const registerDebugPauseCoordinator = registerDebugPauseService;
-

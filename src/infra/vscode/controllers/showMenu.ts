@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
-import { getScenesConfigPath, getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
+import { getScenesConfigPath, getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
 import { applySceneCommand } from "./applyScene";
 import { clearAllCommand } from "./clearAll";
 import { importSceneFromClipboardCommand } from "./clipboardSync";

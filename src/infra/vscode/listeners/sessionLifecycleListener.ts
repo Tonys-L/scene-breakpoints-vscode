@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { getWorkspaceRoot } from "../../infra/storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import { handleExternalScenesFileChange } from "./aiActivationPolicy";
+import { getWorkspaceRoot } from "../../storage/jsonFileSceneRepository";
+import { sceneStateManager } from "../../../core/sceneStateManager";
+import { handleExternalScenesFileChange } from "./aiActivationListener";
 
 /**
- * 调试会话生命周期服务 (Session Lifecycle Service)
+ * 调试会话生命周期服务 (Session Lifecycle Listener)
  * 职责：专职负责监听调试会话终止事件，失效清空核心拓扑快照，并在存在挂起的外部拓扑更新时自动补发装配重刷
  */
 export function registerSessionLifecycleService(): vscode.Disposable {
