@@ -78,6 +78,10 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 
 能力边界。记录系统提供哪些能力、边界在哪里、宿主与外部依赖关系。
 
+## e2e-scenarios.md
+
+端到端测试全量场景规范。记录覆盖系统全部命令、多场景、全 UI 视口、自愈与防灾的 34 大 E2E 场景矩阵，为功能演化与发布验收提供不可逾越的质量红线。
+
 ## flows.md
 
 业务流程与状态机。记录场景断点激活自愈主流程、反向导出流程、以及场景激活状态转换规则。
@@ -122,8 +126,9 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 
 | 修改了 | 必须检查 |
 |--------|----------|
-| `constraints.md` | `glossary.md`、`boundaries.md`、`flows.md`、`lessons/` |
-| `boundaries.md` | `constraints.md`、`flows.md` |
+| `constraints.md` | `glossary.md`、`boundaries.md`、`flows.md`、`e2e-scenarios.md`、`lessons/` |
+| `boundaries.md` | `constraints.md`、`flows.md`、`e2e-scenarios.md` |
+| `e2e-scenarios.md` | `boundaries.md`、`constraints.md`（功能修改必须同步更新测试场景） |
 | `flows.md` | `constraints.md`、`boundaries.md`、本文件（核心业务关系） |
 | `glossary.md` | `constraints.md` |
 | 本文件（核心业务关系） | `boundaries.md`、`flows.md` |
