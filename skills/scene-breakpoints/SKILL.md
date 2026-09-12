@@ -1,15 +1,31 @@
 ---
 name: scene-breakpoints
-description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows and code reading
+description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows, bug diagnosis, call chain tracing, and code reading tours.
 ---
 
 # Skill: scene-breakpoints
 
 ## 何时使用
 
-- 用户提出“调试某功能”、“排查某报错”、“分析调用栈”时
-- 用户提出“帮我看下这个项目的执行流程”时
-- 用户明确提出“为 xx 功能建立断点场景”时
+当用户在对话中表达以下意图或提出类似需求时，必须使用此 Skill：
+
+1. **Bug 排查与异常诊断**：
+   - “帮我调试下这个报错 / 异常 / 崩溃”
+   - “这个接口返回的数据不对，帮我排查原因并在关键代码打好断点”
+   - “分析调用栈，帮我在可疑路径上设置断点”
+2. **源码研读与业务导览（Code Tour）**：
+   - “带我看下这个项目的登录/结算核心执行流程”
+   - “我刚接手这个新模块，帮我梳理一条从入口到数据库的代码执行主干”
+   - “顺着调用链路帮我布置一套导览断点”
+3. **复杂条件与边缘分支探测**：
+   - “这个循环执行了成千上万次，只在满足特定条件时帮我停下（条件断点）”
+   - “在不打断程序运行的前提下，实时打印某个变量的变化日志（日志断点 Logpoint）”
+   - “只有在处理超过特定次数时才触发拦截（命中计数断点 Hit Count）”
+4. **断点分组整理与场景隔离**：
+   - “我现在要开始查另一个模块的 Bug，帮我把当前这组断点存为场景”
+   - “为某个独立功能（如支付流程、鉴权流程）建立专属断点场景”
+5. **明确指令触发**：
+   - 用户提到“生成场景断点”、“配置 debug-scenes”、“切换断点场景”等直接指令时
 
 ## 文件路径
 
