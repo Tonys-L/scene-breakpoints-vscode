@@ -9,9 +9,10 @@ import { runAiActivationTests } from "./ai_scene_activation.test.mjs";
 import { runCommandsRegistryTests } from "./commands_registry.test.mjs";
 import { runCoordinatorAndSyncTests } from "./coordinator_and_sync.test.mjs";
 import { runStorageUiAndCommandsTests } from "./storage_ui_and_commands.test.mjs";
+import { runSkillLifecycleTests } from "./skill_lifecycle.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 11 大自动化测试套件");
+console.log("🚀 开始执行 Scene Breakpoints 全量 12 大自动化测试套件");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -37,11 +38,13 @@ try {
 	console.log("");
 	runTreeViewTests();
 	console.log("");
+	runSkillLifecycleTests();
+	console.log("");
 	runI18nTests();
 
 	const totalDuration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 11 大全维单元测试套件 100% 通过！总耗时: ${totalDuration}ms`);
+	console.log(`🎉 全部 12 大全维单元测试套件 100% 通过！总耗时: ${totalDuration}ms`);
 	console.log("=======================================================\n");
 } catch (err) {
 	console.error("\n❌ 单元测试执行失败:\n", err);

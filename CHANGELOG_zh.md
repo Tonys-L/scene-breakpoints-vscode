@@ -15,6 +15,10 @@
   - **声明式场景激活 (`activeScenes`)**：AI Agent 可直接通过修改 `.vscode/debug-scenes.json` 中的 `activeScenes` 字段静默激活指定断点场景，无需复杂的工具调用或 MCP 服务，插件内部自动监听并即时挂载断点。
   - **一键安装 Agent Skill**：新增命令 `Scene Breakpoints: Install AI Agent Skill...` (`sceneBreakpoints.installAgentSkill`)，可将经过严格优化的 `scene-breakpoints` 技能矩阵一键安装至当前工作区。
   - **主流 AI 助手全面兼容**：开箱即用支持 Antigravity (`.agents/skills/scene-breakpoints/SKILL.md`)、Cursor (`.cursor/rules/scene-breakpoints.mdc`)、Windsurf (`.windsurfrules`)、GitHub Copilot (`.github/copilot-instructions.md`)、Claude Code (`CLAUDE.md`)、Roo Code、Cline、Continue 等 8 大主流 AI 编程助手，并标准化 YAML 技能元数据。
+  - **Skill 生命周期感知与安全更新**：
+    - 基于统一核心正文指纹反查（Hash 作为 Key，`O(1)` 秒查），自动剥离 MDC/YAML 平台头部并统一归一化换行符；
+    - 精准三态生命周期判定（`UpToDate` 最新、`CleanOutdated` 官方平滑升级、`CustomModified` 用户已自定义）；
+    - 诊断面板一键平滑升级无修改规则；对用户自定义规则提供 VS Code 原生 `vscode.diff` 并排比对由用户自主合并，覆写前自动生成 `.bak` 时间戳物理备份，保障规则资产绝对安全。
 - **多语言语法自愈扩展 (Polyglot Self-Healing)**：
   - 增强作用域巡航引擎（Phase 2 Scope Cruise）对多种主流语言的作用域识别能力，现已原生支持 Python (`def`/`class`)、Go (`func`)、Rust (`fn`/`impl`)、Java / C++ / C# / PHP 等语法块，在跨文件、多语言重构时实现精准自愈。
 

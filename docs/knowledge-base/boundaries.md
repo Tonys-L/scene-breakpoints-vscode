@@ -179,11 +179,14 @@
   7. Trae IDE：`.trae/skills/scene-breakpoints/SKILL.md`
   8. Antigravity：`.agents/skills/scene-breakpoints/SKILL.md`
 - **VS Code Chat Skill Provider 宿主动态注入**：检测宿主 `vscode.chat.registerSkillProvider` 能力，支持内存动态虚拟挂载，无需落盘物理文件；
-- **全维集成状态诊断 (`diagnoseAiIntegration`)**：集中诊断 `allowAiFileActivation` 授权开关、当前激活场景列表与 8 大 Agent 路径部署状态，并提供交互式一键修复与安装。
+- **全维集成状态诊断 (`diagnoseAiIntegration`)**：集中诊断 `allowAiFileActivation` 授权开关、当前激活场景列表与 8 大 Agent 路径部署状态，并提供交互式一键修复与安装；
+- **Skill 全生命周期感知与无损升级更新**：基于统一核心正文指纹反查（Hash 作为 Key，`O(1)` 秒查），剥离 MDC/YAML 等平台 Frontmatter 并归一化换行符；三态生命周期判定（`UpToDate` 最新、`CleanOutdated` 官方可平滑升级、`CustomModified` 用户已自定义）；对自定义文件调起 VS Code 原生 `vscode.diff` 并排对比由用户自主合并，覆写前强制自动生成同目录 `.bak` 时间戳物理备份副本。
 
 **对应代码**:
 - `src/config/aiActivationResolver.ts` (`handleExternalScenesFileChange`, `resolveActiveScenesDiff`, `computeBreakpointsTopologyHash`)
 - `src/commands/skillCommands.ts` (`installSkillCommand`, `diagnoseAiIntegrationCommand`)
+- `src/config/skillLifecycleResolver.ts` (`resolveSkillLifecycleState`, `stripSkillFrontmatter`, `normalizeSkillContent`, `computeSkillFingerprint`)
+- `src/providers/templateContentProvider.ts` (`TemplateContentProvider`)
 - `src/extension.ts` (Chat Skill Provider 动态注入与 FileWatcher 调度)
 
 ---
@@ -246,7 +249,4 @@
 | 2026-09-12 | 扩充主流 VS Code AI Agent 集成矩阵至 8 大基于 VS Code 平台，剔除 CLI 终端工具 (v1.1.0) | Tony.L | KDD-AI-AGENT-EXPAND-001 |
 | 2026-09-12 | 架构解耦：建立 coordinators 协同调度层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
 | 2026-09-12 | 沉淀 skill_design.md 规范至能力边界：明确 contextSnippet 推荐缺省策略、严格先到先得及 8 大 Agent 矩阵细则 | Tony.L | KDD-SKILL-MIGRATE-001 |
-
-
-
-
+| 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |

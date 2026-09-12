@@ -16,7 +16,9 @@ import {
 	saveScenesConfig,
 	syncEditorBreakpointChangesToConfig,
 } from "./configManager";
+import { checkAndPromptSkillUpdates } from "./commands/skillCommands";
 import { handleExternalScenesFileChange } from "./coordinators/aiActivationCoordinator";
+import { TemplateContentProvider, templateContentProvider } from "./providers/templateContentProvider";
 import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "./sceneTreeProvider";
 
 export function activate(context: vscode.ExtensionContext) {
@@ -260,8 +262,17 @@ export function activate(context: vscode.ExtensionContext) {
 		stateChangeListener,
 		fileWatcher,
 		terminateSessionListener,
+		vscode.workspace.registerTextDocumentContentProvider(
+			TemplateContentProvider.scheme,
+			templateContentProvider,
+		),
 		{ dispose: () => sceneStateManager.dispose() },
 	);
+
+	const wsRoot = getWorkspaceRoot(false);
+	if (wsRoot) {
+		checkAndPromptSkillUpdates(context, wsRoot).catch(() => {});
+	}
 
 	return {
 		treeDataProvider,

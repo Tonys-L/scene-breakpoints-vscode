@@ -1,16 +1,22 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import {
+	LATEST_SKILL_VERSION,
+	resolveSkillLifecycleState,
+	SkillStatus,
+} from "../config/skillLifecycleResolver";
 import { getWorkspaceRoot, loadScenesConfig } from "../configManager";
+import { templateContentProvider } from "../providers/templateContentProvider";
 import { sceneStateManager } from "../sceneStateManager";
 
-interface SkillTargetItem extends vscode.QuickPickItem {
+export interface SkillTargetItem extends vscode.QuickPickItem {
 	dir: string;
 	file: string;
 	customHeader?: string;
 }
 
-function formatSkillContent(baseContent: Uint8Array, target: SkillTargetItem): Uint8Array {
+export function formatSkillContent(baseContent: Uint8Array, target: SkillTargetItem): Uint8Array {
 	if (target.customHeader) {
 		let baseStr = Buffer.from(baseContent).toString("utf-8");
 		// 若已存在 Frontmatter，剥离后替换为平台的 customHeader
@@ -18,6 +24,16 @@ function formatSkillContent(baseContent: Uint8Array, target: SkillTargetItem): U
 		return Buffer.from(target.customHeader + baseStr, "utf-8");
 	}
 	return baseContent;
+}
+
+/**
+ * 备份目标文件为带时间戳的物理文件副本
+ */
+function backupSkillFile(targetFilePath: string): string {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+	const backupPath = `${targetFilePath}.backup-${timestamp}`;
+	fs.copyFileSync(targetFilePath, backupPath);
+	return backupPath;
 }
 
 /**
@@ -103,6 +119,21 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 	const allowAiActivation = config.get<boolean>("allowAiFileActivation", false);
 	const activeScenes = sceneStateManager.getActiveScenes();
 
+	// 读取官方最新模板
+	const skillSourceUri = vscode.Uri.joinPath(
+		context.extensionUri,
+		"skills",
+		"scene-breakpoints",
+		"SKILL.md",
+	);
+	let rawOfficialTemplate = "";
+	try {
+		const rawBytes = await vscode.workspace.fs.readFile(skillSourceUri);
+		rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
+	} catch {
+		// 容错降级
+	}
+
 	const targetItems = getSupportedSkillTargets();
 	const diagnostics: (vscode.QuickPickItem & { action?: () => Promise<void> })[] = [];
 
@@ -130,30 +161,128 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 		description: vscode.l10n.t("Current effective breakpoint scenes"),
 	});
 
-	// 3. 各平台 Skill 存在性诊断与一键安装
+	// 3. 各平台 Skill 存在性与版本生命周期状态诊断
 	diagnostics.push({
-		label: vscode.l10n.t("Skill Deployment Status across Platforms:"),
+		label: vscode.l10n.t("Skill Deployment & Version Status across Platforms:"),
 		kind: vscode.QuickPickItemKind.Separator,
 	});
 
 	for (const target of targetItems) {
 		const fullPath = path.join(workspaceRoot, target.dir, target.file);
 		const exists = fs.existsSync(fullPath);
-		diagnostics.push({
-			label: exists ? `$(check) ${target.label}` : `$(add) ${target.label} (${vscode.l10n.t("Click to Install")})`,
-			description: target.description,
-			detail: exists ? vscode.l10n.t("Installed: {0}", fullPath) : vscode.l10n.t("Not installed yet"),
-			action: async () => {
-				if (!exists) {
+
+		if (!exists) {
+			diagnostics.push({
+				label: `$(add) ${target.label} (${vscode.l10n.t("Not Installed - Click to Install")})`,
+				description: target.description,
+				detail: vscode.l10n.t("Click to deploy v{0} Skill", LATEST_SKILL_VERSION),
+				action: async () => {
 					const success = await writeSkillToTarget(context, workspaceRoot, target);
 					if (success) {
 						vscode.window.showInformationMessage(
 							vscode.l10n.t("Skill installed to {0}", target.label),
 						);
 					}
-				}
-			},
-		});
+				},
+			});
+			continue;
+		}
+
+		// 本地已安装：执行三态指纹判定
+		const localContent = fs.readFileSync(fullPath, "utf-8");
+		const lifecycle = resolveSkillLifecycleState(localContent, rawOfficialTemplate);
+
+		if (lifecycle.status === "UpToDate") {
+			diagnostics.push({
+				label: `$(pass) ${target.label} (${vscode.l10n.t("Up to Date: v{0}", LATEST_SKILL_VERSION)})`,
+				description: target.description,
+				detail: vscode.l10n.t("Installed: {0}", fullPath),
+				action: async () => {
+					const reInstall = await vscode.window.showQuickPick(
+						[
+							{ label: vscode.l10n.t("Reinstall / Overwrite with latest template"), value: true },
+							{ label: vscode.l10n.t("Cancel"), value: false },
+						],
+						{ placeHolder: vscode.l10n.t("Already up to date. Do you want to reinstall?") },
+					);
+					if (reInstall?.value) {
+						await writeSkillToTarget(context, workspaceRoot, target);
+						vscode.window.showInformationMessage(
+							vscode.l10n.t("Skill reinstalled to {0}", target.label),
+						);
+					}
+				},
+			});
+		} else if (lifecycle.status === "CleanOutdated") {
+			diagnostics.push({
+				label: `$(sync) ${target.label} (${vscode.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", LATEST_SKILL_VERSION)})`,
+				description: target.description,
+				detail: vscode.l10n.t("Official template outdated. Click to update smoothly."),
+				action: async () => {
+					const success = await writeSkillToTarget(context, workspaceRoot, target);
+					if (success) {
+						vscode.window.showInformationMessage(
+							vscode.l10n.t("Skill successfully updated to v{0} ({1})", LATEST_SKILL_VERSION, target.label),
+						);
+					}
+				},
+			});
+		} else {
+			// CustomModified
+			diagnostics.push({
+				label: `$(diff) ${target.label} (${vscode.l10n.t("Customized (Click to Diff / Update)")})`,
+				description: target.description,
+				detail: vscode.l10n.t("Modified locally. Click to view diff or backup & update."),
+				action: async () => {
+					const choice = await vscode.window.showQuickPick(
+						[
+							{
+								label: `$(diff) ${vscode.l10n.t("View Side-by-Side Diff with Latest Official Version")}`,
+								value: "diff",
+							},
+							{
+								label: `$(save) ${vscode.l10n.t("Backup & Overwrite with Latest Version")}`,
+								value: "backup",
+							},
+							{
+								label: `$(close) ${vscode.l10n.t("Keep Current Changes")}`,
+								value: "cancel",
+							},
+						],
+						{
+							placeHolder: vscode.l10n.t("Local modifications detected in {0}. Choose action:", target.file),
+						},
+					);
+
+					if (choice?.value === "diff") {
+						// 准备虚拟模板内容
+						const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
+						const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
+						templateContentProvider.setTemplateContent(target.file, expectedStr);
+
+						const localUri = vscode.Uri.file(fullPath);
+						const virtualUri = vscode.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
+
+						await vscode.commands.executeCommand(
+							"vscode.diff",
+							localUri,
+							virtualUri,
+							`${target.label} (${vscode.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`,
+						);
+					} else if (choice?.value === "backup") {
+						const backupPath = backupSkillFile(fullPath);
+						await writeSkillToTarget(context, workspaceRoot, target);
+						vscode.window.showInformationMessage(
+							vscode.l10n.t(
+								"Skill updated to v{0}. Original backed up to: {1}",
+								LATEST_SKILL_VERSION,
+								path.basename(backupPath),
+							),
+						);
+					}
+				},
+			});
+		}
 	}
 
 	const selected = await vscode.window.showQuickPick(diagnostics, {
@@ -162,6 +291,89 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 
 	if (selected?.action) {
 		await selected.action();
+	}
+}
+
+/**
+ * 扩展启动或版本升级时的轻量巡检：发现过期纯净版本时给出非阻塞提示
+ */
+export async function checkAndPromptSkillUpdates(
+	context: vscode.ExtensionContext,
+	workspaceRoot: string,
+): Promise<void> {
+	const lastNotifiedVer = context.workspaceState.get<string>("lastNotifiedSkillVersion");
+	if (lastNotifiedVer === LATEST_SKILL_VERSION) {
+		return;
+	}
+
+	const skillSourceUri = vscode.Uri.joinPath(
+		context.extensionUri,
+		"skills",
+		"scene-breakpoints",
+		"SKILL.md",
+	);
+	let rawOfficialTemplate = "";
+	try {
+		const rawBytes = await vscode.workspace.fs.readFile(skillSourceUri);
+		rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
+	} catch {
+		return;
+	}
+
+	const targetItems = getSupportedSkillTargets();
+	const outdatedTargets: { target: SkillTargetItem; status: SkillStatus; fullPath: string }[] = [];
+
+	for (const target of targetItems) {
+		const fullPath = path.join(workspaceRoot, target.dir, target.file);
+		if (fs.existsSync(fullPath)) {
+			try {
+				const localContent = fs.readFileSync(fullPath, "utf-8");
+				const res = resolveSkillLifecycleState(localContent, rawOfficialTemplate);
+				if (res.status === "CleanOutdated" || res.status === "CustomModified") {
+					outdatedTargets.push({ target, status: res.status, fullPath });
+				}
+			} catch {
+				// 忽略异常
+			}
+		}
+	}
+
+	if (outdatedTargets.length === 0) {
+		return;
+	}
+
+	// 记录已检查标记，防止同一版本重复打扰
+	await context.workspaceState.update("lastNotifiedSkillVersion", LATEST_SKILL_VERSION);
+
+	const cleanOutdatedList = outdatedTargets.filter((t) => t.status === "CleanOutdated");
+	const updateAction = cleanOutdatedList.length > 0 ? vscode.l10n.t("Update Clean Skills") : undefined;
+	const diagnoseAction = vscode.l10n.t("Open Diagnostics");
+	const dismissAction = vscode.l10n.t("Later");
+
+	const actions = [diagnoseAction];
+	if (updateAction) {
+		actions.unshift(updateAction);
+	}
+	actions.push(dismissAction);
+
+	const selected = await vscode.window.showInformationMessage(
+		vscode.l10n.t(
+			"Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).",
+			outdatedTargets.length,
+			LATEST_SKILL_VERSION,
+		),
+		...actions,
+	);
+
+	if (selected === updateAction) {
+		for (const { target } of cleanOutdatedList) {
+			await writeSkillToTarget(context, workspaceRoot, target);
+		}
+		vscode.window.showInformationMessage(
+			vscode.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, LATEST_SKILL_VERSION),
+		);
+	} else if (selected === diagnoseAction) {
+		await diagnoseAiIntegrationCommand(context);
 	}
 }
 
@@ -204,7 +416,6 @@ function getSupportedSkillTargets(): SkillTargetItem[] {
 			file: "scene-breakpoints.prompt",
 		},
 		// 6. VS Code / GitHub Copilot 官方 Skills 体系
-		// TODO(v1.0.4): VS Code Copilot Skill 路径待官方稳定后验证，当前为推测路径
 		{
 			label: "VS Code / GitHub Copilot",
 			description: ".github/skills/scene-breakpoints/SKILL.md",
@@ -212,7 +423,6 @@ function getSupportedSkillTargets(): SkillTargetItem[] {
 			file: "SKILL.md",
 		},
 		// 7. Trae IDE 技能体系
-		// TODO(v1.0.4): Trae 的 Skill 格式规范待官方文档明确，当前直接复用标准 SKILL.md
 		{
 			label: "Trae IDE",
 			description: ".trae/skills/scene-breakpoints/SKILL.md",

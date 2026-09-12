@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - **Declarative Scene Activation (`activeScenes`)**: AI Agents can directly switch active breakpoint scenarios silently by updating the `activeScenes` field in `.vscode/debug-scenes.json`, without requiring extra MCP servers or complex tool calls. The extension listens for changes and mounts breakpoints immediately.
   - **One-Click Agent Skill Installation**: Added the `Scene Breakpoints: Install AI Agent Skill...` command (`sceneBreakpoints.installAgentSkill`) to deploy the battle-tested `scene-breakpoints` skill matrix into the workspace with standard YAML frontmatter.
   - **Universal AI Assistant Support**: Out-of-the-box support for Antigravity (`.agents/skills/scene-breakpoints/SKILL.md`), Cursor (`.cursor/rules/scene-breakpoints.mdc`), Windsurf (`.windsurfrules`), GitHub Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), Roo Code, Cline, and Continue.
+  - **Skill Lifecycle Resolution & Safe Upgrades**:
+    - Automatic stripping of platform-specific Frontmatter and cross-platform newline normalization for core SHA-256 fingerprint matching (`O(1)` hash-as-key lookup);
+    - Three-state lifecycle resolution (`UpToDate`, `CleanOutdated`, and `CustomModified`);
+    - Seamless one-click upgrades for pristine outdated skills, side-by-side native VS Code Diff (`vscode.diff`) for user-modified skills with manual review, and mandatory timestamped `.bak` physical backups before overwriting.
 - **Polyglot Scope Self-Healing**:
   - Upgraded the Scope Cruise engine (Phase 2) to natively recognize function and class boundaries across diverse languages, including Python (`def`/`class`), Go (`func`), Rust (`fn`/`impl`), Java, C++, C#, and PHP.
 

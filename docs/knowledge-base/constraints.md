@@ -77,6 +77,7 @@
 | **INV-010** | **`activeScenes` 严格回写时序与 SSOT 锁死**：执行场景切换时，必须严格遵循“先落盘 `activeScenes`，后装配 DAP 断点”的时序（`markInternalSaving` $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 释放安全窗）。绝不可颠倒为先装配后落盘，确保磁盘始终为权威 SSOT，杜绝装配异常或崩溃导致磁盘与内存状态分叉。 | `src/commands/applyScene.ts` 与 `src/coordinators/syncCoordinator.ts` |
 | **INV-011** | **多场景断点合并先到先得（First-Declared-Wins）与 `enabled: false` 显式覆盖规范**：以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，断点首次出现即存入合并字典；`enabled: false` 严格参与先到先得去重，后出现的同物理位置断点直接忽略，确保与代码实现 100% 确定性保真。 | `src/config/sceneOperations.ts` (`mergeScenesBreakpoints`) |
 | **INV-012** | **调试会话保护（挂起策略 A）与核心拓扑 Diff 防线**：调试会话进行中（`activeDebugSession` 存在）外部修改断点拓扑时，绝不强制打断开发者心流，标记 `pendingTopologyUpdate = true` 并在会话终止时平滑补发；比对“磁盘新拓扑 vs `lastAppliedTopologyHash`”，若核心断点字段（`file+line+type+condition+hitCondition+logMessage+enabled`）未变，坚决阻断 DAP 重刷。快照在会话终止、清空命令及插件重启时显式失效。 | `src/config/aiActivationResolver.ts` |
+| **INV-013** | **Skill 核心正文指纹唯一性与生命周期判定纯净性**：跨平台 Agent Skill/Rules 的版本判定必须先剥离宿主平台特定的 Frontmatter 元数据头部并对换行符（CRLF/LF）及行末空白执行标准化归一化，基于纯净正文 SHA-256 哈希进行 `O(1)` 反查。未匹配官方历史哈希且正文不一致时，严格判定为用户已自定义修改（`CustomModified`），杜绝不可靠的文本自动合并，必须依托 VS Code 原生 `vscode.diff` 并排比对由用户自主裁决，并在任意覆写操作前强制在同目录下生成带时间戳的 `.bak` 物理备份副本。 | `src/config/skillLifecycleResolver.ts`、`src/commands/skillCommands.ts` 与 `src/providers/templateContentProvider.ts` |
 
 ---
 
@@ -159,3 +160,4 @@
 | 2026-09-12 | 沉淀 skill_design.md 规范至知识库：新增 INV-010 回写时序、INV-011 多场景合并先到先得、INV-012 会话保护与禁止 conditional 约束 | Tony.L | KDD-SKILL-MIGRATE-001 |
 | 2026-09-12 | 落地 @vscode/test-electron 驱动的真实隔离宿主端到端 (E2E) 测试脚手架与用例闭环 | Tony.L | KDD-E2E-TEST-001 |
 | 2026-09-12 | 确立 34 大全量 E2E 场景规范 (e2e-scenarios.md) 与功能演进必须同步更新用例的铁律 | Tony.L | KDD-E2E-SPEC-001 |
+| 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (INV-013, v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |
