@@ -2370,11 +2370,7 @@ var vscode14 = __toESM(require("vscode"));
 var crypto = __toESM(require("node:crypto"));
 var LATEST_SKILL_VERSION = "1.0.3";
 var OFFICIAL_SKILL_HISTORY = {
-  // 1.0.0 ~ 1.0.2 初始官方规范正文
-  "4cde9f15455967ee70c8ca04c9d95ae0190300e13396b592b94bb7216b1d2f93": "1.0.2",
-  // 1.0.3-rc1 引入 3 种激活策略
-  "04aa16f5dde9f5193d70b5048d68976bf185a4bb6eaa12718bfa753d52eeb4b0": "1.0.3-rc1",
-  // 1.0.3 最终正式版 (扩充 5 大意图场景与 3 大激活途径)
+  // 从 1.0.3 开始建立官方核心正文指纹基线 (后续版本演进时向此字典追加)
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3"
 };
 function stripSkillFrontmatter(content) {

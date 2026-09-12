@@ -64,12 +64,11 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 
 	// 4. 纯净历史旧版识别 (CleanOutdated)
 	{
-		// 模拟 1.0.2 纯净历史正文（剥离头部的历史 Hash 命中清单）
-		const historicalHash = "4cde9f15455967ee70c8ca04c9d95ae0190300e13396b592b94bb7216b1d2f93";
-		assert.strictEqual(OFFICIAL_SKILL_HISTORY[historicalHash], "1.0.2");
+		// 验证当前 1.0.3 基线指纹已记录
+		const v103Hash = "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea";
+		assert.strictEqual(OFFICIAL_SKILL_HISTORY[v103Hash], "1.0.3");
 
-		// 构造一个 Hash 刚好等于 1.0.2 的本地文件（即使带有 Cursor 独有头部）
-		// 我们通过 mock 校验 resolveSkillLifecycleState 在命中清单时的行为
+		// 模拟未来版本演进时，历史旧版命中清单时的行为
 		const dummyOldContent = "dummy_old";
 		const dummyOldHash = computeSkillFingerprint(dummyOldContent);
 
