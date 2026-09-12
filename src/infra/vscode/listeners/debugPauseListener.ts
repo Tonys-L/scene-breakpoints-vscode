@@ -2,8 +2,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
-import type { SourceSceneBreakpoint } from "../../../core/types";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
+import type { SourceSceneBreakpoint } from "../../../domain/types";
 
 /**
  * 调试暂停协同服务 (Debug Pause Listener)

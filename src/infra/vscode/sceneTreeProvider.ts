@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { getWorkspaceRoot, loadScenesConfig } from "../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../core/sceneStateManager";
-import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../core/types";
+import { sceneStateManager } from "../../domain/sceneStateManager";
+import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../domain/types";
 
 export type SceneTreeItem = SceneNode | BreakpointNode | PlaceholderNode;
 
@@ -225,7 +225,7 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 	private _sceneNodesMap = new Map<string, SceneNode>();
 	private _activeBreakpointNodes: BreakpointNode[] = [];
 
-	constructor(private readonly extensionPath: string = "") {}
+	constructor(private readonly extensionPath: string = "") { }
 
 	public setPausedLocation(file: string, line: number): void {
 		this._pausedLocation = { file, line };

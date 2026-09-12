@@ -1,4 +1,4 @@
-import type { SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";
+import type { SceneBreakpoint, SourceSceneBreakpoint } from "../domain/types";
 import { stripJsonComments } from "../infra/storage/jsonFileSceneRepository";
 
 /**

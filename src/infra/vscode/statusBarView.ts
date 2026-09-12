@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { sceneStateManager } from "../../core/sceneStateManager";
+import { sceneStateManager } from "../../domain/sceneStateManager";
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 

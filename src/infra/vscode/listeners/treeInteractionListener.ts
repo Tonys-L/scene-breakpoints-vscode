@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import { syncBreakpointEnabledToEditor } from "../vscodeBreakpointBridge";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { BreakpointNode, SceneNode, SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
 import { saveLoopGuard } from "../../storage/saveLoopGuard";
-import type { SceneBreakpoint } from "../../../core/types";
+import type { SceneBreakpoint } from "../../../domain/types";
 
 const syncCoordinator = saveLoopGuard;
 

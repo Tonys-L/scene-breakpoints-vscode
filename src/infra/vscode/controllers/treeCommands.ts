@@ -11,9 +11,9 @@ import {
 	removeBreakpointFromConfig,
 	setAllBreakpointsEnabledInScene,
 	toggleBreakpointEnabledInConfig,
-} from "../../../core/sceneOperations";
+} from "../../../domain/sceneOperations";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../sceneTreeProvider";
 import { saveLoopGuard } from "../../storage/saveLoopGuard";
 const syncCoordinator = saveLoopGuard;

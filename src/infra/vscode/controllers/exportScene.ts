@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
-import { exportScenePolicy } from "../../../policy/exportScenePolicy";
+import { exportSceneUseCase } from "../../../application/exportSceneUseCase";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 
 /**
  * 场景导出控制器 (Export Scene Controller)
- * 职责：负责 VS Code 弹窗输入场景名、选择追加/覆盖模式，调用 exportScenePolicy 执行落盘并刷新状态机
+ * 职责：负责 VS Code 弹窗输入场景名、选择追加/覆盖模式，调用 exportSceneUseCase 执行落盘并刷新状态机
  */
 export async function exportSceneCommand(): Promise<void> {
 	const currentBreakpoints = vscode.debug.breakpoints;
@@ -49,8 +49,8 @@ export async function exportSceneCommand(): Promise<void> {
 		mode = action.value;
 	}
 
-	// 3. 调用 Policy 用例执行导出保存
-	const result = await exportScenePolicy({
+	// 3. 调用 Application 用例执行导出保存
+	const result = await exportSceneUseCase({
 		workspaceRoot,
 		targetScene,
 		mode,

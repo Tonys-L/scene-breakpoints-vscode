@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { applySceneCommand } from "../controllers/applyScene";
-import { resolveLaunchBoundScenes } from "../../../core/launchResolver";
+import { resolveLaunchBoundScenes } from "../../../domain/launchResolver";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 
 /**
  * 调试启动联动服务 (Debug Launch Listener)

@@ -1,9 +1,9 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { activateScenePolicy } from "../../../policy/activateScenePolicy";
+import { activateSceneUseCase } from "../../../application/activateSceneUseCase";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { vscodeBreakpointBridge } from "../vscodeBreakpointBridge";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { clearAllCommand } from "./clearAll";
 
 /**
@@ -102,7 +102,7 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 	}
 
 	// 5. 调用纯 Policy 用例执行核心调度流
-	const result = await activateScenePolicy({
+	const result = await activateSceneUseCase({
 		workspaceRoot,
 		targetScenes,
 	});

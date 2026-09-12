@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import { applySceneBreakpoints } from "../vscodeBreakpointBridge";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { mergeScenesBreakpoints, upsertBreakpointToScene } from "../../../core/sceneOperations";
-import { getSupportedFormatsTemplate, parseScenePayload, serializeScenePayload } from "../../../policy/payloadSerializer";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { mergeScenesBreakpoints, upsertBreakpointToScene } from "../../../domain/sceneOperations";
+import { getSupportedFormatsTemplate, parseScenePayload, serializeScenePayload } from "../../../application/payloadSerializer";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { SceneNode } from "../sceneTreeProvider";
 import { applySceneCommand } from "./applyScene";
 

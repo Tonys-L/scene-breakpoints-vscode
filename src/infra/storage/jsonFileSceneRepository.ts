@@ -3,8 +3,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { syncService } from "./saveLoopGuard";
 const syncCoordinator = syncService;
-import type { ScenesConfig } from "../../core/types";
-import type { ISceneRepository } from "../../core/ports/sceneRepository";
+import type { ScenesConfig } from "../../domain/types";
+import type { ISceneRepository } from "../../domain/ports/sceneRepository";
 
 export function getWorkspaceRoot(warnIfMissing = false): string | undefined {
 	const folders = vscode.workspace.workspaceFolders;

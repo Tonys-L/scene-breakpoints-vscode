@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getWorkspaceRoot } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { handleExternalScenesFileChange } from "./aiActivationListener";
 
 /**

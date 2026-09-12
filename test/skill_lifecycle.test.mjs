@@ -6,7 +6,7 @@ import {
 	OFFICIAL_SKILL_HISTORY,
 	resolveSkillLifecycleState,
 	stripSkillFrontmatter,
-} from "../src/core/skillLifecycleResolver.ts";
+} from "../src/domain/skillLifecycleResolver.ts";
 
 export function runSkillLifecycleTests() {
 	console.log("  ▶ [Skill Lifecycle] 运行 AI Skill 版本生命周期与指纹反查测试套件...");

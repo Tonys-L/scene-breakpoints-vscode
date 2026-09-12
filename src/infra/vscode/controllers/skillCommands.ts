@@ -5,10 +5,10 @@ import {
 	LATEST_SKILL_VERSION,
 	resolveSkillLifecycleState,
 	SkillStatus,
-} from "../../../core/skillLifecycleResolver";
+} from "../../../domain/skillLifecycleResolver";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { templateContentProvider } from "../templateContentProvider";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 
 export interface SkillTargetItem extends vscode.QuickPickItem {
 	dir: string;

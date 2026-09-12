@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import { syncEditorBreakpointChangesToConfig } from "../../../core/sceneOperations";
+import { syncEditorBreakpointChangesToConfig } from "../../../domain/sceneOperations";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../core/sceneStateManager";
+import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { SceneTreeDataProvider } from "../sceneTreeProvider";
 import { saveLoopGuard } from "../../storage/saveLoopGuard";
 

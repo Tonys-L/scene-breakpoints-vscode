@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { sceneStateManager } from "./core";
+import { sceneStateManager } from "./domain";
 import {
 	registerAllCommands,
 	checkAndPromptSkillUpdates,

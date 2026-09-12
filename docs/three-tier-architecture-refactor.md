@@ -17,43 +17,43 @@
 - **命名遮蔽业务领域**：大量充斥 Manager、Adapter、Storage 等技术后缀，淹没了 Scene、Breakpoint、Healing 等核心领域。
 
 ### 2. 终极目标
-彻底重构为标准的 **“策略层（易变） ➔ 核心层（稳定） 🠄 技术层（可替换）”** 三层隔离架构：
+彻底重构为标准的 **“应用用例层（流程编排） ➔ 领域层（纯净规则与契约） 🠄 基础设施层（可替换适配器）”** DDD / Clean Architecture 经典体系：
 
 ```text
-策略层 (Policy Layer / 易变)   ：回答【选择怎么做？】
-    ↓ (调用核心层契约，装配技术层实现)
-核心层 (Core Layer / 稳定)     ：回答【能做什么？必须遵守什么？】(零外部依赖，定义能力契约与不变量)
-    ↑ (实现核心层契约)
-基础设施层 (Infra Layer / 可替换) ：回答【具体如何完成？】(VS Code API、本地 JSON 文件、UI 视图)
+应用用例层 (Application Layer)  ：回答【业务流程怎么做？】(面向用户用例编排，受单写者串行队列保护，0 外部宿主依赖)
+    ↓ (调度领域层能力，依赖端口契约)
+领域层 (Domain Layer / 稳定)    ：回答【业务本质与规则是什么？】(零外部依赖，定义实体模型、自愈算法与端口能力契约)
+    ↑ (实现领域层端口契约)
+基础设施层 (Infra Layer / 可替换) ：回答【具体技术如何完成？】(VS Code API、本地 JSON 文件存储、UI 视图呈现)
 ```
 
 ---
 
 ## 二、架构分层与职责映射规范
 
-### 1. 核心层 (Core Layer) — `src/core/`
+### 1. 领域层 (Domain Layer) — `src/domain/`
 - **定位**：稳定、高内聚、纯领域、**零外部环境/框架依赖**（100% 纯 TypeScript，脱离 VS Code 亦可独立运行测试）。
-- **职责**：定义领域模型、业务规则、不变量及**能力契约端口 (Ports)**。
+- **职责**：定义领域模型、业务规则不变量、核心纯算法及**能力契约端口 (Ports)**。
 - **文件结构**：
   ```text
-  src/core/
+  src/domain/
   ├── ports/                      # [能力契约端口]
   │   ├── breakpointBridge.ts     # IBreakpointBridge: 操作宿主断点的能力契约
   │   └── sceneRepository.ts      # ISceneRepository: 场景配置持久化存取的能力契约
-  ├── models/                     # [领域模型]
-  │   ├── scene.ts                # SceneBreakpoint, SourceSceneBreakpoint 等纯领域实体
-  │   └── sceneActivationState.ts # 场景激活状态机 SSOT (采用纯 TS 事件发射器，无 vscode 依赖)
-  ├── algorithms/                 # [核心纯算法]
-  │   ├── healingEngine.ts        # 双向滑动窗口加权自愈评分纯算法 (零外部依赖)
-  │   └── sceneOperations.ts      # 场景合并、Diff、拓扑哈希、行号检索纯函数
-  └── invariants.ts               # 业务不变量守卫 (INV-001 ~ INV-013)
+  ├── types.ts                    # [领域模型与类型契约]
+  ├── sceneStateManager.ts        # 运行时活动场景只读内存投影 (Active Scenes Runtime Projection)
+  ├── healingEngine.ts            # 双向滑动窗口加权自愈评分纯算法 (零外部依赖)
+  ├── sceneOperations.ts          # 场景合并、Diff、先到先得去重、拓扑哈希纯函数
+  ├── activationResolver.ts       # 场景激活差异比对与调度决策纯函数
+  ├── launchResolver.ts           # 启动项三级优先级推导纯函数
+  └── skillLifecycleResolver.ts   # Skill 正文哈希反查与生命周期状态机
   ```
 
 ---
 
 ### 2. 基础设施层 (Infra Layer) — `src/infra/`
 - **定位**：可替换、具体技术与外部系统实现。
-- **职责**：用具体技术实现核心层定义的端口（Ports），对接 VS Code 宿主 API、本地磁盘文件系统与 UI 呈现。基础设施层可替换（如换成 JetBrains 或 SQLite，核心层与策略层代码零改动）。
+- **职责**：用具体技术实现领域层定义的端口（Ports），对接 VS Code 宿主 API、本地磁盘文件系统与 UI 呈现。基础设施层可替换（如换成 JetBrains 或 SQLite，领域层与应用层代码零改动）。
 - **文件结构**：
   ```text
   src/infra/
@@ -66,24 +66,25 @@
   │   ├── templateContentProvider.ts# 实现 vscode.TextDocumentContentProvider (Skill 虚拟文档)
   │   └── statusBarView.ts          # 底部状态栏控件渲染
   └── storage/                    # 存储基础设施实现
-      ├── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的互斥队列写盘)
+      ├── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的权威持久化 SSOT 读写)
       └── saveLoopGuard.ts        # 内部写盘时间窗与指纹防回环守卫
   ```
 
 ---
 
-### 3. 策略层 (Policy Layer) — `src/policy/`
-- **定位**：易变、面向用例、回答“选择怎么做”。
-- **职责**：纯业务用例编排（Use Cases），协调核心层领域算法与端口契约，**0 处 VS Code 宿主依赖**。
+### 3. 应用用例层 (Application Layer) — `src/application/`
+- **定位**：面向用户用例、回答“业务流程怎么做”。
+- **职责**：纯业务用例编排（Use Cases），协调领域层算法与端口契约，**受单写者串行队列保护（消除并发交错竞态），0 处 VS Code 宿主依赖**。
 - **文件结构**：
   ```text
-  src/policy/
-  ├── activateScenePolicy.ts  # 纯用例：存在性校验、多场景合并、落盘 activeScenes (SSOT 先落盘)、装配与自愈回环
-  ├── addBreakpointPolicy.ts   # 纯用例：upsert 断点到场景、保存配置、激活态即刻点亮并更新基准数
-  ├── clearAllPolicy.ts        # 纯用例：清空配置 activeScenes、清空宿主原生断点并复位状态机
-  ├── exportScenePolicy.ts     # 纯用例：抓取断点并持久化（覆盖/追加）
-  ├── externalChangePolicy.ts  # 纯用例：比对差异 -> 调度激活/清空 -> 会话保护与核心拓扑 Diff
-  └── payloadSerializer.ts     # 纯工具：场景断点数据序列化与反序列化
+  src/application/
+  ├── useCaseQueue.ts            # 并发控制：单写者串行互斥队列 (彻底阻断多源并发用例交错)
+  ├── activateSceneUseCase.ts    # 纯用例：存在性校验 ➔ 合并断点 ➔ 落盘权威 SSOT ➔ 装配 DAP ➔ 刷新内存投影
+  ├── addBreakpointUseCase.ts    # 纯用例：upsert 断点到场景 ➔ 落盘权威 SSOT ➔ 激活态即刻点亮
+  ├── clearAllUseCase.ts         # 纯用例：清空配置 activeScenes ➔ 清空宿主断点 ➔ 复位内存投影
+  ├── exportSceneUseCase.ts      # 纯用例：抓取断点 ➔ 落盘写入权威 SSOT 指定场景
+  ├── externalChangeUseCase.ts   # 纯用例：比对差异 ➔ 调度激活/清空 ➔ 会话保护与核心拓扑 Diff
+  └── payloadSerializer.ts       # 纯工具：场景断点数据序列化与剪贴板 Payload 清洗
   ```
 
 ---
