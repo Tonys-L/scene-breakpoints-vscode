@@ -7,7 +7,7 @@ import { saveLoopGuard as defaultLoopGuard } from "../infra/storage/saveLoopGuar
 import { vscodeBreakpointBridge } from "../infra/vscode/vscodeBreakpointBridge";
 import { useCaseQueue } from "./useCaseQueue";
 
-export interface ActivateSceneUseCaseParams {
+export interface ActivateSceneParams {
 	workspaceRoot: string;
 	targetScenes: string[];
 	sceneRepository?: ISceneRepository;
@@ -15,7 +15,7 @@ export interface ActivateSceneUseCaseParams {
 	loopGuard?: { markInternalSaving: () => void };
 }
 
-export interface ActivateSceneUseCaseResult {
+export interface ActivateSceneResult {
 	success: boolean;
 	validTargetScenes: string[];
 	missingScenes: string[];
@@ -25,13 +25,13 @@ export interface ActivateSceneUseCaseResult {
 }
 
 /**
- * 场景激活核心用例 (Activate Scene Use Case)
- * 职责：纯业务用例编排，受串行互斥队列保护，杜绝任何 VS Code 弹窗或 UI 交互耦合
+ * 场景激活核心用例 (Activate Scene)
+ * 职责：纯业务流程编排，受串行互斥队列保护，杜绝任何 VS Code 弹窗或 UI 交互耦合
  * 流程：校验存在性 -> 合并断点 -> 写入权威持久化 SSOT (debug-scenes.json) -> 装配 DAP -> 投影更新至内存状态机 -> 闭环持久化自愈
  */
-export async function activateSceneUseCase(
-	params: ActivateSceneUseCaseParams,
-): Promise<ActivateSceneUseCaseResult> {
+export async function activateScene(
+	params: ActivateSceneParams,
+): Promise<ActivateSceneResult> {
 	return useCaseQueue.run(async () => {
 		const {
 			workspaceRoot,
@@ -142,6 +142,10 @@ export async function activateSceneUseCase(
 	});
 }
 
-export const activateScenePolicy = activateSceneUseCase;
-export type ActivateScenePolicyParams = ActivateSceneUseCaseParams;
-export type ActivateScenePolicyResult = ActivateSceneUseCaseResult;
+export const activateSceneUseCase = activateScene;
+export type ActivateSceneUseCaseParams = ActivateSceneParams;
+export type ActivateSceneUseCaseResult = ActivateSceneResult;
+
+export const activateScenePolicy = activateScene;
+export type ActivateScenePolicyParams = ActivateSceneParams;
+export type ActivateScenePolicyResult = ActivateSceneResult;

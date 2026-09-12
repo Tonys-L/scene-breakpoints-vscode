@@ -5,7 +5,7 @@ import { saveLoopGuard as defaultLoopGuard } from "../infra/storage/saveLoopGuar
 import { vscodeBreakpointBridge } from "../infra/vscode/vscodeBreakpointBridge";
 import { useCaseQueue } from "./useCaseQueue";
 
-export interface ExportSceneUseCaseParams {
+export interface ExportSceneParams {
 	workspaceRoot: string;
 	targetScene: string;
 	mode: "overwrite" | "append";
@@ -14,18 +14,18 @@ export interface ExportSceneUseCaseParams {
 	loopGuard?: { markInternalSaving: () => void };
 }
 
-export interface ExportSceneUseCaseResult {
+export interface ExportSceneResult {
 	success: boolean;
 	count: number;
 }
 
 /**
- * 逆向导出断点至场景核心用例 (Export Scene Use Case)
- * 职责：纯业务用例编排，受串行队列保护，采集当前编辑器断点并持久化写入权威 SSOT 指定场景
+ * 逆向导出断点至场景 (Export Scene)
+ * 职责：纯业务流程编排，受串行队列保护，采集当前编辑器断点并持久化写入权威 SSOT 指定场景
  */
-export async function exportSceneUseCase(
-	params: ExportSceneUseCaseParams,
-): Promise<ExportSceneUseCaseResult> {
+export async function exportScene(
+	params: ExportSceneParams,
+): Promise<ExportSceneResult> {
 	return useCaseQueue.run(async () => {
 		const {
 			workspaceRoot,
@@ -64,6 +64,10 @@ export async function exportSceneUseCase(
 	});
 }
 
-export const exportScenePolicy = exportSceneUseCase;
-export type ExportScenePolicyParams = ExportSceneUseCaseParams;
-export type ExportScenePolicyResult = ExportSceneUseCaseResult;
+export const exportSceneUseCase = exportScene;
+export type ExportSceneUseCaseParams = ExportSceneParams;
+export type ExportSceneUseCaseResult = ExportSceneResult;
+
+export const exportScenePolicy = exportScene;
+export type ExportScenePolicyParams = ExportSceneParams;
+export type ExportScenePolicyResult = ExportSceneResult;

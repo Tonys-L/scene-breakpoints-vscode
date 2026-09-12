@@ -1,7 +1,7 @@
-import { clearAllUseCase } from "../../../application/clearAllUseCase";
+import { clearAll } from "../../../application/clearAll";
 import { getWorkspaceRoot } from "../../storage/jsonFileSceneRepository";
 
 export async function clearAllCommand(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot(false);
-	await clearAllUseCase({ workspaceRoot });
+	await clearAll({ workspaceRoot });
 }

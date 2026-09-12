@@ -4,11 +4,11 @@ import { mergeScenesBreakpoints } from "../domain/sceneOperations";
 import { sceneStateManager } from "../domain/sceneStateManager";
 import { jsonFileSceneRepository } from "../infra/storage/jsonFileSceneRepository";
 import { vscodeBreakpointBridge } from "../infra/vscode/vscodeBreakpointBridge";
-import { activateSceneUseCase } from "./activateSceneUseCase";
-import { clearAllUseCase } from "./clearAllUseCase";
+import { activateScene } from "./activateScene";
+import { clearAll } from "./clearAll";
 import { useCaseQueue } from "./useCaseQueue";
 
-export interface ExternalChangeUseCaseParams {
+export interface HandleExternalChangeParams {
 	workspaceRoot: string;
 	allowAiActivation: boolean;
 	isDebuggingActive: boolean;
@@ -17,18 +17,18 @@ export interface ExternalChangeUseCaseParams {
 	onPendingMessage?: () => void;
 }
 
-export interface ExternalChangeUseCaseResult {
+export interface HandleExternalChangeResult {
 	action: "applied" | "cleared" | "pending" | "noop";
 	targetScenes?: string[];
 }
 
 /**
- * 外部文件变更调度核心用例 (External Change Use Case)
- * 职责：纯业务用例编排，受串行队列保护，比对差异 -> 调度激活/清空 -> 会话保护与核心拓扑 Diff
+ * 响应外部文件变更调度 (Handle External Change)
+ * 职责：纯业务流程编排，受串行队列保护，比对差异 -> 调度激活/清空 -> 会话保护与核心拓扑 Diff
  */
-export async function externalChangeUseCase(
-	params: ExternalChangeUseCaseParams,
-): Promise<ExternalChangeUseCaseResult> {
+export async function handleExternalChange(
+	params: HandleExternalChangeParams,
+): Promise<HandleExternalChangeResult> {
 	return useCaseQueue.run(async () => {
 		const {
 			workspaceRoot,
@@ -51,7 +51,7 @@ export async function externalChangeUseCase(
 
 		if (diff.shouldApply) {
 			if (diff.action === "apply") {
-				await activateSceneUseCase({
+				await activateScene({
 					workspaceRoot,
 					targetScenes: diff.targetScenes,
 					sceneRepository,
@@ -59,7 +59,7 @@ export async function externalChangeUseCase(
 				});
 				return { action: "applied", targetScenes: diff.targetScenes };
 			} else if (diff.action === "clear") {
-				await clearAllUseCase({
+				await clearAll({
 					workspaceRoot,
 					sceneRepository,
 					breakpointBridge,
@@ -98,6 +98,10 @@ export async function externalChangeUseCase(
 	});
 }
 
-export const externalChangePolicy = externalChangeUseCase;
-export type ExternalChangePolicyParams = ExternalChangeUseCaseParams;
-export type ExternalChangePolicyResult = ExternalChangeUseCaseResult;
+export const externalChangeUseCase = handleExternalChange;
+export type ExternalChangeUseCaseParams = HandleExternalChangeParams;
+export type ExternalChangeUseCaseResult = HandleExternalChangeResult;
+
+export const externalChangePolicy = handleExternalChange;
+export type ExternalChangePolicyParams = HandleExternalChangeParams;
+export type ExternalChangePolicyResult = HandleExternalChangeResult;

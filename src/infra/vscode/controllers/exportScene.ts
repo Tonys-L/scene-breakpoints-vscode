@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { exportSceneUseCase } from "../../../application/exportSceneUseCase";
+import { exportScene } from "../../../application/exportScene";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { sceneStateManager } from "../../../domain/sceneStateManager";
 
@@ -50,7 +50,7 @@ export async function exportSceneCommand(): Promise<void> {
 	}
 
 	// 3. 调用 Application 用例执行导出保存
-	const result = await exportSceneUseCase({
+	const result = await exportScene({
 		workspaceRoot,
 		targetScene,
 		mode,

@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { activateSceneUseCase } from "../../../application/activateSceneUseCase";
+import { activateScene } from "../../../application/activateScene";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { vscodeBreakpointBridge } from "../vscodeBreakpointBridge";
 import { sceneStateManager } from "../../../domain/sceneStateManager";
@@ -102,7 +102,7 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 	}
 
 	// 5. 调用纯 Policy 用例执行核心调度流
-	const result = await activateSceneUseCase({
+	const result = await activateScene({
 		workspaceRoot,
 		targetScenes,
 	});

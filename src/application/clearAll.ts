@@ -5,7 +5,7 @@ import { saveLoopGuard as defaultLoopGuard } from "../infra/storage/saveLoopGuar
 import { vscodeBreakpointBridge } from "../infra/vscode/vscodeBreakpointBridge";
 import { useCaseQueue } from "./useCaseQueue";
 
-export interface ClearAllUseCaseParams {
+export interface ClearAllParams {
 	workspaceRoot?: string;
 	sceneRepository?: ISceneRepository;
 	breakpointBridge?: IBreakpointBridge;
@@ -13,10 +13,10 @@ export interface ClearAllUseCaseParams {
 }
 
 /**
- * 清空场景与断点核心用例 (Clear All Use Case)
- * 职责：纯业务用例编排，受串行队列保护，清空权威持久化配置 activeScenes、清空宿主原生断点并复位内存投影
+ * 清空场景与断点 (Clear All)
+ * 职责：纯业务流程编排，受串行队列保护，清空权威持久化配置 activeScenes、清空宿主原生断点并复位内存投影
  */
-export async function clearAllUseCase(params: ClearAllUseCaseParams = {}): Promise<void> {
+export async function clearAll(params: ClearAllParams = {}): Promise<void> {
 	return useCaseQueue.run(async () => {
 		const {
 			workspaceRoot,
@@ -39,5 +39,8 @@ export async function clearAllUseCase(params: ClearAllUseCaseParams = {}): Promi
 	});
 }
 
-export const clearAllPolicy = clearAllUseCase;
-export type ClearAllPolicyParams = ClearAllUseCaseParams;
+export const clearAllUseCase = clearAll;
+export type ClearAllUseCaseParams = ClearAllParams;
+
+export const clearAllPolicy = clearAll;
+export type ClearAllPolicyParams = ClearAllParams;

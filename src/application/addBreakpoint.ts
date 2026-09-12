@@ -7,7 +7,7 @@ import { saveLoopGuard as defaultLoopGuard } from "../infra/storage/saveLoopGuar
 import { vscodeBreakpointBridge } from "../infra/vscode/vscodeBreakpointBridge";
 import { useCaseQueue } from "./useCaseQueue";
 
-export interface AddBreakpointUseCaseParams {
+export interface AddBreakpointParams {
 	workspaceRoot: string;
 	targetScene: string;
 	breakpoint: SceneBreakpoint;
@@ -16,18 +16,18 @@ export interface AddBreakpointUseCaseParams {
 	loopGuard?: { markInternalSaving: () => void };
 }
 
-export interface AddBreakpointUseCaseResult {
+export interface AddBreakpointResult {
 	success: boolean;
 	isImmediatelyApplied: boolean;
 }
 
 /**
- * 添加断点到场景核心用例 (Add Breakpoint Use Case)
- * 职责：纯业务用例编排，受串行队列保护，向配置场景中 upsert 断点并落盘；若场景正处于激活态，驱动即刻点亮并刷新内存投影基准数
+ * 添加断点到场景 (Add Breakpoint)
+ * 职责：纯业务流程编排，受串行队列保护，向配置场景中 upsert 断点并落盘；若场景正处于激活态，驱动即刻点亮并刷新内存投影基准数
  */
-export async function addBreakpointUseCase(
-	params: AddBreakpointUseCaseParams,
-): Promise<AddBreakpointUseCaseResult> {
+export async function addBreakpoint(
+	params: AddBreakpointParams,
+): Promise<AddBreakpointResult> {
 	return useCaseQueue.run(async () => {
 		const {
 			workspaceRoot,
@@ -65,6 +65,10 @@ export async function addBreakpointUseCase(
 	});
 }
 
-export const addBreakpointPolicy = addBreakpointUseCase;
-export type AddBreakpointPolicyParams = AddBreakpointUseCaseParams;
-export type AddBreakpointPolicyResult = AddBreakpointUseCaseResult;
+export const addBreakpointUseCase = addBreakpoint;
+export type AddBreakpointUseCaseParams = AddBreakpointParams;
+export type AddBreakpointUseCaseResult = AddBreakpointResult;
+
+export const addBreakpointPolicy = addBreakpoint;
+export type AddBreakpointPolicyParams = AddBreakpointParams;
+export type AddBreakpointPolicyResult = AddBreakpointResult;

@@ -79,11 +79,11 @@
   ```text
   src/application/
   ├── useCaseQueue.ts            # 并发控制：单写者串行互斥队列 (彻底阻断多源并发用例交错)
-  ├── activateSceneUseCase.ts    # 纯用例：存在性校验 ➔ 合并断点 ➔ 落盘权威 SSOT ➔ 装配 DAP ➔ 刷新内存投影
-  ├── addBreakpointUseCase.ts    # 纯用例：upsert 断点到场景 ➔ 落盘权威 SSOT ➔ 激活态即刻点亮
-  ├── clearAllUseCase.ts         # 纯用例：清空配置 activeScenes ➔ 清空宿主断点 ➔ 复位内存投影
-  ├── exportSceneUseCase.ts      # 纯用例：抓取断点 ➔ 落盘写入权威 SSOT 指定场景
-  ├── externalChangeUseCase.ts   # 纯用例：比对差异 ➔ 调度激活/清空 ➔ 会话保护与核心拓扑 Diff
+  ├── activateScene.ts           # 纯用例：存在性校验 ➔ 合并断点 ➔ 落盘权威 SSOT ➔ 装配 DAP ➔ 刷新内存投影
+  ├── addBreakpoint.ts           # 纯用例：upsert 断点到场景 ➔ 落盘权威 SSOT ➔ 激活态即刻点亮
+  ├── clearAll.ts                # 纯用例：清空配置 activeScenes ➔ 清空宿主断点 ➔ 复位内存投影
+  ├── exportScene.ts             # 纯用例：抓取断点 ➔ 落盘写入权威 SSOT 指定场景
+  ├── handleExternalChange.ts    # 纯用例：比对差异 ➔ 调度激活/清空 ➔ 会话保护与核心拓扑 Diff
   └── payloadSerializer.ts       # 纯工具：场景断点数据序列化与剪贴板 Payload 清洗
   ```
 

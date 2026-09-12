@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { addBreakpointUseCase } from "../../../application/addBreakpointUseCase";
+import { addBreakpoint } from "../../../application/addBreakpoint";
 import { loadScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { extractContextSnippet } from "../../../domain/healingEngine";
 import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../../domain/types";
@@ -153,7 +153,7 @@ export async function addBreakpointCommand(): Promise<void> {
 		} as SourceSceneBreakpoint;
 	}
 
-	await addBreakpointUseCase({
+	await addBreakpoint({
 		workspaceRoot,
 		targetScene,
 		breakpoint: newEntry,

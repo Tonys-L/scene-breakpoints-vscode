@@ -1884,8 +1884,8 @@ var UseCaseQueue = class {
 };
 var useCaseQueue = new UseCaseQueue();
 
-// src/application/addBreakpointUseCase.ts
-async function addBreakpointUseCase(params) {
+// src/application/addBreakpoint.ts
+async function addBreakpoint(params) {
   return useCaseQueue.run(async () => {
     const {
       workspaceRoot,
@@ -2041,7 +2041,7 @@ async function addBreakpointCommand() {
       contextSnippet
     };
   }
-  await addBreakpointUseCase({
+  await addBreakpoint({
     workspaceRoot,
     targetScene,
     breakpoint: newEntry
@@ -2055,8 +2055,8 @@ async function addBreakpointCommand() {
 // src/infra/vscode/controllers/applyScene.ts
 var vscode9 = __toESM(require("vscode"));
 
-// src/application/activateSceneUseCase.ts
-async function activateSceneUseCase(params) {
+// src/application/activateScene.ts
+async function activateScene(params) {
   return useCaseQueue.run(async () => {
     const {
       workspaceRoot,
@@ -2143,8 +2143,8 @@ async function activateSceneUseCase(params) {
   });
 }
 
-// src/application/clearAllUseCase.ts
-async function clearAllUseCase(params = {}) {
+// src/application/clearAll.ts
+async function clearAll(params = {}) {
   return useCaseQueue.run(async () => {
     const {
       workspaceRoot,
@@ -2168,7 +2168,7 @@ async function clearAllUseCase(params = {}) {
 // src/infra/vscode/controllers/clearAll.ts
 async function clearAllCommand() {
   const workspaceRoot = getWorkspaceRoot(false);
-  await clearAllUseCase({ workspaceRoot });
+  await clearAll({ workspaceRoot });
 }
 
 // src/infra/vscode/controllers/applyScene.ts
@@ -2246,7 +2246,7 @@ async function applySceneCommand(sceneParam) {
       saveScenesConfig(workspaceRoot, config);
     }
   }
-  const result = await activateSceneUseCase({
+  const result = await activateScene({
     workspaceRoot,
     targetScenes
   });
@@ -2285,8 +2285,8 @@ async function applySceneCommand(sceneParam) {
 // src/infra/vscode/controllers/exportScene.ts
 var vscode10 = __toESM(require("vscode"));
 
-// src/application/exportSceneUseCase.ts
-async function exportSceneUseCase(params) {
+// src/application/exportScene.ts
+async function exportScene(params) {
   return useCaseQueue.run(async () => {
     const {
       workspaceRoot,
@@ -2354,7 +2354,7 @@ async function exportSceneCommand() {
     if (!action) return;
     mode = action.value;
   }
-  const result = await exportSceneUseCase({
+  const result = await exportScene({
     workspaceRoot,
     targetScene,
     mode
@@ -3493,8 +3493,8 @@ function registerAllCommands(context, deps) {
 // src/infra/vscode/listeners/aiActivationListener.ts
 var vscode16 = __toESM(require("vscode"));
 
-// src/application/externalChangeUseCase.ts
-async function externalChangeUseCase(params) {
+// src/application/handleExternalChange.ts
+async function handleExternalChange(params) {
   return useCaseQueue.run(async () => {
     const {
       workspaceRoot,
@@ -3514,7 +3514,7 @@ async function externalChangeUseCase(params) {
     });
     if (diff.shouldApply) {
       if (diff.action === "apply") {
-        await activateSceneUseCase({
+        await activateScene({
           workspaceRoot,
           targetScenes: diff.targetScenes,
           sceneRepository,
@@ -3522,7 +3522,7 @@ async function externalChangeUseCase(params) {
         });
         return { action: "applied", targetScenes: diff.targetScenes };
       } else if (diff.action === "clear") {
-        await clearAllUseCase({
+        await clearAll({
           workspaceRoot,
           sceneRepository,
           breakpointBridge
@@ -3557,7 +3557,7 @@ async function externalChangeUseCase(params) {
 // src/infra/vscode/listeners/aiActivationListener.ts
 async function handleExternalScenesFileChange(workspaceRoot) {
   const allowAiActivation = vscode16.workspace.getConfiguration("sceneBreakpoints").get("allowAiFileActivation", false);
-  await externalChangeUseCase({
+  await handleExternalChange({
     workspaceRoot,
     allowAiActivation,
     isDebuggingActive: !!vscode16.debug.activeDebugSession,
