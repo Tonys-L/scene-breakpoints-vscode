@@ -169,7 +169,7 @@ class SceneServiceMock {
 
 	async exportScene({ workspaceRoot, targetScene, mode, sceneRepository, breakpointBridge, loopGuard }) {
 		return this.queue.run(async () => {
-			const exportedBps = breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
+			const exportedBps = await breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
 			if (exportedBps.length === 0) {
 				return { success: false, count: 0 };
 			}

@@ -73,12 +73,18 @@
 
 ### P
 
+#### 能力契约端口 (Ports / Capability Contract Ports)
+由领域驱动设计（DDD）领域层显式定义的一组抽象能力接口，表达“能做什么”（如 `IBreakpointBridge` 操作原生断点契约、`ISceneRepository` 场景持久化存储契约）。领域层与应用用例层仅依赖端口契约，由基础设施层（`src/infra/`）具体适配器完成技术实现，彻底实现业务规则与宿主技术框架的反转解耦。
+
 #### 挂起拓扑更新 / 调试会话保护 (Pending Topology Update / Debug Session Guard)
 当 VS Code 调试会话正在运行时，将外部断点拓扑变更挂起暂存（`pendingTopologyUpdate = true`），避免打断调试现场，待会话结束后自动补偿装配。
 
 ---
 
 ### S
+
+#### 单写者串行队列 (Single-Writer Serial Queue)
+应用用例层（`src/application/sceneService.ts`）内置的私有任务队列调度机制。将所有针对场景主状态的写操作（如场景激活、新增断点、清除重置、外部变更调度、剪贴板导入等）严格约束进串行化互斥管道，前序任务完成（无论成功还是失败）方才出队执行后续任务，从根源上杜绝异步并发交错造成的读写脏覆盖与竞态死锁。
 
 #### 场景 (Scene)
 一个用业务语义命名的断点集合（例如 `user-login`、`order-pay-flow`），声明式保存在 `.vscode/debug-scenes.json` 中，可一键整体激活或反向导出。
@@ -116,3 +122,4 @@
 | 2026-09-08 | 补充 DOM Diff 节点复用与幽灵场景拦截守卫术语定义 | Tony.L | KDD-GLOSSARY-002 |
 | 2026-09-12 | 新增断点脱靶/失联断点 (Unmatched Breakpoint) 术语定义 | Tony.L | KDD-UNMATCHED-WARN-001 |
 | 2026-09-12 | 补充核心断点拓扑 Diff 与挂起拓扑更新/调试会话保护术语定义 | Tony.L | KDD-SKILL-MIGRATE-001 |
+| 2026-09-13 | 补充能力契约端口 (Ports) 与单写者串行队列 (Single-Writer Serial Queue) 术语定义 | Tony.L | #TASK-ARCH-PATH-SYNC-001 |

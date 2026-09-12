@@ -70,6 +70,14 @@ class SceneStateManager {
 		return this.unmatchedBreakpointsKeySet.has(norm);
 	}
 
+	public getBaselineBreakpointCount(): number {
+		return this.baselineBreakpointCount;
+	}
+
+	public setBaselineBreakpointCount(count: number): void {
+		this.baselineBreakpointCount = count;
+	}
+
 	public setActiveScenes(sceneNames: string[], initialBpCount = 0): void {
 		const uniqueSorted = Array.from(new Set(sceneNames.map((s) => s.trim()).filter(Boolean))).sort();
 		this.currentActiveScenes = uniqueSorted;

@@ -75,7 +75,25 @@ export async function applySceneBreakpoints(
 
 			// 行号自愈探测 (带文件行内存缓存复用)
 			let effectiveLine = srcItem.line;
-			const healResult = await resolveHealedLine(workspaceRoot, srcItem, fileLinesCache);
+			const healResult = await resolveHealedLine(
+				workspaceRoot,
+				srcItem,
+				fileLinesCache,
+				(filePath) => {
+					const normFilePath = path.normalize(filePath).toLowerCase();
+					const openDoc = vscode.workspace.textDocuments.find(
+						(d) => path.normalize(d.uri.fsPath).toLowerCase() === normFilePath,
+					);
+					if (openDoc) {
+						const lines: string[] = [];
+						for (let i = 0; i < openDoc.lineCount; i++) {
+							lines.push(openDoc.lineAt(i).text);
+						}
+						return lines;
+					}
+					return undefined;
+				},
+			);
 			if (healResult.isHealed) {
 				effectiveLine = healResult.healedLine;
 				srcItem.line = effectiveLine;

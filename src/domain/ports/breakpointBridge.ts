@@ -1,9 +1,10 @@
-import type { SceneBreakpoint } from "../types";
+import type { SceneBreakpoint, SourceSceneBreakpoint } from "../types";
 
 export interface ApplySceneResult {
 	loadedCount: number;
 	healedCount: number;
 	healedBreakpoints?: SceneBreakpoint[];
+	unmatchedBreakpoints?: SourceSceneBreakpoint[];
 }
 
 /**
@@ -19,7 +20,7 @@ export interface IBreakpointBridge {
 	): Promise<ApplySceneResult>;
 
 	/** 采集当前宿主调试器中已存在的所有原生断点 */
-	collectCurrentBreakpoints(workspaceRoot: string): SceneBreakpoint[];
+	collectCurrentBreakpoints(workspaceRoot: string): Promise<SceneBreakpoint[]>;
 
 	/** 清空宿主调试器中现存的所有断点 */
 	clearAllBreakpoints(): Promise<void>;

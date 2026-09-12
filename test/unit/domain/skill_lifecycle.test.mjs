@@ -68,17 +68,17 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 		const v103Hash = "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea";
 		assert.strictEqual(OFFICIAL_SKILL_HISTORY[v103Hash], "1.0.3");
 
-		// 模拟未来版本演进时，历史旧版命中清单时的行为
-		const dummyOldContent = "dummy_old";
-		const dummyOldHash = computeSkillFingerprint(dummyOldContent);
+		// 模拟上游发版升级为未来版本模板，而本地仍保留官方纯净 1.0.3 基线版本
+		const officialV103Content = "# Skill: scene-breakpoints\n\nOfficial v1.0.3 rules";
+		const officialV103Hash = computeSkillFingerprint(officialV103Content);
+		OFFICIAL_SKILL_HISTORY[officialV103Hash] = "1.0.3";
 
-		// 临时将 dummyOldHash 加入映射表中进行验证
-		OFFICIAL_SKILL_HISTORY[dummyOldHash] = "1.0.2-test";
-		const res = resolveSkillLifecycleState(dummyOldContent, latestTemplate);
+		const upstreamFutureTemplate = `${latestTemplate}\n## 新增未来特性\n- 自适应排障\n`;
+		const res = resolveSkillLifecycleState(officialV103Content, upstreamFutureTemplate);
 
 		assert.strictEqual(res.status, "CleanOutdated");
-		assert.strictEqual(res.detectedVersion, "1.0.2-test");
-		delete OFFICIAL_SKILL_HISTORY[dummyOldHash];
+		assert.strictEqual(res.detectedVersion, "1.0.3");
+		delete OFFICIAL_SKILL_HISTORY[officialV103Hash];
 	}
 
 	// 5. 用户自定义修改识别 (CustomModified)

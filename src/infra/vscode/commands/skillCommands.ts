@@ -31,7 +31,7 @@ export function formatSkillContent(baseContent: Uint8Array, target: SkillTargetI
  */
 function backupSkillFile(targetFilePath: string): string {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-	const backupPath = `${targetFilePath}.backup-${timestamp}`;
+	const backupPath = `${targetFilePath}.${timestamp}.bak`;
 	fs.copyFileSync(targetFilePath, backupPath);
 	return backupPath;
 }

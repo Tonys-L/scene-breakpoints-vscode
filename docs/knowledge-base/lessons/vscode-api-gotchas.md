@@ -127,10 +127,18 @@
 **原因**: 项目采用 esbuild 单文件打包且未在打包配置中强制开启 TypeScript 类型检查。若源码模块内部直接调用了 `path.basename` 或 `path.isAbsolute`，但文件顶部忘记显式写 `import * as path from "node:path"`，esbuild 会将其作为自由全局变量输出。而在 VS Code 宿主运行期，模块闭包作用域中并没有全局 `path` 对象，导致在触发该代码分支（如断点脱靶告警）时抛出 `ReferenceError: path is not defined`。
 **解决方案**: 任何模块只要使用了 Node.js 核心库（`path`、`fs`、`os` 等），必须严格在文件顶部显式声明 `import * as path from "node:path";`。
 **影响文件**: `src/commands/applyScene.ts`
-**日期**: 2026-09-12
+### 1.15 领域层误引 VS Code 宿主 API 破坏分层并在 esbuild 打包运行时抛 ReferenceError
 
+**问题**: 执行断点自愈装配（如 `TC-HEAL-01 ~ 04`）时，VS Code 抛出 `ReferenceError: vscode is not defined at resolveHealedLine`。
+**原因**: `src/domain/healingEngine.ts` 属于纯领域层，本应保持 100% 纯 TS 零宿主依赖，但在实现中硬编码调用了 `vscode.workspace.textDocuments.find(...)`。由于领域层未（且不应）导入 `vscode` 命名空间，esbuild 单文件打包时将其视为全局自由变量直接输出，运行期在 CommonJS 模块闭包中找不到全局 `vscode` 对象。
+**解决方案**: 严守三层隔离架构约束，纯领域层只定义计算模型与纯逻辑（如 `resolveHealedLineFromLines`）。若需获取宿主打开文档的源码行，必须在基础设施层（`vscodeBreakpointBridge.ts`）通过回调函数（`getDocumentLines`）依赖注入，领域层绝不直接引用任何宿主 API。
+**影响文件**: `src/domain/healingEngine.ts`, `src/infra/vscode/vscodeBreakpointBridge.ts`
+**日期**: 2026-09-13
 
+### 1.16 领域层严禁接收或声明宿主特定数据类型（如 vscode.TextDocument）
 
-
-
-
+**问题**: 领域层核心函数（如 `extractContextSnippet`）若将参数声明为 `doc: vscode.TextDocument`，不仅破坏 DDD 纯领域边界，而且使得脱离 VS Code 的离线纯单元测试必须构造沉重复杂的宿主 mock，并在打包下引入潜在类型污染。
+**原因**: 领域层关注的是代码文本的伴随拓扑、几何缩进与作用域锚点，本质上仅需要纯行文本列表（`string[]`），与宿主的文档对象完全解耦。
+**解决方案**: 领域层统一使用原生纯 TS 数据结构（`lines: string[]`）或最小充分鸭子接口（`{ lineAt(i): { text }, lineCount }`）。基础设施层负责把宿主文档对象自然匹配传参，单元测试可直接传入简单的原生数组，实现领域层 100% 宿主解耦与单测极致轻量。
+**影响文件**: `src/domain/healingEngine.ts`, `test/unit/domain/healing.test.mjs`
+**日期**: 2026-09-13

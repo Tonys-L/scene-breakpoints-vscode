@@ -183,27 +183,39 @@ export function findScopeAnchorLine(lines: string[], scopeAnchor: string): numbe
 }
 
 /**
- * 从文本编辑器文档中提取目标行的全维上下文伴随指纹 (基于非空拓扑与几何缩进)
+ * 纯领域函数：从纯文本行数组提取目标行全维上下文伴随指纹 (0 外部依赖，纯 TS 实现)
  */
-export function extractContextSnippet(doc: vscode.TextDocument, lineZeroBased: number): ContextSnippet {
-	const currentLineText = doc.lineAt(lineZeroBased).text;
+export function extractContextSnippetFromLines(lines: string[], lineZeroBased: number): ContextSnippet {
+	const currentLineText = lines[lineZeroBased] ?? "";
 	const current = cleanLine(currentLineText);
 	const indent = countIndent(currentLineText);
 
-	const allLines: string[] = [];
-	for (let i = 0; i < doc.lineCount; i++) {
-		allLines.push(doc.lineAt(i).text);
-	}
-
 	// 穿透空行提取拓扑伴随行
-	const prev = findPrevNonEmptyLine(allLines, lineZeroBased);
-	const next = findNextNonEmptyLine(allLines, lineZeroBased);
+	const prev = findPrevNonEmptyLine(lines, lineZeroBased);
+	const next = findNextNonEmptyLine(lines, lineZeroBased);
 
 	// 向上提取作用域辅助锚点 (穿透控制流)
-	const sampleLines = allLines.slice(Math.max(0, lineZeroBased - 60), lineZeroBased + 1);
+	const sampleLines = lines.slice(Math.max(0, lineZeroBased - 60), lineZeroBased + 1);
 	const scopeAnchor = extractScopeAnchor(sampleLines, sampleLines.length - 1);
 
 	return { prev, current, next, scopeAnchor, indent };
+}
+
+/**
+ * 纯领域重载适配：兼容接收纯文本行数组或具备 lineAt 与 lineCount 的鸭子对象，彻底解耦 vscode.TextDocument
+ */
+export function extractContextSnippet(
+	docOrLines: string[] | { lineAt(line: number): { text: string }; lineCount: number },
+	lineZeroBased: number,
+): ContextSnippet {
+	if (Array.isArray(docOrLines)) {
+		return extractContextSnippetFromLines(docOrLines, lineZeroBased);
+	}
+	const lines: string[] = [];
+	for (let i = 0; i < docOrLines.lineCount; i++) {
+		lines.push(docOrLines.lineAt(i).text);
+	}
+	return extractContextSnippetFromLines(lines, lineZeroBased);
 }
 
 /**
@@ -349,51 +361,19 @@ export function calculateCandidateLineScore(
  * 核心自愈算法：保留缩进、交替辐射加权探测、上下文优先容错与动态边界加权
  * 返回计算得出的最精确行号 (1-indexed), 以及是否发生了行号自愈漂移修正
  */
-export async function resolveHealedLine(
-	workspaceRoot: string,
+/**
+ * 纯内存自愈计算核心算法 (输入行数组与断点项，零 I/O、零宿主环境依赖)
+ */
+export function resolveHealedLineFromLines(
+	lines: string[],
 	item: SourceSceneBreakpoint,
-	fileLinesCache?: Map<string, string[]>,
-): Promise<HealResult> {
-	// 若无自愈指纹或行号/文件名不合法，直接安全返回原行号（视为 matched）
+): HealResult {
 	if (!item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
 		return { healedLine: item.line, isHealed: false, status: "matched" };
 	}
 	if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
 		return { healedLine: item.line, isHealed: false, status: "matched" };
 	}
-	if (!item.file || typeof item.file !== "string") {
-		return { healedLine: item.line, isHealed: false, status: "matched" };
-	}
-
-	const filePath = path.isAbsolute(item.file) ? item.file : path.join(workspaceRoot, item.file);
-	const normFilePath = path.normalize(filePath).toLowerCase();
-
-	// 1. 获取目标文件源码行集合（优先命中批处理内存缓存与已打开的文档，支持 Windows 路径归一化匹配）
-	let lines: string[] | undefined;
-	if (fileLinesCache && fileLinesCache.has(filePath)) {
-		lines = fileLinesCache.get(filePath);
-	} else {
-		const openDoc = vscode.workspace.textDocuments.find(
-			(d) => path.normalize(d.uri.fsPath).toLowerCase() === normFilePath,
-		);
-		if (openDoc) {
-			lines = [];
-			for (let i = 0; i < openDoc.lineCount; i++) {
-				lines.push(openDoc.lineAt(i).text);
-			}
-		} else if (fs.existsSync(filePath)) {
-			try {
-				const content = await fs.promises.readFile(filePath, "utf-8");
-				lines = content.split(/\r?\n/);
-			} catch {
-				return { healedLine: item.line, isHealed: false, status: "unmatched" };
-			}
-		}
-		if (lines && fileLinesCache) {
-			fileLinesCache.set(filePath, lines);
-		}
-	}
-
 	if (!lines || lines.length === 0) {
 		return { healedLine: item.line, isHealed: false, status: "unmatched" };
 	}
@@ -405,14 +385,14 @@ export async function resolveHealedLine(
 	const targetScope = item.contextSnippet.scopeAnchor;
 	const targetIndent = item.contextSnippet.indent;
 
-	// 2. 快路径 (Fast Path)：检查原行号是否完全吻合（90% 未变更场景零算法开销）
+	// 1. 快路径 (Fast Path)：检查原行号是否完全吻合（90% 未变更场景零算法开销）
 	if (origIdx >= 0 && origIdx < lines.length) {
 		if (cleanLine(lines[origIdx]) === targetCurrent) {
 			return { healedLine: item.line, isHealed: false, status: "matched", confidence: 1.0 };
 		}
 	}
 
-	// 3. 阶段一：原址近距辐射探测 (Phase 1: Local Radiative Search) (+1, -1, +2, -2, ..., +30, -30)
+	// 2. 阶段一：原址近距辐射探测 (Phase 1: Local Radiative Search) (+1, -1, +2, -2, ..., +30, -30)
 	// 优先向下探测（80% 的代码变动是增添行向下偏移）
 	const offsets: number[] = [];
 	for (let step = 1; step <= HEALING_SEARCH_WINDOW; step++) {
@@ -459,7 +439,7 @@ export async function resolveHealedLine(
 		}
 	}
 
-	// 4. 判定阶段一自愈阈值
+	// 3. 判定阶段一自愈阈值
 	const confidenceRatio = maxPossibleScore > 0 ? bestScore / maxPossibleScore : 0;
 	if (bestIdx !== -1 && (bestScore >= 12.5 || confidenceRatio >= HEALING_CONFIDENCE_THRESHOLD)) {
 		const newHealedLine = bestIdx + 1;
@@ -472,7 +452,7 @@ export async function resolveHealedLine(
 		};
 	}
 
-	// 5. 阶段二：作用域巡航大跨度重锚定 (Phase 2: Scope Cruise Large-drift Search)
+	// 4. 阶段二：作用域巡航大跨度重锚定 (Phase 2: Scope Cruise Large-drift Search)
 	// 当代码发生超长跨度位移 (突破 30 行滑动窗口)，若存在 scopeAnchor 则在全文件中寻找其函数声明行
 	if (targetScope) {
 		const scopeHeaderIdx = findScopeAnchorLine(lines, targetScope);
@@ -524,6 +504,58 @@ export async function resolveHealedLine(
 		}
 	}
 
-	// 6. 若两阶段均未达标，安全标记为 unmatched 脱靶，并回退原行号
+	// 5. 若两阶段均未达标，安全标记为 unmatched 脱靶，并回退原行号
 	return { healedLine: item.line, isHealed: false, status: "unmatched", confidence: confidenceRatio };
 }
+
+/**
+ * 完整自愈处理函数：加载文件内容并调度纯核心自愈计算
+ * 返回计算得出的最精确行号 (1-indexed), 以及是否发生了行号自愈漂移修正
+ */
+export async function resolveHealedLine(
+	workspaceRoot: string,
+	item: SourceSceneBreakpoint,
+	fileLinesCache?: Map<string, string[]>,
+	getDocumentLines?: (filePath: string) => string[] | undefined,
+): Promise<HealResult> {
+	// 若无自愈指纹或行号/文件名不合法，直接安全返回原行号（视为 matched）
+	if (!item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
+		return { healedLine: item.line, isHealed: false, status: "matched" };
+	}
+	if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
+		return { healedLine: item.line, isHealed: false, status: "matched" };
+	}
+	if (!item.file || typeof item.file !== "string") {
+		return { healedLine: item.line, isHealed: false, status: "matched" };
+	}
+
+	const filePath = path.isAbsolute(item.file) ? item.file : path.join(workspaceRoot, item.file);
+
+	// 1. 获取目标文件源码行集合（优先命中批处理内存缓存与文档提供者，其次安全读取磁盘）
+	let lines: string[] | undefined;
+	if (fileLinesCache && fileLinesCache.has(filePath)) {
+		lines = fileLinesCache.get(filePath);
+	} else {
+		if (getDocumentLines) {
+			lines = getDocumentLines(filePath);
+		}
+		if (!lines && fs.existsSync(filePath)) {
+			try {
+				const content = await fs.promises.readFile(filePath, "utf-8");
+				lines = content.split(/\r?\n/);
+			} catch {
+				return { healedLine: item.line, isHealed: false, status: "unmatched" };
+			}
+		}
+		if (lines && fileLinesCache) {
+			fileLinesCache.set(filePath, lines);
+		}
+	}
+
+	if (!lines || lines.length === 0) {
+		return { healedLine: item.line, isHealed: false, status: "unmatched" };
+	}
+
+	return resolveHealedLineFromLines(lines, item);
+}
+

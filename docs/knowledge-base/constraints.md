@@ -59,6 +59,61 @@
 
 ---
 
+### 目录拓扑与分层结构映射
+
+#### 1. 源码架构目录拓扑 (`src/`)
+
+```text
+src/
+├── domain/                         # [领域层 Domain Layer] 100% 纯 TS，零外部依赖
+│   ├── ports/                      # [能力契约端口 Ports]
+│   │   ├── breakpointBridge.ts     # IBreakpointBridge: 操作宿主断点的能力契约
+│   │   └── sceneRepository.ts      # ISceneRepository: 场景配置持久化存取的能力契约
+│   ├── types.ts                    # [领域模型与类型契约]
+│   ├── sceneStateManager.ts        # 运行时活动场景只读内存投影 (Active Scenes Runtime Projection)
+│   ├── healingEngine.ts            # 双向滑动窗口加权自愈评分纯算法 (零外部宿主依赖)
+│   ├── sceneOperations.ts          # 场景合并、Diff、先到先得去重、拓扑哈希纯函数
+│   ├── activationResolver.ts       # 场景激活差异比对与调度决策纯函数
+│   ├── launchResolver.ts           # 启动项三级优先级推导纯函数
+│   └── skillLifecycleResolver.ts   # Skill 正文哈希反查与生命周期状态机
+├── application/                    # [应用用例层 Application Layer] 纯 TS 流程编排，0 宿主依赖
+│   ├── sceneService.ts             # 高内聚场景服务：内置单写者串行队列，防并发交错竞态
+│   ├── payloadSerializer.ts        # 纯工具：场景断点数据序列化与剪贴板 Payload 清洗
+│   └── index.ts                    # 统一导出中枢
+├── infra/                          # [基础设施层 Infra Layer] 技术适配与宿主接入
+│   ├── storage/                    # 持久化存储适配
+│   │   ├── jsonFileSceneRepository.ts # 实现 ISceneRepository (基于 Node.js fs 的权威持久化 SSOT)
+│   │   └── saveLoopGuard.ts         # 内部写盘时间窗与指纹防回环守卫
+│   └── vscode/                     # VS Code 宿主适配器
+│       ├── commands/               # 命令交互中枢 (sceneCommands, clipboardCommands, treeCommands, skillCommands)
+│       ├── listeners/              # 宿主事件监听器 (debugLifecycle, configFileWatcher, breakpointSync, treeInteraction, chatSkill)
+│       ├── vscodeBreakpointBridge.ts # 实现 IBreakpointBridge (封装 vscode.debug)
+│       ├── sceneTreeProvider.ts       # 实现 vscode.TreeDataProvider (调试侧边栏树视图)
+│       ├── statusBarView.ts           # 底部状态栏控件渲染
+│       ├── sceneCodeLensProvider.ts   # 实现 vscode.CodeLensProvider (debug-scenes.json 透镜)
+│       └── templateContentProvider.ts # 实现 vscode.TextDocumentContentProvider (Skill 虚拟文档)
+└── extension.ts                    # [装配中枢 Composition Root] 唯一胶水入口，专职实例化与依赖注入
+```
+
+#### 2. 测试架构镜像拓扑 (`test/` & `test-e2e/`)
+
+与三层架构心智模型 100% 镜像对齐：
+
+```text
+test/
+├── unit/                                # 极速轻量单元测试分层 (纯 Node.js，200ms+ 极速反馈)
+│   ├── domain/                          # 纯领域模型与算法测试 (healing, config_operations, state_projection, activation_resolver, skill_lifecycle)
+│   ├── application/                     # 应用服务与串行互斥队列测试 (scene_service)
+│   └── infra/                           # 基础设施与宿主适配测试 (commands_registry, storage_guard_and_sync, storage_atomic_queue, treeview_provider, bridge_and_codelens)
+├── integration/                         # 集成与一致性测试 (roundtrip_and_edge, i18n)
+└── run-all.mjs                          # 统一测试引导调度器 (13 大全维套件)
+
+test-e2e/                                # 真实宿主端到端沙箱测试 (@vscode/test-electron)
+└── suite/                               # 43 大全量 E2E 真实行为用例 (DAP, Multi-Scene, TreeView, Healing, Guard 等)
+```
+
+---
+
 ## 业务不变量
 
 | 编号 | 不变量描述 | 检查与保障位置 |
@@ -158,5 +213,6 @@
 | 2026-09-13 | 规范化架构为 DDD 经典体系：建立 domain（领域层）、application（应用用例层）、infra（基础设施层）；统一 SSOT 语义（磁盘为权威 SSOT，状态机为活动投影）；引入用例串行队列 useCaseQueue 杜绝并发交错 | Tony.L | KDD-DDD-STANDARDIZE-003 |
 | 2026-09-13 | 高内聚聚合应用服务与命令体系：聚合 sceneService.ts（内置单写者串行队列）、正名并聚拢 infra/vscode/commands（4大高内聚模块）与 listeners（debugLifecycle/configFileWatcher 等），彻底消除历史过渡别名包袱与空壳文件 | Tony.L | KDD-COHESION-REFACTOR-004 |
 | 2026-09-13 | 单元测试架构对齐重构：建立 test/unit/{domain,application,infra} 与 test/integration 分层；新增 scene_service 测试套件（6大核心维度）；消除历史废弃路径注释并根治内部调度重入死锁隐患 | Tony.L | KDD-TEST-RESTRUCTURE-005 |
+| 2026-09-13 | 完整沉淀 DDD 三层分层目录树拓扑与测试镜像映射规范至架构约束 | Tony.L | #TASK-ARCH-PATH-SYNC-001 |
 
 

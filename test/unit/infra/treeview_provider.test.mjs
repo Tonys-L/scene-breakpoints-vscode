@@ -216,7 +216,7 @@ export function runTreeViewTests() {
 		}
 
 		class SafeBreakpointNode extends MockTreeItem {
-			constructor(sceneName, index, bp, workspaceRoot, extensionPath) {
+			constructor(sceneName, index, bp, workspaceRoot, extensionPath, isPaused = false) {
 				const isFunc = bp.type === "function";
 				const label = isFunc ? `ƒ ${bp.functionName}()` : `${bp.file}:${bp.line}`;
 				super(label, 0);
@@ -225,7 +225,12 @@ export function runTreeViewTests() {
 				this.id = `bp:${sceneName}:${index}:${bpIdentifier}`;
 				const isEnabled = bp.enabled ?? true;
 				this.checkboxState = isEnabled ? 1 : 0;
-				this.iconFileName = `${isFunc ? "bp-func" : "bp-line"}-${isEnabled ? "enabled" : "disabled"}.svg`;
+				if (isPaused) {
+					this.description = "▶ [PAUSED]";
+					this.iconFileName = "bp-paused.svg";
+				} else {
+					this.iconFileName = `${isFunc ? "bp-func" : "bp-line"}-${isEnabled ? "enabled" : "disabled"}.svg`;
+				}
 				this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
 			}
 		}
@@ -244,7 +249,12 @@ export function runTreeViewTests() {
 		assert.strictEqual(node2.iconFileName, "bp-func-disabled.svg");
 		assert.strictEqual(node2.contextValue, "breakpointItemDisabled");
 
-		console.log("    ✔ BreakpointNode 构造与继承模型安全性验证通过");
+		// 验证运行时命中暂停态 (isPaused: true)
+		const nodePaused = new SafeBreakpointNode("s1", 2, { type: "line", file: "main.ts", line: 42, enabled: true }, "/ws", "/ext", true);
+		assert.strictEqual(nodePaused.description, "▶ [PAUSED]", "命中暂停断点 description 必须带有 [PAUSED] 标识");
+		assert.strictEqual(nodePaused.iconFileName, "bp-paused.svg", "命中暂停断点图标必须切换为专属高亮 bp-paused.svg");
+
+		console.log("    ✔ BreakpointNode 构造与继承模型安全性验证通过 (包含 isPaused 运行时高亮)");
 	}
 
 	// ============================================================================

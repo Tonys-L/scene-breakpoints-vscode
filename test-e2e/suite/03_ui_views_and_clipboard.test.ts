@@ -200,12 +200,12 @@ suite("Suite 03: 状态栏、CodeLens 与剪贴板导入导出", () => {
     }
   });
 
-  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 20 大命令注册与总线就绪校验", async () => {
+  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 23 大命令注册与总线就绪校验", async () => {
     // 1. 读取 package.json 中声明的 contributes.commands
     const pkgPath = path.resolve(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
     const contributesCommands: Array<{ command: string; title: string }> = pkg.contributes?.commands || [];
-    assert.strictEqual(contributesCommands.length, 20, "package.json 应完整声明 20 个命令");
+    assert.strictEqual(contributesCommands.length, 23, "package.json 应完整声明 23 个命令");
 
     // 2. 从 VS Code 内部命令总线拉取所有已注册的内部与扩展命令
     const allRegisteredCommands = await vscode.commands.getCommands(true);

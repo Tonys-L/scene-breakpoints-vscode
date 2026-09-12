@@ -19,12 +19,13 @@
 - 下发过程受原子锁保护，防止状态栏产生 `(None)` 竞态闪烁。
 
 **变化点**:
-- 未来支持多场景组合/继承下发 (`includes`)。
+- 无（多场景组合由动态叠加激活全面覆盖，不再支持 includes 配置级继承）。
 
 **对应代码**:
-- `src/breakpointAdapter.ts` (`applySceneBreakpoints`, `applySingleBreakpointToEditor`)
-- `src/commands/applyScene.ts`
-- `src/commands/addBreakpoint.ts`
+- `src/domain/ports/breakpointBridge.ts` (`IBreakpointBridge`)
+- `src/infra/vscode/vscodeBreakpointBridge.ts` (`applySceneBreakpoints`, `applySingleBreakpointToEditor`)
+- `src/application/sceneService.ts` (`SceneService.activateScene`, `addBreakpoint`)
+- `src/infra/vscode/commands/sceneCommands.ts`
 
 ---
 
@@ -48,8 +49,10 @@
 - 未来支持模糊相似度算法（如 Levenshtein 距离）。
 
 **对应代码**:
-- `src/healingAdapter.ts` (`resolveHealedLine`, `extractContextSnippet`)
-- `src/commands/applyScene.ts` (`applySceneCommand`)
+- `src/domain/healingEngine.ts` (`resolveHealedLine`, `extractContextSnippet`, `extractContextSnippetFromLines`)
+- `src/infra/vscode/vscodeBreakpointBridge.ts`
+- `src/application/sceneService.ts`
+- `src/infra/vscode/commands/sceneCommands.ts` (`applySceneCommand`)
 
 ---
 
@@ -64,7 +67,9 @@
 - 遇到同名场景时，提示用户选择“覆盖”或“追加”。
 
 **对应代码**:
-- `src/commands/exportScene.ts`
+- `src/domain/types.ts`
+- `src/application/sceneService.ts` (`SceneService.exportScene`)
+- `src/infra/vscode/commands/sceneCommands.ts` (`exportSceneCommand`)
 
 ### 可视化树视图管理能力 (Scene TreeView)
 
@@ -81,11 +86,10 @@
 - **场景批量控制与克隆副本能力**：支持场景右键菜单“一键启用全部断点”、“一键禁用全部断点”及“克隆场景副本”，批量修改时就地内存同步且微任务合并写盘。
 
 **对应代码**:
-- `src/sceneTreeProvider.ts`
-- `src/commands/treeCommands.ts`
-- `src/config/sceneOperations.ts` (`setAllBreakpointsEnabledInScene`, `duplicateSceneInConfig`)
-- `src/syncCoordinator.ts`
-- `src/extension.ts`
+- `src/infra/vscode/sceneTreeProvider.ts`
+- `src/infra/vscode/commands/treeCommands.ts`
+- `src/domain/sceneOperations.ts` (`setAllBreakpointsEnabledInScene`, `duplicateSceneInConfig`, `renameSceneInConfig`)
+- `src/application/sceneService.ts`
 
 ---
 
@@ -101,9 +105,9 @@
 - 同名冲突保护：提供覆盖、追加合并（基于 INV-001 upsert 去重）、重命名导入三种决策。
 
 **对应代码**:
-- `src/configManager.ts` (`serializeScenePayload`, `parseScenePayload`)
-- `src/commands/clipboardSync.ts`
-- `src/commands/showMenu.ts`
+- `src/application/payloadSerializer.ts` (`serializeScenePayload`, `parseScenePayload`)
+- `src/infra/vscode/commands/clipboardCommands.ts`
+- `src/infra/vscode/commands/sceneCommands.ts` (`showMenuCommand`)
 
 ---
 
@@ -118,11 +122,11 @@
 - 取消全部勾选时自动引导进入清空流程，安全复位为 `None`。
 
 **对应代码**:
-- `src/configManager.ts` (`mergeScenesBreakpoints`)
-- `src/sceneStateManager.ts` (`activeScenes`, `toggleScene`)
-- `src/commands/applyScene.ts`
-- `src/statusBar.ts` (`formatScenesLabel`)
-- `src/sceneTreeProvider.ts`
+- `src/domain/sceneOperations.ts` (`mergeScenesBreakpoints`)
+- `src/domain/sceneStateManager.ts` (`activeScenes`, `toggleScene`)
+- `src/application/sceneService.ts` (`SceneService.activateScene`)
+- `src/infra/vscode/statusBarView.ts`
+- `src/infra/vscode/sceneTreeProvider.ts`
 
 ### 调试启动配置自动联动激活能力 (Launch.json Binding Hook)
 
@@ -139,9 +143,9 @@
 - 全局配置受控：提供 `sceneBreakpoints.autoActivateOnLaunch` 开关，支持用户自由开启或停用该自动化能力。
 
 **对应代码**:
-- `src/configManager.ts` (`resolveLaunchBoundScenes`)
-- `src/extension.ts` (`debugConfigProvider.resolveDebugConfiguration`)
-- `src/commands/applyScene.ts`
+- `src/domain/launchResolver.ts` (`resolveLaunchBoundScenes`)
+- `src/infra/vscode/listeners/debugLifecycleListener.ts` (`resolveDebugConfiguration`)
+- `src/application/sceneService.ts`
 
 ### 断点状态全双工实时同步能力 (Full-Duplex Breakpoint State Synchronization)
 
@@ -154,9 +158,10 @@
 - **防回环死循环保护（INV-008）**：通过 `isApplyingScene` 与内部写入防抖时间戳（`markInternalSaving`）区分插件内部操作与外部人为操作，杜绝“改断点 $\rightarrow$ 写文件 $\rightarrow$ 文件监听 $\rightarrow$ 改断点”的回声震荡。
 
 **对应代码**:
-- `src/breakpointAdapter.ts` (`syncBreakpointEnabledToEditor`)
-- `src/configManager.ts` (`syncEditorBreakpointChangesToConfig`)
-- `src/extension.ts` (`bpChangeListener`, `fileWatcher`, `toggleBpItemCmd`)
+- `src/infra/vscode/vscodeBreakpointBridge.ts` (`syncBreakpointEnabledToEditor`)
+- `src/infra/vscode/listeners/breakpointSyncListener.ts`
+- `src/infra/storage/saveLoopGuard.ts`
+- `src/application/sceneService.ts`
 
 ---
 
@@ -183,11 +188,13 @@
 - **Skill 全生命周期感知与无损升级更新**：基于统一核心正文指纹反查（Hash 作为 Key，`O(1)` 秒查），剥离 MDC/YAML 等平台 Frontmatter 并归一化换行符；三态生命周期判定（`UpToDate` 最新、`CleanOutdated` 官方可平滑升级、`CustomModified` 用户已自定义）；对自定义文件调起 VS Code 原生 `vscode.diff` 并排对比由用户自主合并，覆写前强制自动生成同目录 `.bak` 时间戳物理备份副本。
 
 **对应代码**:
-- `src/config/aiActivationResolver.ts` (`handleExternalScenesFileChange`, `resolveActiveScenesDiff`, `computeBreakpointsTopologyHash`)
-- `src/commands/skillCommands.ts` (`installSkillCommand`, `diagnoseAiIntegrationCommand`)
-- `src/config/skillLifecycleResolver.ts` (`resolveSkillLifecycleState`, `stripSkillFrontmatter`, `normalizeSkillContent`, `computeSkillFingerprint`)
-- `src/providers/templateContentProvider.ts` (`TemplateContentProvider`)
-- `src/extension.ts` (Chat Skill Provider 动态注入与 FileWatcher 调度)
+- `src/domain/activationResolver.ts` (`resolveActiveScenesDiff`, `computeBreakpointsTopologyHash`)
+- `src/domain/skillLifecycleResolver.ts` (`resolveSkillLifecycleState`, `stripSkillFrontmatter`, `normalizeSkillContent`, `computeSkillFingerprint`)
+- `src/application/sceneService.ts` (`handleExternalScenesFileChange`)
+- `src/infra/vscode/commands/skillCommands.ts` (`installSkillCommand`, `diagnoseAiIntegrationCommand`)
+- `src/infra/vscode/templateContentProvider.ts` (`TemplateContentProvider`)
+- `src/infra/vscode/listeners/configFileWatcherListener.ts`
+- `src/infra/vscode/listeners/chatSkillListener.ts`
 
 ---
 
@@ -250,3 +257,5 @@
 | 2026-09-12 | 架构解耦：建立 coordinators 协同调度层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
 | 2026-09-12 | 沉淀 skill_design.md 规范至能力边界：明确 contextSnippet 推荐缺省策略、严格先到先得及 8 大 Agent 矩阵细则 | Tony.L | KDD-SKILL-MIGRATE-001 |
 | 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |
+| 2026-09-13 | 全量对齐能力边界至 DDD 三层隔离架构代码路径 (domain/application/infra) | Tony.L | #TASK-ARCH-PATH-SYNC-001 |
+| 2026-09-13 | 移除多场景组合/继承 (includes) 扩展点规划，全面收敛至动态叠加激活体系 | Tony.L | #TASK-REMOVE-INCLUDES-001 |

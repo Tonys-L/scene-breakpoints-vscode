@@ -8,7 +8,7 @@
 ## 目录
 
 - [1. 测试环境与架构体系](#1-测试环境与架构体系)
-- [2. 全量 38 大 E2E 测试场景矩阵](#2-全量-38-大-e2e-测试场景矩阵)
+- [2. 全量 42 大 E2E 测试场景矩阵](#2-全量-42-大-e2e-测试场景矩阵)
   - [维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)](#维度一dap-原生断点装配与运行时生命周期-tc-dap)
   - [维度二：多场景选择、叠加激活与动态组合 (TC-MUL)](#维度二多场景选择叠加激活与动态组合-tc-mul)
   - [维度三：调试侧边栏 TreeView 视口与全按钮交互 (TC-TREE)](#维度三调试侧边栏-treeview-视口与全按钮交互-tc-tree)
@@ -37,7 +37,7 @@
 
 ---
 
-## 2. 全量 34 大 E2E 测试场景矩阵
+## 2. 全量 42 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -81,6 +81,9 @@
 | **TC-TREE-13** | **场景右键按钮：克隆场景副本** | 执行 `sceneBreakpoints.duplicateScene` | 生成同名 `-copy` 副本场景，完整复制断点数组与代码指纹 | KDD-ARCH-002 |
 | **TC-TREE-14** | **断点行内按钮：单个开关切换** | 执行 `sceneBreakpoints.toggleBreakpointItem` | 该断点 `enabled` 取反，图标在启用态与禁用态 SVG 间切换 | KDD-SYNC-001 |
 | **TC-TREE-15** | **断点行内按钮：移除单断点** | 执行 `sceneBreakpoints.removeBreakpointItem` | 从场景数组中剔除该点，DAP 同步拔除对应红点 | KDD-TREEVIEW-001 |
+| **TC-TREE-16** | **断点行内按钮：定位到配置文件** | 执行 `sceneBreakpoints.revealInConfigFile` | 自动打开 `.vscode/debug-scenes.json` 且光标精准落在该断点行号 | KDD-TREEVIEW-001 |
+| **TC-TREE-17** | **断点排序微调：上移与下移** | 执行 `sceneBreakpoints.moveBreakpointUp` / `moveBreakpointDown` | 断点在树节点与磁盘数组中顺序完成互换，顺序复位精准保真 | KDD-ARCH-002 |
+| **TC-TREE-18** | **调试运行时断点命中高亮跟随** | 命中调试断点调用 `revealPausedLocation` | 节点展示 `[PAUSED]` 标签，图标切换为 `bp-paused.svg`，复位后恢复常规态 | KDD-UI-003 |
 
 ---
 
@@ -132,6 +135,8 @@
 | **TC-AI-02** | **幽灵场景拦截守卫 (Ghost Scene Guard)** | 外部向 `activeScenes` 填入未在 `scenes` 字典中定义的伪造场景名 | 领域层强行拦截，绝不作为激活场景写入状态机，杜绝虚假绿色与断点误清空 | INV-009 |
 | **TC-AI-03** | **核心拓扑 Diff 防线 (Topology Diff Guard)** | 外部仅修改断点 `desc`、`bindings` 映射或未激活闲置场景 | 比对 `lastAppliedTopologyHash` 无变动，坚决阻断调用 `applySceneBreakpoints` 重刷 DAP | INV-012 |
 | **TC-AI-04** | **反向同步防回环死循环 (Echo Loop Guard)** | 编辑器原生断点面板切换断点启用/禁用状态 | 触发 `onDidChangeBreakpoints` 反向回写配置，时间戳锁拦截后续 `fileWatcher`，杜绝死循环 | INV-008 |
+| **TC-SKILL-01** | **Skill 纯净历史版本一键自动平滑升级** | 工作区存在官方纯净历史版本 Skill（如真实 v1.0.3 基线），在上游插件发布更新时触发诊断与升级 | 状态机精准识别为 `CleanOutdated`，自动平滑替换为最新官方模板正文，无任何脏代码残留 | INV-013 |
+| **TC-SKILL-02** | **Skill 用户定制版安全检测、.bak 备份与 Diff 审查** | 工作区 Skill 存在开发者本地专属修改时触发诊断 | 状态机精准识别为 `CustomModified`，强制在同目录生成时间戳 `.bak` 备份文件，支持调起 `vscode.diff` 并排比对或一键备份并覆写 | INV-013 |
 
 ---
 
@@ -160,7 +165,7 @@
 
 | 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
 | :--- | :--- | :--- | :--- | :--- |
-| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 20 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 20 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
+| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 23 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 23 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
 | **TC-KEY-01** | **快捷键 (Keybindings) 映射契约与 editorTextFocus 焦点触发验证** | 校验 `ctrl+alt+b` / `ctrl+alt+s`（Mac 对应 `cmd+alt+*`）绑定及 `when: "editorTextFocus"`；模拟编辑器聚焦触发 | 快捷键配置 100% 吻合规范；获得文本焦点时触发命令，断点精准注入光标所在物理行，验证快捷键通路健康 | KDD-KEY-001 |
 
 ---
@@ -187,5 +192,9 @@
 | 2026-09-12 | 自愈 E2E 补齐：通过 WorkspaceEdit 动态位移源码成功将 TC-HEAL-01（行号漂移自愈与持久化回写闭环）与 TC-HEAL-02（未匹配脱靶告警）全量实装为自动化测试（33 个 E2E 用例 100% 通过） | Tony.L | #TASK-E2E-HEAL |
 | 2026-09-12 | 多语言自愈扩展：自愈算法支持 Python/Go/Rust/Java/C++ 作用域、#//-- 注释剥离与 Python 缩进边界保护，实装 TC-HEAL-03 与 TC-HEAL-04 自动化测试（全套件 35 个 E2E 用例 100% 绿灯） | Tony.L | #TASK-E2E-POLYGLOT |
 | 2026-09-12 | 命令面板与快捷键补齐：实装 TC-CMD-01（命令面板全量 20 大命令注册与总线就绪校验）与 TC-KEY-01（快捷键绑定契约与 editorTextFocus 焦点触发验证），自动化 E2E 套件达到 37 个用例 100% 绿灯通过 | Tony.L | #TASK-E2E-CMD-KEY |
+| 2026-09-13 | 修复 E2E 8 项断言与运行时异常：补齐 baseline 计数器、对齐 collectCurrentBreakpoints 异步契约、解耦 healingEngine 的 VS Code 依赖并补齐脱靶告警弹窗分支，37 个 E2E 用例 100% 绿灯通过 | Tony.L | #TASK-E2E-FIX-001 |
+| 2026-09-13 | 补齐新功能 E2E 全量测试：实装 TC-TREE-09（重命名）、TC-TREE-16（配置文件定位）、TC-TREE-17（排序微调）、TC-TREE-18（运行时断点命中高亮）以及 TC-SKILL-01/02（Skill 纯净升级与备份/Diff 生命周期），真实宿主自动化套件达到 43 个用例 100% 绿灯 | Tony.L | #TASK-E2E-NEW-FEAT |
+
+
 
 

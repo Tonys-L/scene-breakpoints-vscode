@@ -1,4 +1,8 @@
 import assert from "node:assert";
+import {
+	extractContextSnippet,
+	extractContextSnippetFromLines,
+} from "../../../src/domain/healingEngine.ts";
 
 export function cleanLine(text) {
 	if (typeof text !== "string") return "";
@@ -1403,5 +1407,46 @@ export function runHealingTests() {
 		assert.strictEqual(res.healedLine, 11, "脱靶断点必须平滑回退至原行号 11");
 	}
 
-	console.log("  ✅ [Healing] 自愈算法全维边界套件（33 大全场景极限测试套件，含当前行本体守卫与大跨度突破）全部通过！");
+	// 34. 纯领域函数 extractContextSnippetFromLines 与 extractContextSnippet 纯行数组单测 (0 VS Code 依赖)
+	{
+		const sampleLines = [
+			"export class OrderService {",
+			"    // 初始化订单状态",
+			"    async createOrder(params: CreateOrderDto) {",
+			"",
+			"        validateParams(params);",
+			"        const order = await this.repo.save(params);", // 目标行 index = 5 (0-based)
+			"",
+			"        return order;",
+			"    }",
+			"}",
+		];
+
+		// 1. 使用 extractContextSnippetFromLines 直接传原生 string[]
+		const snippet1 = extractContextSnippetFromLines(sampleLines, 5);
+		assert.strictEqual(snippet1.current, "const order = await this.repo.save(params);");
+		assert.strictEqual(snippet1.prev, "validateParams(params);", "必须穿透空行提取前序非空有效伴随行");
+		assert.strictEqual(snippet1.next, "return order;", "必须穿透空行提取后序非空有效伴随行");
+		assert.strictEqual(snippet1.indent, 8, "前导缩进应精确统计为 8 空格");
+		assert.strictEqual(snippet1.scopeAnchor, "createOrder", "向上回溯必须精准抓取最近的函数作用域 createOrder");
+
+		// 2. 使用 extractContextSnippet 鸭子对象重载验证等价性
+		const duckDoc = {
+			lineCount: sampleLines.length,
+			lineAt: (i) => ({ text: sampleLines[i] }),
+		};
+		const snippet2 = extractContextSnippet(duckDoc, 5);
+		assert.deepStrictEqual(snippet1, snippet2, "string[] 模式与鸭子对象模式输出的指纹必须 100% 绝对一致");
+
+		// 3. 首行与末行边界防护测试
+		const snippetFirst = extractContextSnippetFromLines(sampleLines, 0);
+		assert.strictEqual(snippetFirst.prev, undefined, "首行前序伴随行必须安全为 undefined");
+		assert.strictEqual(snippetFirst.current, "export class OrderService {");
+
+		const snippetLast = extractContextSnippetFromLines(sampleLines, sampleLines.length - 1);
+		assert.strictEqual(snippetLast.next, undefined, "末行后序伴随行必须安全为 undefined");
+		assert.strictEqual(snippetLast.current, "}");
+	}
+
+	console.log("  ✅ [Healing] 自愈算法全维边界套件（34 大全场景极限测试套件，含纯领域行数组提取与大跨度突破）全部通过！");
 }

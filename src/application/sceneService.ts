@@ -42,6 +42,7 @@ export interface ActivateSceneResult {
 	loadedCount: number;
 	healedCount: number;
 	unmatchedCount: number;
+	unmatchedBreakpoints?: SourceSceneBreakpoint[];
 }
 
 async function doActivateScene(params: ActivateSceneParams): Promise<ActivateSceneResult> {
@@ -150,6 +151,7 @@ async function doActivateScene(params: ActivateSceneParams): Promise<ActivateSce
 		loadedCount,
 		healedCount,
 		unmatchedCount,
+		unmatchedBreakpoints: applyResult.unmatchedBreakpoints,
 	};
 }
 
@@ -279,7 +281,7 @@ async function doExportScene(params: ExportSceneParams): Promise<ExportSceneResu
 		loopGuard = defaultLoopGuard,
 	} = params;
 
-	const exportedBps = breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
+	const exportedBps = await breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
 	if (exportedBps.length === 0) {
 		return { success: false, count: 0 };
 	}

@@ -24,7 +24,7 @@
 
 | 文件 | 业务分类 | 条目数 | 最近更新 |
 |------|----------|--------|----------|
-| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 14 | 2026-09-12 |
+| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 16 | 2026-09-13 |
 
 ---
 
@@ -55,3 +55,6 @@
 | 2026-09-11 | 录入 1.11 Content Hash Guard 拦截内部写盘后业务命令层必须主动触发树视图刷新 | Tony.L | KDD-REFRESH-FIX-001 |
 | 2026-09-12 | 录入 1.12 控制流关键字拦截与 1.13 非空拓扑伴随行自愈增强 | Tony.L | KDD-HEALING-TOPO-001 |
 | 2026-09-12 | 录入 1.14 模块调用 Node.js 内置库（如 path）漏写显式导入在 esbuild 下静默打包但运行时 ReferenceError | Tony.L | KDD-PATH-IMPORT-FIX-001 |
+| 2026-09-13 | 录入 1.15 领域层误引 VS Code 宿主 API 破坏分层并在 esbuild 打包运行时抛 ReferenceError | Tony.L | #TASK-E2E-FIX-001 |
+| 2026-09-13 | 录入 1.16 领域层严禁接收或声明宿主特定数据类型，统一使用纯 TS 结构与鸭子对象 | Tony.L | #TASK-DOMAIN-PURITY-001 |
+

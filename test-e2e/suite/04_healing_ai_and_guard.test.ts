@@ -1,5 +1,6 @@
 import * as assert from "node:assert";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
 
 suite("Suite 04: 自愈回写、AI 声明式编排与系统级防灾守卫", () => {
@@ -458,6 +459,129 @@ suite("Suite 04: 自愈回写、AI 声明式编排与系统级防灾守卫", () 
       revertEdit.replace(doc.uri, fullRange, origGoContent);
       await vscode.workspace.applyEdit(revertEdit);
       await doc.save();
+    }
+  });
+
+  test("TC-SKILL-01: Skill 纯净历史版本检测与一键自动平滑升级 (模拟上游发版升级生命周期)", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const mdcPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".cursor", "rules", "scene-breakpoints.mdc").fsPath;
+    const ext = vscode.extensions.getExtension("tony-l.scene-breakpoints-vscode")!;
+    const skillSourcePath = vscode.Uri.joinPath(ext.extensionUri, "skills", "scene-breakpoints", "SKILL.md").fsPath;
+
+    // 备份官方真实模板内容，确保测试后 100% 还原
+    const originalSkillContent = fs.readFileSync(skillSourcePath, "utf-8");
+
+    // 1. 本地写入真实官方 v1.0.3 纯净规则（剥离原 Frontmatter 后包装为标准 MDC）
+    const v103Body = originalSkillContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n\r?\n?/, "");
+    const v103Mdc = `---
+description: Scene Breakpoints
+globs: *
+---
+
+${v103Body}
+`;
+    fs.mkdirSync(path.dirname(mdcPath), { recursive: true });
+    fs.writeFileSync(mdcPath, v103Mdc, "utf-8");
+
+    // 2. 模拟上游官方发布未来新版本（模板追加新特性标记）
+    const simulatedNextGenSkill = originalSkillContent + "\n\n<!-- SIMULATED_FUTURE_UPSTREAM_FEATURE -->\n";
+    fs.writeFileSync(skillSourcePath, simulatedNextGenSkill, "utf-8");
+
+    // 3. 调出诊断并选择一键平滑升级
+    const origQuickPick = vscode.window.showQuickPick;
+    let upgradedActionExecuted = false;
+
+    (vscode.window as any).showQuickPick = async (items: any[]) => {
+      // 寻找可升级的 Cursor 项 (CleanOutdated)
+      const cursorItem = items.find((it) => it.label?.includes("Cursor") && it.action);
+      if (cursorItem) {
+        upgradedActionExecuted = true;
+        return cursorItem;
+      }
+      return undefined;
+    };
+
+    try {
+      await vscode.commands.executeCommand("sceneBreakpoints.diagnoseAiIntegration");
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      assert.strictEqual(upgradedActionExecuted, true, "诊断面板中必须识别出 CleanOutdated 升级项");
+
+      // 验证文件已成功平滑更新为未来新版本内容
+      const newContent = fs.readFileSync(mdcPath, "utf-8");
+      assert.ok(newContent.includes("SIMULATED_FUTURE_UPSTREAM_FEATURE"), "本地规则必须已平滑升级为上游最新模板");
+      assert.ok(newContent.includes("scene-breakpoints"), "新内容应包含官方模板规范");
+    } finally {
+      // 彻底还原官方模板与工作区现场
+      fs.writeFileSync(skillSourcePath, originalSkillContent, "utf-8");
+      (vscode.window as any).showQuickPick = origQuickPick;
+      if (fs.existsSync(mdcPath)) fs.unlinkSync(mdcPath);
+    }
+  });
+
+  test("TC-SKILL-02: Skill 用户定制版检测、.bak 物理备份生成与 vscode.diff 审查", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const mdcPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".cursor", "rules", "scene-breakpoints.mdc").fsPath;
+
+    // 1. 模拟用户本地手动修改定制过的规则文件
+    const customContent = `---
+description: Scene Breakpoints Custom
+globs: *
+---
+
+# Scene Breakpoints
+// USER_CUSTOM_SECRET_RULE_XYZ: 开发者专属自定义调试编排规则
+`;
+    fs.mkdirSync(path.dirname(mdcPath), { recursive: true });
+    fs.writeFileSync(mdcPath, customContent, "utf-8");
+
+    // 2. 模拟诊断中选择 CustomModified -> backup (生成备份并覆写)
+    const origQuickPick = vscode.window.showQuickPick;
+    let subPickCount = 0;
+
+    (vscode.window as any).showQuickPick = async (items: any[]) => {
+      subPickCount++;
+      if (subPickCount === 1) {
+        // 第一层：诊断列表中选中 CustomModified 的 Cursor 项
+        const customCursor = items.find((it) => it.label?.includes("Cursor") && it.action);
+        return customCursor;
+      } else if (subPickCount === 2) {
+        // 第二层：动作选择弹窗，选择 backup (备份并覆写)
+        const backupOption = items.find((it) => it.value === "backup");
+        return backupOption;
+      }
+      return undefined;
+    };
+
+    try {
+      await vscode.commands.executeCommand("sceneBreakpoints.diagnoseAiIntegration");
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // 验证同目录下生成了时间戳 .bak 物理备份文件
+      const parentDir = path.dirname(mdcPath);
+      const filesInDir = fs.readdirSync(parentDir);
+      const bakFiles = filesInDir.filter((f: string) => f.startsWith("scene-breakpoints.mdc.") && f.endsWith(".bak"));
+      assert.ok(bakFiles.length >= 1, "必须在同目录下生成 .bak 物理备份副本");
+
+      // 验证备份副本内容完全保真用户原修改
+      const bakContent = fs.readFileSync(path.join(parentDir, bakFiles[0]), "utf-8");
+      assert.ok(bakContent.includes("USER_CUSTOM_SECRET_RULE_XYZ"), "备份文件必须完整保真用户的定制修改");
+
+      // 验证主文件已被安全覆写为最新版本
+      const newMdcContent = fs.readFileSync(mdcPath, "utf-8");
+      assert.ok(!newMdcContent.includes("USER_CUSTOM_SECRET_RULE_XYZ"), "原文件应已更新为官方模板");
+    } finally {
+      (vscode.window as any).showQuickPick = origQuickPick;
+      // 清理备份文件与测试文件
+      const parentDir = path.dirname(mdcPath);
+      if (fs.existsSync(parentDir)) {
+        const files = fs.readdirSync(parentDir);
+        for (const f of files) {
+          if (f.startsWith("scene-breakpoints.mdc")) {
+            fs.unlinkSync(path.join(parentDir, f));
+          }
+        }
+      }
     }
   });
 });
