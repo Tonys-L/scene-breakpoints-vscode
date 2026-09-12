@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { sceneStateManager } from "../sceneStateManager";
+import { sceneStateManager } from "../core/sceneStateManager";
 import { applySceneCommand } from "../commands/applyScene";
 import { clearAllCommand } from "../commands/clearAll";
 import { loadScenesConfig } from "../config/configStorage";
@@ -8,10 +8,10 @@ import {
 	computeBreakpointsTopologyHash,
 	resolveActiveScenesDiff,
 } from "../config/aiActivationResolver";
-import { applySceneBreakpoints } from "../breakpointAdapter";
+import { applySceneBreakpoints } from "../adapters/breakpointAdapter";
 
 /**
- * AI 激活协同调度器 (AI Activation Coordinator)
+ * AI 激活协同服务 (AI Activation Service)
  * 职责：专职负责监听与响应外部 debug-scenes.json 变动的副作用调度，驱动命令层与适配器层
  * 消除 config 领域层对 commands 策略层的反向依赖，彻底根除循环依赖
  */

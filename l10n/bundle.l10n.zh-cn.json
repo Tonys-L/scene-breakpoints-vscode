@@ -158,6 +158,9 @@
   "Open Diagnostics": "打开诊断面板",
   "Later": "稍后再说",
   "Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).": "Scene Breakpoints: 检测到工作区有 {0} 个 AI Skill 规则有可用更新 (v{1})。",
-  "Successfully updated {0} Skill(s) to v{1}.": "已成功将 {0} 个 Skill 规则平滑升级至 v{1}。"
+  "Successfully updated {0} Skill(s) to v{1}.": "已成功将 {0} 个 Skill 规则平滑升级至 v{1}。",
+  "[PAUSED]": "[当前暂停]",
+  "Currently Paused Here": "当前暂停在此断点",
+  "File does not exist": "文件不存在"
 }
 

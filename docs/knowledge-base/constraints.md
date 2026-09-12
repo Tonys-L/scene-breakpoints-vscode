@@ -31,17 +31,17 @@
 本项目遵循严密的三层逻辑分层，业务内聚、变更隔离、依赖单向：
 
 ```text
-策略与协同调度层 (src/commands/*, src/coordinators/*, src/codeLensProvider.ts)
+策略与协同调度层 (src/commands/*, src/services/*)
     ↓
-核心状态与纯领域层 (src/sceneStateManager.ts, src/configManager.ts, src/healingAdapter.ts, src/types.ts)
+核心状态与纯领域层 (src/core/*, src/config/*)
     ↑
-技术与宿主适配层 (src/breakpointAdapter.ts, src/statusBar.ts)
+技术与宿主适配层 (src/adapters/*, src/providers/*, src/views/*)
 ```
 
 #### 架构状态
 
 - 当前状态：**已实施**
-- 未隔离的模块：无（已消除所有反向依赖与循环引用，副作用协同调度上浮至 coordinators 独立管理）
+- 未隔离的模块：无（已消除所有反向依赖与循环引用，副作用协同调度上浮至 services 独立管理）
 
 | 架构状态 | AI 代码定位能力 | 文档策略 | 说明 |
 |----------|----------------|----------|------|
@@ -53,11 +53,10 @@
 
 | 层 | 模块 | 职责定位 | 依赖方向 | 禁止出现 |
 |---|---|---|---|---|
-| **策略与调度层** | `src/commands/*`<br>`src/coordinators/*`<br>`src/codeLensProvider.ts` | 处理用户交互输入，监听外部变更并协调状态机、领域层与适配层执行副作用流 | 依赖核心层与适配层 | 包含底层文件去重遍历细节、直接操作 VS Code DAP 接口 |
-| **核心状态层** | `src/sceneStateManager.ts` | 维护全局激活场景、核心拓扑快照与防竞态锁（100% SSOT），事件广播驱动 UI | 仅依赖 VS Code 基础 EventEmitter | 依赖任何具体 UI 控件或文件系统 I/O |
-| **核心算法层** | `src/healingAdapter.ts` | 伴随特征指纹提取、双向滑动窗口加权打分算法 | 纯算法输入输出（可无缝移植） | 依赖任何外部文件 I/O 或命令交互 |
-| **数据管理与领域层** | `src/configManager.ts`<br>`src/config/*` | JSON 配置路径推导、防御性数据清洗、纯领域断点拓扑 Diff (`computeBreakpointsTopologyHash`)、幽灵场景校验与合并 | 依赖 Node 文件系统与类型契约（100% 纯逻辑） | 依赖 commands 策略层命令、UI 状态或断点装配下发逻辑 |
-| **宿主适配层** | `src/breakpointAdapter.ts`<br>`src/statusBar.ts`<br>`src/sceneTreeProvider.ts` | 对齐 VS Code DAP 原生断点协议，状态栏响应式视图渲染，调试面板专属树视图渲染 | 依赖核心层契约 | 直接执行文件持久化回写（消除隐式 I/O 副作用） |
+| **策略与调度层** | `src/commands/*`<br>`src/services/*` | 处理用户交互输入，监听外部变更并协调状态机、领域层与适配层执行副作用流 | 依赖核心层与适配层 | 包含底层文件去重遍历细节、直接操作 VS Code DAP 接口 |
+| **核心领域层** | `src/core/*`<br>（`sceneStateManager.ts`, `healingAdapter.ts`, `types.ts`） | 维护全局激活场景、核心拓扑快照与防竞态锁（100% SSOT），双向滑动窗口加权打分自愈纯算法 | 零外部环境依赖或仅依赖 VS Code 基础 EventEmitter | 依赖任何具体 UI 控件或文件系统 I/O |
+| **配置与持久化层** | `src/config/*`<br>（`configManager.ts`, `configStorage.ts`, `sceneOperations.ts` 等） | JSON 配置路径推导、防御性数据清洗、纯领域断点拓扑 Diff (`computeBreakpointsTopologyHash`)、幽灵场景校验与合并 | 依赖 Node 文件系统与类型契约（100% 纯逻辑） | 依赖 commands 策略层命令、UI 状态或断点装配下发逻辑 |
+| **宿主适配与视图层** | `src/adapters/*`<br>`src/providers/*`<br>`src/views/*` | 对齐 VS Code DAP 原生断点协议（`adapters/`）、实现 VS Code 标准 Provider 契约（`providers/`：TreeData, CodeLens, TextContent）、状态栏响应式视图渲染（`views/`） | 依赖核心层契约 | 直接执行文件持久化回写（消除隐式 I/O 副作用） |
 
 ---
 
@@ -74,7 +73,7 @@
 | **INV-007** | **启动项联动的三级优先级匹配与幂等拦截守卫**：调试启动配置推导场景必须严格遵循三级优先级（`env.DEBUG_SCENE` > `bindings` > 智能同名匹配），大小写不敏感；若推导出的场景集合与当前已激活场景集合一致，必须幂等静默放行，0 冗余下发开销；装配过程必须受 `isApplying` 原子锁保护，杜绝打断调试器启动流程。 | `src/configManager.ts` 与 `src/extension.ts` |
 | **INV-008** | **断点全双工同步与死循环防回环守卫 (Echo Loop Guard)**：断点启用/禁用状态在编辑器 DAP、树视图与 JSON 文件间实时同步时，必须受 `isApplyingScene` 原子锁与内部保存时间戳（`markInternalSaving`）隔离保护，杜绝“改断点 $\rightarrow$ 刷文件 $\rightarrow$ 文件监听 $\rightarrow$ 重新装配”的恶性死循环；反向同步仅允许更新当前正处于激活态的场景，严禁污染未激活场景中的配置条目。 | `src/breakpointAdapter.ts`、`src/configManager.ts` 与 `src/extension.ts` |
 | **INV-009** | **幽灵场景存在性推导校验与拦截守卫 (Ghost Scene Guard)**：调试启动配置推导（`resolveLaunchBoundScenes`）或命令激活时，推导出的场景名必须在 `config.scenes` 中真实存在（大小写容错）。未在场景字典中定义的虚假/拼写错误场景必须被强行拦截，绝不作为当前激活状态写入状态机，杜绝状态栏误染绿与断点误清空。 | `src/configManager.ts` 与 `src/commands/applyScene.ts` |
-| **INV-010** | **`activeScenes` 严格回写时序与 SSOT 锁死**：执行场景切换时，必须严格遵循“先落盘 `activeScenes`，后装配 DAP 断点”的时序（`markInternalSaving` $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 释放安全窗）。绝不可颠倒为先装配后落盘，确保磁盘始终为权威 SSOT，杜绝装配异常或崩溃导致磁盘与内存状态分叉。 | `src/commands/applyScene.ts` 与 `src/coordinators/syncCoordinator.ts` |
+| **INV-010** | **`activeScenes` 严格回写时序与 SSOT 锁死**：执行场景切换时，必须严格遵循“先落盘 `activeScenes`，后装配 DAP 断点”的时序（`markInternalSaving` $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 释放安全窗）。绝不可颠倒为先装配后落盘，确保磁盘始终为权威 SSOT，杜绝装配异常或崩溃导致磁盘与内存状态分叉。 | `src/commands/applyScene.ts` 与 `src/services/syncCoordinator.ts` |
 | **INV-011** | **多场景断点合并先到先得（First-Declared-Wins）与 `enabled: false` 显式覆盖规范**：以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，断点首次出现即存入合并字典；`enabled: false` 严格参与先到先得去重，后出现的同物理位置断点直接忽略，确保与代码实现 100% 确定性保真。 | `src/config/sceneOperations.ts` (`mergeScenesBreakpoints`) |
 | **INV-012** | **调试会话保护（挂起策略 A）与核心拓扑 Diff 防线**：调试会话进行中（`activeDebugSession` 存在）外部修改断点拓扑时，绝不强制打断开发者心流，标记 `pendingTopologyUpdate = true` 并在会话终止时平滑补发；比对“磁盘新拓扑 vs `lastAppliedTopologyHash`”，若核心断点字段（`file+line+type+condition+hitCondition+logMessage+enabled`）未变，坚决阻断 DAP 重刷。快照在会话终止、清空命令及插件重启时显式失效。 | `src/config/aiActivationResolver.ts` |
 | **INV-013** | **Skill 核心正文指纹唯一性与生命周期判定纯净性**：跨平台 Agent Skill/Rules 的版本判定必须先剥离宿主平台特定的 Frontmatter 元数据头部并对换行符（CRLF/LF）及行末空白执行标准化归一化，基于纯净正文 SHA-256 哈希进行 `O(1)` 反查。未匹配官方历史哈希且正文不一致时，严格判定为用户已自定义修改（`CustomModified`），杜绝不可靠的文本自动合并，必须依托 VS Code 原生 `vscode.diff` 并排比对由用户自主裁决，并在任意覆写操作前强制在同目录下生成带时间戳的 `.bak` 物理备份副本。 | `src/config/skillLifecycleResolver.ts`、`src/commands/skillCommands.ts` 与 `src/providers/templateContentProvider.ts` |
@@ -155,9 +154,10 @@
 | 2026-09-12 | 完善插件市场文档在线绝对链接、分发包放行使用指南并增强树节点热重载空值安全守卫 (v1.0.2) | Tony.L | KDD-DOCS-PKG-001 |
 | 2026-09-12 | 落地 AI 声明式 activeScenes 响应式监听与 Content Hash 防回环协作规范 (INV-008, v1.1.0) | Tony.L | KDD-AI-SKILL-001 |
 | 2026-09-12 | 扩充主流 VS Code AI Agent 集成矩阵至 8 大基于 VS Code 平台及多端 Skill 资产分发 (v1.1.0) | Tony.L | KDD-AI-AGENT-EXPAND-001 |
-| 2026-09-12 | 架构解耦：建立 coordinators 协同调度层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
+| 2026-09-12 | 架构解耦：建立 services 协同服务层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
 | 2026-09-12 | 全面补齐命令中枢、同步协调器、并发互斥队列与即刻点亮单测，升级为 11 大全维自动化套件 (v1.1.0) | Tony.L | KDD-TEST-007 |
 | 2026-09-12 | 沉淀 skill_design.md 规范至知识库：新增 INV-010 回写时序、INV-011 多场景合并先到先得、INV-012 会话保护与禁止 conditional 约束 | Tony.L | KDD-SKILL-MIGRATE-001 |
 | 2026-09-12 | 落地 @vscode/test-electron 驱动的真实隔离宿主端到端 (E2E) 测试脚手架与用例闭环 | Tony.L | KDD-E2E-TEST-001 |
 | 2026-09-12 | 确立 34 大全量 E2E 场景规范 (e2e-scenarios.md) 与功能演进必须同步更新用例的铁律 | Tony.L | KDD-E2E-SPEC-001 |
 | 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (INV-013, v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |
+| 2026-09-13 | 建立清晰的 7 大架构分层目录 (core, config, adapters, providers, coordinators, views, commands)，完成职责极致归位 | Tony.L | KDD-ARCH-LAYERS-001 |

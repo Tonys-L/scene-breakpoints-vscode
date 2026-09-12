@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { getWorkspaceRoot, loadScenesConfig } from "./configManager";
-import { sceneStateManager } from "./sceneStateManager";
-import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "./types";
+import { getWorkspaceRoot, loadScenesConfig } from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
+import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";
 
 export type SceneTreeItem = SceneNode | BreakpointNode | PlaceholderNode;
 
@@ -49,8 +49,9 @@ export class BreakpointNode extends vscode.TreeItem {
 		public readonly sceneName: string,
 		public readonly index: number,
 		public readonly breakpoint: SceneBreakpoint,
-		workspaceRoot: string,
+		private readonly workspaceRoot: string,
 		private readonly extensionPath: string,
+		private pausedLocation: { file: string; line: number } | null = null,
 	) {
 		const isFunc = breakpoint.type === "function";
 		const label = isFunc
@@ -66,37 +67,8 @@ export class BreakpointNode extends vscode.TreeItem {
 			: `${(breakpoint as SourceSceneBreakpoint).file}:${(breakpoint as SourceSceneBreakpoint).line}`;
 		this.id = `bp:${sceneName}:${index}:${bpIdentifier}`;
 
-		this.updateAppearance();
-
-		if (isFunc) {
-			const funcBp = breakpoint as FunctionSceneBreakpoint;
-			this.description = funcBp.desc || funcBp.condition || funcBp.hitCondition;
-			this.tooltip = vscode.l10n.t("Function Breakpoint: {0}", funcBp.functionName);
-		} else {
+		if (!isFunc) {
 			const srcBp = breakpoint as SourceSceneBreakpoint;
-			const isUnmatched =
-				sceneStateManager.isSceneActive(sceneName) &&
-				sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
-
-			let extra = srcBp.desc;
-			if (!extra) {
-				if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
-				else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
-				else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
-			}
-			if (isUnmatched) {
-				const unmatchTag = `[${vscode.l10n.t("Unmatched")}]`;
-				extra = extra ? `${unmatchTag}  •  ${extra}` : unmatchTag;
-			}
-			this.description = extra;
-
-			let tip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `\n${srcBp.desc}` : ""}`;
-			if (isUnmatched) {
-				tip = `[${vscode.l10n.t("Unmatched")}] ${vscode.l10n.t("Could not match current code (fell back to original line)")}\n${tip}`;
-			}
-			this.tooltip = tip;
-
-			// 单击直接打开源码并高亮选中断点行！
 			const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(workspaceRoot, srcBp.file);
 			const targetLine = Math.max(0, srcBp.line - 1);
 			this.command = {
@@ -111,6 +83,31 @@ export class BreakpointNode extends vscode.TreeItem {
 				],
 			};
 		}
+
+		this.updateAppearance();
+	}
+
+	public setPausedLocation(loc: { file: string; line: number } | null): void {
+		this.pausedLocation = loc;
+		this.updateAppearance();
+	}
+
+	public isPausedAtBreakpoint(): boolean {
+		if (!this.pausedLocation || this.breakpoint.type === "function") {
+			return false;
+		}
+		const srcBp = this.breakpoint as SourceSceneBreakpoint;
+		if (Number(srcBp.line) !== Number(this.pausedLocation.line)) {
+			return false;
+		}
+		const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(this.workspaceRoot, srcBp.file);
+		if (isSamePath(fullFilePath, this.pausedLocation.file)) {
+			return true;
+		}
+		// 容错：尾部路径匹配（应对 monorepo/符号链接/路径前缀差异）
+		const p1 = this.pausedLocation.file.replace(/\\/g, "/").toLowerCase();
+		const p2 = srcBp.file.replace(/\\/g, "/").toLowerCase();
+		return p1.endsWith("/" + p2) || p1.endsWith(p2);
 	}
 
 	public updateAppearance(): void {
@@ -118,6 +115,51 @@ export class BreakpointNode extends vscode.TreeItem {
 		this.checkboxState = isEnabled
 			? vscode.TreeItemCheckboxState.Checked
 			: vscode.TreeItemCheckboxState.Unchecked;
+
+		const isPaused = this.isPausedAtBreakpoint();
+
+		if (this.breakpoint.type === "function") {
+			const funcBp = this.breakpoint as FunctionSceneBreakpoint;
+			this.description = funcBp.desc || funcBp.condition || funcBp.hitCondition;
+			this.tooltip = vscode.l10n.t("Function Breakpoint: {0}", funcBp.functionName);
+		} else {
+			const srcBp = this.breakpoint as SourceSceneBreakpoint;
+			const isUnmatched =
+				sceneStateManager.isSceneActive(this.sceneName) &&
+				sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
+
+			let extra = srcBp.desc;
+			if (!extra) {
+				if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
+				else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
+				else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
+			}
+			if (isUnmatched) {
+				const unmatchTag = `[${vscode.l10n.t("Unmatched")}]`;
+				extra = extra ? `${unmatchTag}  •  ${extra}` : unmatchTag;
+			}
+			if (isPaused) {
+				const pausedTag = `▶ ${vscode.l10n.t("[PAUSED]")}`;
+				extra = extra ? `${pausedTag}  •  ${extra}` : pausedTag;
+			}
+			this.description = extra;
+
+			let tip = `${srcBp.file}:${srcBp.line}${srcBp.desc ? `\n${srcBp.desc}` : ""}`;
+			if (isUnmatched) {
+				tip = `[${vscode.l10n.t("Unmatched")}] ${vscode.l10n.t("Could not match current code (fell back to original line)")}\n${tip}`;
+			}
+			if (isPaused) {
+				tip = `▶ [${vscode.l10n.t("Currently Paused Here")}]\n${tip}`;
+			}
+			this.tooltip = tip;
+		}
+
+		// 若正处于调试命中暂停状态，优先呈现专属饱满矢量 SVG 图标
+		if (isPaused) {
+			this.iconPath = vscode.Uri.file(path.join(this.extensionPath, "media", "icons", "bp-paused.svg"));
+			this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+			return;
+		}
 
 		const isUnmatched =
 			this.breakpoint.type !== "function" &&
@@ -161,6 +203,12 @@ export class BreakpointNode extends vscode.TreeItem {
 	}
 }
 
+function isSamePath(p1: string, p2: string): boolean {
+	const n1 = path.normalize(p1).toLowerCase();
+	const n2 = path.normalize(p2).toLowerCase();
+	return n1 === n2;
+}
+
 export class PlaceholderNode extends vscode.TreeItem {
 	constructor(message: string, icon = "info") {
 		super(message, vscode.TreeItemCollapsibleState.None);
@@ -173,7 +221,47 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 	private readonly _onDidChangeTreeData = new vscode.EventEmitter<SceneTreeItem | undefined | void>();
 	public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+	private _pausedLocation: { file: string; line: number } | null = null;
+	private _sceneNodesMap = new Map<string, SceneNode>();
+	private _activeBreakpointNodes: BreakpointNode[] = [];
+
 	constructor(private readonly extensionPath: string = "") {}
+
+	public setPausedLocation(file: string, line: number): void {
+		this._pausedLocation = { file, line };
+		for (const node of this._activeBreakpointNodes) {
+			node.setPausedLocation(this._pausedLocation);
+		}
+		this.refresh();
+	}
+
+	public clearPausedLocation(): void {
+		if (this._pausedLocation) {
+			this._pausedLocation = null;
+			for (const node of this._activeBreakpointNodes) {
+				node.setPausedLocation(null);
+			}
+			this.refresh();
+		}
+	}
+
+	public getPausedLocation(): { file: string; line: number } | null {
+		return this._pausedLocation;
+	}
+
+	public findPausedBreakpointNode(): BreakpointNode | undefined {
+		if (!this._pausedLocation) return undefined;
+		return this._activeBreakpointNodes.find((n) => n.isPausedAtBreakpoint());
+	}
+
+	public getParent(element: SceneTreeItem): vscode.ProviderResult<SceneTreeItem> {
+		if (element instanceof BreakpointNode) {
+			const parent = this._sceneNodesMap.get(element.sceneName);
+			if (parent) return parent;
+			return new SceneNode(element.sceneName, 0, sceneStateManager.isSceneActive(element.sceneName), false);
+		}
+		return undefined;
+	}
 
 	public refresh(element?: SceneTreeItem): void {
 		this._onDidChangeTreeData.fire(element);
@@ -208,12 +296,14 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 			const activeScenes = sceneStateManager.getActiveScenes();
 			const isDirty = sceneStateManager.getIsDirty();
 
+			this._sceneNodesMap.clear();
 			return sceneNames.map((name) => {
 				const bps = (config.scenes && Array.isArray(config.scenes[name])) ? config.scenes[name] : [];
 				const isActive = activeScenes.includes(name);
-				return new SceneNode(name, bps.length, isActive, isDirty && isActive);
+				const node = new SceneNode(name, bps.length, isActive, isDirty && isActive);
+				this._sceneNodesMap.set(name, node);
+				return node;
 			});
-
 		}
 
 		// 子节点：返回指定场景内的断点列表
@@ -225,9 +315,73 @@ export class SceneTreeDataProvider implements vscode.TreeDataProvider<SceneTreeI
 			if (list.length === 0) {
 				return [new PlaceholderNode(vscode.l10n.t("No breakpoints in this scene"))];
 			}
-			return list.map((bp, idx) => new BreakpointNode(element.sceneName, idx, bp, workspaceRoot, this.extensionPath));
+			const nodes = list.map((bp, idx) =>
+				new BreakpointNode(element.sceneName, idx, bp, workspaceRoot, this.extensionPath, this._pausedLocation),
+			);
+			// 记录缓存以备 reveal 定位
+			this._activeBreakpointNodes = this._activeBreakpointNodes
+				.filter((n) => n.sceneName !== element.sceneName)
+				.concat(nodes);
+			return nodes;
 		}
 
 		return [];
 	}
+
+	/**
+	 * 统一高亮与自动展开调试运行时命中的断点节点 (UI 呈现深接口)
+	 */
+	public async revealPausedLocation(
+		treeView: vscode.TreeView<SceneTreeItem>,
+		file: string,
+		line: number,
+	): Promise<void> {
+		this.setPausedLocation(file, line);
+		const workspaceRoot = getWorkspaceRoot(false);
+		if (!workspaceRoot) return;
+
+		let pausedNode = this.findPausedBreakpointNode();
+		if (!pausedNode) {
+			// 若当前所属场景尚未展开，主动遍历激活场景寻找匹配项并触发展开
+			const config = loadScenesConfig(workspaceRoot);
+			const activeScenes = sceneStateManager.getActiveScenes();
+			const fullTarget = path.normalize(file).toLowerCase();
+
+			for (const sceneName of activeScenes) {
+				const bps = config.scenes[sceneName] || [];
+				const hit = bps.some((b) => {
+					if (b.type === "function") return false;
+					const src = b as SourceSceneBreakpoint;
+					if (Number(src.line) !== line) return false;
+					const fp = path.normalize(
+						path.isAbsolute(src.file) ? src.file : path.join(workspaceRoot, src.file),
+					).toLowerCase();
+					const rawSrc = path.normalize(src.file).toLowerCase().replace(/\\/g, "/");
+					const targetNorm = fullTarget.replace(/\\/g, "/");
+					return fp === fullTarget || targetNorm.endsWith("/" + rawSrc) || targetNorm.endsWith(rawSrc);
+				});
+
+				if (hit) {
+					const parentNode = new SceneNode(sceneName, bps.length, true, false);
+					try {
+						await treeView.reveal(parentNode, { expand: true });
+						await this.getChildren(parentNode);
+						pausedNode = this.findPausedBreakpointNode();
+						if (pausedNode) break;
+					} catch {
+						// 容错忽略展开异常
+					}
+				}
+			}
+		}
+
+		if (pausedNode) {
+			try {
+				await treeView.reveal(pausedNode, { select: true, focus: false });
+			} catch {
+				// 树项未完全载入时安全降级
+			}
+		}
+	}
 }
+

@@ -39,4 +39,3 @@ export interface ScenesConfig {
 	bindings?: Record<string, string | string[]>; // launch.json 配置名称与场景的映射关系
 	scenes: Record<string, SceneBreakpoint[]>;
 }
-

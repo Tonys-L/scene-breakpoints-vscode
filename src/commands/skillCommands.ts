@@ -6,9 +6,9 @@ import {
 	resolveSkillLifecycleState,
 	SkillStatus,
 } from "../config/skillLifecycleResolver";
-import { getWorkspaceRoot, loadScenesConfig } from "../configManager";
+import { getWorkspaceRoot, loadScenesConfig } from "../config/configManager";
 import { templateContentProvider } from "../providers/templateContentProvider";
-import { sceneStateManager } from "../sceneStateManager";
+import { sceneStateManager } from "../core/sceneStateManager";
 
 export interface SkillTargetItem extends vscode.QuickPickItem {
 	dir: string;

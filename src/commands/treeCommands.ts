@@ -1,19 +1,24 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { syncBreakpointEnabledToEditor } from "../breakpointAdapter";
+import { syncBreakpointEnabledToEditor } from "../adapters/breakpointAdapter";
 import {
 	deleteSceneFromConfig,
 	duplicateSceneInConfig,
+	findBreakpointLineInJson,
 	getWorkspaceRoot,
 	loadScenesConfig,
+	moveBreakpointInScene,
 	renameSceneInConfig,
 	removeBreakpointFromConfig,
 	saveScenesConfig,
 	setAllBreakpointsEnabledInScene,
 	toggleBreakpointEnabledInConfig,
-} from "../configManager";
-import { sceneStateManager } from "../sceneStateManager";
-import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../sceneTreeProvider";
-import { syncCoordinator } from "../syncCoordinator";
+} from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
+import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../providers/sceneTreeProvider";
+import { syncService } from "../services/syncService";
+const syncCoordinator = syncService;
 import { applySceneCommand } from "./applyScene";
 
 /**
@@ -158,7 +163,7 @@ export function registerTreeCommands(
 		},
 	);
 
-	// 8. 切换单个断点启用/禁用状态 (内联按钮)
+	// 8. 切换单个断点启用/禁用状态
 	const toggleBpItemCmd = vscode.commands.registerCommand(
 		"sceneBreakpoints.toggleBreakpointItem",
 		async (node?: BreakpointNode) => {
@@ -172,7 +177,7 @@ export function registerTreeCommands(
 				const updatedBp = config.scenes[node.sceneName]?.[node.index];
 				if (updatedBp) {
 					node.breakpoint.enabled = updatedBp.enabled;
-					node.updateAppearance();
+					node.updateAppearance(workspaceRoot);
 				}
 				syncCoordinator.markInternalSaving();
 				saveScenesConfig(workspaceRoot, config);
@@ -273,6 +278,77 @@ export function registerTreeCommands(
 		},
 	);
 
+	// 12. 在 debug-scenes.json 中定位指定断点
+	const revealInConfigFileCmd = vscode.commands.registerCommand(
+		"sceneBreakpoints.revealInConfigFile",
+		async (node?: BreakpointNode) => {
+			if (!node || !node.sceneName || !node.breakpoint) return;
+			const workspaceRoot = getWorkspaceRoot(true);
+			if (!workspaceRoot) return;
+
+			const configPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
+			if (!fs.existsSync(configPath)) {
+				vscode.window.showWarningMessage(
+					vscode.l10n.t("Failed to read debug-scenes.json: {0}", vscode.l10n.t("File does not exist")),
+				);
+				return;
+			}
+
+			try {
+				const content = fs.readFileSync(configPath, "utf-8");
+				const targetLine = findBreakpointLineInJson(content, node.sceneName, node.breakpoint);
+				const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(configPath));
+				const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+				const lineIdx = Math.max(0, targetLine - 1);
+				const pos = new vscode.Position(lineIdx, 0);
+				const range = new vscode.Range(pos, pos);
+				editor.selection = new vscode.Selection(pos, pos);
+				editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+			} catch (err: any) {
+				vscode.window.showErrorMessage(
+					vscode.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err)),
+				);
+			}
+		},
+	);
+
+	// 13. 上移断点次序
+	const moveBpUpCmd = vscode.commands.registerCommand(
+		"sceneBreakpoints.moveBreakpointUp",
+		async (node?: BreakpointNode) => {
+			if (!node || typeof node.index !== "number" || !node.sceneName) return;
+			const workspaceRoot = getWorkspaceRoot(true);
+			if (!workspaceRoot) return;
+
+			const config = loadScenesConfig(workspaceRoot);
+			const moved = moveBreakpointInScene(config, node.sceneName, node.index, "up");
+			if (moved) {
+				syncCoordinator.markInternalSaving();
+				saveScenesConfig(workspaceRoot, config);
+				treeDataProvider.refresh();
+			}
+		},
+	);
+
+	// 14. 下移断点次序
+	const moveBpDownCmd = vscode.commands.registerCommand(
+		"sceneBreakpoints.moveBreakpointDown",
+		async (node?: BreakpointNode) => {
+			if (!node || typeof node.index !== "number" || !node.sceneName) return;
+			const workspaceRoot = getWorkspaceRoot(true);
+			if (!workspaceRoot) return;
+
+			const config = loadScenesConfig(workspaceRoot);
+			const moved = moveBreakpointInScene(config, node.sceneName, node.index, "down");
+			if (moved) {
+				syncCoordinator.markInternalSaving();
+				saveScenesConfig(workspaceRoot, config);
+				treeDataProvider.refresh();
+			}
+		},
+	);
+
 	context.subscriptions.push(
 		refreshViewCmd,
 		createNewSceneCmd,
@@ -285,5 +361,8 @@ export function registerTreeCommands(
 		enableAllBreakpointsInSceneCmd,
 		disableAllBreakpointsInSceneCmd,
 		duplicateSceneCmd,
+		revealInConfigFileCmd,
+		moveBpUpCmd,
+		moveBpDownCmd,
 	);
 }

@@ -4,7 +4,7 @@ import type {
 	SceneBreakpoint,
 	ScenesConfig,
 	SourceSceneBreakpoint,
-} from "../types";
+} from "../core/types";
 
 /**
  * 将断点按唯一性契约（文件+行号或函数名）合并更新至指定场景中
@@ -264,4 +264,89 @@ export function mergeScenesBreakpoints(
 	}
 
 	return merged;
+}
+
+/**
+ * 在指定场景中调整断点的排列次序（上移/下移）
+ */
+export function moveBreakpointInScene(
+	config: ScenesConfig,
+	sceneName: string,
+	index: number,
+	direction: "up" | "down",
+): boolean {
+	const list = config.scenes?.[sceneName];
+	if (!Array.isArray(list) || index < 0 || index >= list.length) {
+		return false;
+	}
+
+	const targetIndex = direction === "up" ? index - 1 : index + 1;
+	if (targetIndex < 0 || targetIndex >= list.length) {
+		return false;
+	}
+
+	const temp = list[index];
+	list[index] = list[targetIndex];
+	list[targetIndex] = temp;
+	return true;
+}
+
+/**
+ * 在 JSON 源码文本中快速检索定位指定场景中断点所在的物理行号 (1-indexed)
+ */
+export function findBreakpointLineInJson(
+	jsonContent: string,
+	sceneName: string,
+	bp: SceneBreakpoint,
+): number {
+	const lines = jsonContent.split(/\r?\n/);
+	let inTargetScene = false;
+	let sceneLine = 1;
+	let bracketDepth = 0;
+
+	for (let i = 0; i < lines.length; i++) {
+		const lineText = lines[i];
+		// 寻找目标场景键名，例如 "my-scene": [
+		if (!inTargetScene) {
+			const scenePattern = new RegExp(`"${escapeRegExp(sceneName)}"\\s*:`);
+			if (scenePattern.test(lineText)) {
+				inTargetScene = true;
+				sceneLine = i + 1;
+				bracketDepth = (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+			}
+			continue;
+		}
+
+		// 处于目标场景的数组块内
+		bracketDepth += (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+		if (bracketDepth < 0 || (bracketDepth === 0 && lineText.includes("]"))) {
+			// 退出目标场景数组
+			break;
+		}
+
+		// 函数断点匹配
+		if (bp.type === "function") {
+			const fn = bp as FunctionSceneBreakpoint;
+			if (fn.functionName && lineText.includes(`"${fn.functionName}"`)) {
+				return i + 1;
+			}
+		} else {
+			// 文件行断点匹配
+			const src = bp as SourceSceneBreakpoint;
+			const targetFile = (src.file || "").replace(/\\/g, "/");
+			const baseName = path.basename(targetFile);
+			if (
+				(lineText.includes(`"${targetFile}"`) || lineText.includes(`"${baseName}"`)) ||
+				(lineText.includes(`"line"`) && lineText.includes(String(src.line)))
+			) {
+				return i + 1;
+			}
+		}
+	}
+
+	return sceneLine;
+}
+
+function escapeRegExp(str: string): string {
+	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

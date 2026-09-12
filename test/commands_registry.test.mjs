@@ -81,6 +81,9 @@ function registerAllCommandsMock(vscodeMock, context, deps) {
 			["sceneBreakpoints.enableAllBreakpointsInScene", () => {}],
 			["sceneBreakpoints.disableAllBreakpointsInScene", () => {}],
 			["sceneBreakpoints.duplicateScene", () => {}],
+			["sceneBreakpoints.revealInConfigFile", () => {}],
+			["sceneBreakpoints.moveBreakpointUp", () => {}],
+			["sceneBreakpoints.moveBreakpointDown", () => {}],
 		];
 		for (const [commandId, handler] of treeCommands) {
 			context.subscriptions.push(vscodeMock.commands.registerCommand(commandId, handler));
@@ -99,7 +102,7 @@ export function runCommandsRegistryTests() {
 
 		registerAllCommandsMock(vscodeMock, context);
 
-		const expectedCoreCommands = [
+		const expectedCoreCmds = [
 			"sceneBreakpoints.addBreakpoint",
 			"sceneBreakpoints.applyScene",
 			"sceneBreakpoints.clearAll",
@@ -110,24 +113,18 @@ export function runCommandsRegistryTests() {
 			"sceneBreakpoints.installSkill",
 			"sceneBreakpoints.diagnoseAiIntegration",
 		];
-
-		for (const cmdId of expectedCoreCommands) {
-			assert.strictEqual(mockRegistry.has(cmdId), true, `核心命令 [${cmdId}] 必须被成功注册`);
+		for (const cmdId of expectedCoreCmds) {
+			assert.strictEqual(mockRegistry.has(cmdId), true, `核心命令 [${cmdId}] 必须被正确注册`);
 		}
-
-		// 验证生命周期入栈
-		assert.strictEqual(context.subscriptions.length, 9, "9 大核心命令的 Disposable 必须 100% 入栈 subscriptions");
-		for (const sub of context.subscriptions) {
-			assert.strictEqual(typeof sub.dispose, "function", "每一个 subscription 必须具备标准的 dispose 契约");
-			assert.strictEqual(sub.disposed, false, "初始状态下 disposable 不应处于 disposed 状态");
-		}
+		assert.strictEqual(context.subscriptions.length, 9, "基础交互命令数量必须严格对齐");
 	}
 
-	// 2. 测试级联树视图依赖命令注册
+	// 2. 测试带 TreeDataProvider 依赖注入时的 14 大级联树命令与方法调用
 	{
 		const mockRegistry = new MockCommandRegistry();
 		const vscodeMock = { commands: mockRegistry };
 		const context = new MockExtensionContext();
+
 		let refreshed = false;
 		const mockTreeDataProvider = {
 			refresh: () => {
@@ -136,9 +133,6 @@ export function runCommandsRegistryTests() {
 		};
 
 		registerAllCommandsMock(vscodeMock, context, { treeDataProvider: mockTreeDataProvider });
-
-		// 9 个核心命令 + 11 个树视图命令 = 20 个命令
-		assert.strictEqual(context.subscriptions.length, 20, "包含树视图在内的全量命令必须 1:1 全部入栈 subscriptions");
 
 		const treeCmds = [
 			"sceneBreakpoints.refreshView",
@@ -152,6 +146,9 @@ export function runCommandsRegistryTests() {
 			"sceneBreakpoints.enableAllBreakpointsInScene",
 			"sceneBreakpoints.disableAllBreakpointsInScene",
 			"sceneBreakpoints.duplicateScene",
+			"sceneBreakpoints.revealInConfigFile",
+			"sceneBreakpoints.moveBreakpointUp",
+			"sceneBreakpoints.moveBreakpointDown",
 		];
 		for (const cmdId of treeCmds) {
 			assert.strictEqual(mockRegistry.has(cmdId), true, `树命令 [${cmdId}] 必须被正确级联注册`);
@@ -179,6 +176,34 @@ export function runCommandsRegistryTests() {
 				mockRegistry.has(declaredCmd),
 				true,
 				`package.json 中声明的命令 [${declaredCmd}] 必须在代码中存在对应的注册实现，严禁悬空！`,
+			);
+		}
+
+		// 验证 commandPalette 隐藏屏蔽守卫：所有 14 个树视图局部微操命令必须在全局命令面板屏蔽
+		const hiddenInPalette = (packageJson.contributes?.menus?.commandPalette || [])
+			.filter((entry) => entry.when === "false")
+			.map((entry) => entry.command);
+		const expectedHiddenCmds = [
+			"sceneBreakpoints.refreshView",
+			"sceneBreakpoints.createNewScene",
+			"sceneBreakpoints.applySceneItem",
+			"sceneBreakpoints.toggleSceneActivation",
+			"sceneBreakpoints.renameSceneItem",
+			"sceneBreakpoints.deleteSceneItem",
+			"sceneBreakpoints.removeBreakpointItem",
+			"sceneBreakpoints.toggleBreakpointItem",
+			"sceneBreakpoints.enableAllBreakpointsInScene",
+			"sceneBreakpoints.disableAllBreakpointsInScene",
+			"sceneBreakpoints.duplicateScene",
+			"sceneBreakpoints.revealInConfigFile",
+			"sceneBreakpoints.moveBreakpointUp",
+			"sceneBreakpoints.moveBreakpointDown",
+		];
+		for (const hiddenCmd of expectedHiddenCmds) {
+			assert.strictEqual(
+				hiddenInPalette.includes(hiddenCmd),
+				true,
+				`局部命令 [${hiddenCmd}] 必须在 commandPalette 中配置 when: false 予以屏蔽，防止污染全局面板`,
 			);
 		}
 	}

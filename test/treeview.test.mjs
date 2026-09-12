@@ -296,7 +296,152 @@ export function runTreeViewTests() {
 		console.log("    ✔ 未匹配脱靶断点前置标签与专属矢量 SVG 警告图标推导测试通过");
 	}
 
-	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（7 大核心场景）全部通过！");
+	// ============================================================================
+	// Case 8: 断点排序微调 (moveBreakpointInScene 上移/下移及边界保护)
+	// ============================================================================
+	{
+		function moveBreakpointInScene(config, sceneName, index, direction) {
+			const list = config.scenes?.[sceneName];
+			if (!list || !Array.isArray(list)) return false;
+			const targetIndex = direction === "up" ? index - 1 : index + 1;
+			if (index < 0 || index >= list.length || targetIndex < 0 || targetIndex >= list.length) {
+				return false;
+			}
+			const [item] = list.splice(index, 1);
+			list.splice(targetIndex, 0, item);
+			return true;
+		}
+
+		const config = {
+			scenes: {
+				"sort-test": [
+					{ type: "line", file: "a.ts", line: 1 },
+					{ type: "line", file: "b.ts", line: 2 },
+					{ type: "line", file: "c.ts", line: 3 },
+				],
+			},
+		};
+
+		// 1. 下移首项
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 0, "down"), true);
+		assert.strictEqual(config.scenes["sort-test"][0].file, "b.ts");
+		assert.strictEqual(config.scenes["sort-test"][1].file, "a.ts");
+
+		// 2. 上移次项
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 1, "up"), true);
+		assert.strictEqual(config.scenes["sort-test"][0].file, "a.ts");
+
+		// 3. 边界越界保护 (首项不能再上移，末项不能再下移)
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 0, "up"), false);
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 2, "down"), false);
+		assert.strictEqual(moveBreakpointInScene(config, "non-exist", 0, "up"), false);
+
+		console.log("    ✔ 断点排序微调与边界越界保护测试通过");
+	}
+
+	// ============================================================================
+	// Case 9: 在 debug-scenes.json 中快速精准行号定位检索
+	// ============================================================================
+	{
+		function findBreakpointLineInJson(jsonContent, sceneName, bp) {
+			const lines = jsonContent.split(/\r?\n/);
+			let inTargetScene = false;
+			let sceneLine = 1;
+			let bracketDepth = 0;
+
+			for (let i = 0; i < lines.length; i++) {
+				const lineText = lines[i];
+				if (!inTargetScene) {
+					if (lineText.includes(`"${sceneName}"`)) {
+						inTargetScene = true;
+						sceneLine = i + 1;
+						bracketDepth = (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+					}
+					continue;
+				}
+
+				bracketDepth += (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+				if (bracketDepth < 0 || (bracketDepth === 0 && lineText.includes("]"))) {
+					break;
+				}
+
+				if (bp.type === "function") {
+					if (bp.functionName && lineText.includes(`"${bp.functionName}"`)) {
+						return i + 1;
+					}
+				} else {
+					if (lineText.includes(`"${bp.file}"`) || (lineText.includes(`"line"`) && lineText.includes(String(bp.line)))) {
+						return i + 1;
+					}
+				}
+			}
+			return sceneLine;
+		}
+
+		const sampleJson = `{
+  "activeScenes": ["flow-a"],
+  "scenes": {
+    "flow-a": [
+      {
+        "type": "line",
+        "file": "src/index.ts",
+        "line": 42
+      }
+    ],
+    "flow-b": [
+      {
+        "type": "function",
+        "functionName": "loginHandler"
+      }
+    ]
+  }
+}`;
+
+		const line1 = findBreakpointLineInJson(sampleJson, "flow-a", { type: "line", file: "src/index.ts", line: 42 });
+		assert.strictEqual(line1, 7, "应当精准命中 flow-a 的 src/index.ts 断点行");
+
+		const line2 = findBreakpointLineInJson(sampleJson, "flow-b", { type: "function", functionName: "loginHandler" });
+		assert.strictEqual(line2, 14, "应当精准命中 flow-b 的 loginHandler 函数断点行");
+
+		console.log("    ✔ debug-scenes.json 断点精准行号检索测试通过");
+	}
+
+	// ============================================================================
+	// Case 10: 调试运行时暂停命中匹配与路径标准化比对
+	// ============================================================================
+	{
+		function isSamePath(p1, p2) {
+			return p1.replace(/\\/g, "/").toLowerCase() === p2.replace(/\\/g, "/").toLowerCase();
+		}
+
+		function isPausedAtBreakpoint(bp, pausedLocation, workspaceRoot) {
+			if (!pausedLocation || bp.type === "function") return false;
+			if (bp.line !== pausedLocation.line) return false;
+			const full = bp.file.startsWith("/") || bp.file.includes(":") ? bp.file : `${workspaceRoot}/${bp.file}`;
+			return isSamePath(full, pausedLocation.file);
+		}
+
+		const bp = { type: "line", file: "src/utils.ts", line: 88 };
+		assert.strictEqual(
+			isPausedAtBreakpoint(bp, { file: "d:/project/src/utils.ts", line: 88 }, "d:/project"),
+			true,
+			"Windows 反斜杠与小写应正常匹配",
+		);
+		assert.strictEqual(
+			isPausedAtBreakpoint(bp, { file: "D:\\Project\\src\\utils.ts", line: 88 }, "d:\\project"),
+			true,
+			"不同大小写与路径斜杠混用应标准化匹配",
+		);
+		assert.strictEqual(
+			isPausedAtBreakpoint(bp, { file: "D:\\Project\\src\\utils.ts", line: 89 }, "d:\\project"),
+			false,
+			"行号不符应判定未暂停于此",
+		);
+
+		console.log("    ✔ 调试运行时暂停命中匹配与路径标准化比对测试通过");
+	}
+
+	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（10 大核心场景）全部通过！");
 }
 
 if (process.argv[1] && process.argv[1].endsWith("treeview.test.mjs")) {

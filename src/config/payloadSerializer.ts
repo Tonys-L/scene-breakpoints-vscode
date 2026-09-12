@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { SceneBreakpoint, SourceSceneBreakpoint } from "../types";
+import type { SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";
 import { stripJsonComments } from "./configStorage";
 
 /**

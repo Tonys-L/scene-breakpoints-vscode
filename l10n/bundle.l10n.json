@@ -158,6 +158,9 @@
   "Open Diagnostics": "Open Diagnostics",
   "Later": "Later",
   "Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).": "Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).",
-  "Successfully updated {0} Skill(s) to v{1}.": "Successfully updated {0} Skill(s) to v{1}."
+  "Successfully updated {0} Skill(s) to v{1}.": "Successfully updated {0} Skill(s) to v{1}.",
+  "[PAUSED]": "[PAUSED]",
+  "Currently Paused Here": "Currently Paused Here",
+  "File does not exist": "File does not exist"
 }
 

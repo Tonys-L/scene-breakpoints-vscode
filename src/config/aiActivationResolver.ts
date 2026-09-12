@@ -1,4 +1,4 @@
-import type { SceneBreakpoint, SourceSceneBreakpoint, FunctionSceneBreakpoint } from "../types";
+import type { SceneBreakpoint, SourceSceneBreakpoint, FunctionSceneBreakpoint } from "../core/types";
 
 /**
  * 计算断点集合的核心拓扑指纹 Hash (Core Topology Hash)

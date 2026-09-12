@@ -179,6 +179,24 @@
         "title": "%command.duplicateScene%",
         "icon": "$(files)",
         "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.revealInConfigFile",
+        "title": "%command.revealInConfigFile%",
+        "icon": "$(go-to-file)",
+        "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.moveBreakpointUp",
+        "title": "%command.moveBreakpointUp%",
+        "icon": "$(arrow-up)",
+        "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.moveBreakpointDown",
+        "title": "%command.moveBreakpointDown%",
+        "icon": "$(arrow-down)",
+        "category": "Scene"
       }
     ],
     "views": {
@@ -191,6 +209,64 @@
       ]
     },
     "menus": {
+      "commandPalette": [
+        {
+          "command": "sceneBreakpoints.refreshView",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.createNewScene",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.applySceneItem",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.toggleSceneActivation",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.renameSceneItem",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.deleteSceneItem",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.removeBreakpointItem",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.toggleBreakpointItem",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.enableAllBreakpointsInScene",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.disableAllBreakpointsInScene",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.duplicateScene",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.revealInConfigFile",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.moveBreakpointUp",
+          "when": "false"
+        },
+        {
+          "command": "sceneBreakpoints.moveBreakpointDown",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "sceneBreakpoints.applyScene",
@@ -265,24 +341,44 @@
           "group": "2_sceneActions@3"
         },
         {
-          "command": "sceneBreakpoints.toggleBreakpointItem",
+          "command": "sceneBreakpoints.revealInConfigFile",
           "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
           "group": "inline@1"
         },
         {
-          "command": "sceneBreakpoints.removeBreakpointItem",
+          "command": "sceneBreakpoints.moveBreakpointUp",
           "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
           "group": "inline@2"
         },
         {
-          "command": "sceneBreakpoints.toggleBreakpointItem",
+          "command": "sceneBreakpoints.moveBreakpointDown",
           "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
-          "group": "1_actions@1"
+          "group": "inline@3"
         },
         {
           "command": "sceneBreakpoints.removeBreakpointItem",
           "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
+          "group": "inline@4"
+        },
+        {
+          "command": "sceneBreakpoints.revealInConfigFile",
+          "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "sceneBreakpoints.moveBreakpointUp",
+          "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
           "group": "1_actions@2"
+        },
+        {
+          "command": "sceneBreakpoints.moveBreakpointDown",
+          "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "sceneBreakpoints.removeBreakpointItem",
+          "when": "view == sceneBreakpointsView && (viewItem == breakpointItemEnabled || viewItem == breakpointItemDisabled)",
+          "group": "1_actions@4"
         }
       ],
       "editor/context": [

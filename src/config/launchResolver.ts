@@ -1,4 +1,4 @@
-import type { ScenesConfig } from "../types";
+import type { ScenesConfig } from "../core/types";
 
 /**
  * 根据调试配置名称或环境变量安全推导绑定的有效场景列表 (杜绝幽灵激活)

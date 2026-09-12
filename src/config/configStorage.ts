@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { syncCoordinator } from "../syncCoordinator";
-import type { ScenesConfig } from "../types";
+import { syncService } from "../services/syncService";
+const syncCoordinator = syncService;
+import type { ScenesConfig } from "../core/types";
 
 export function getWorkspaceRoot(warnIfMissing = false): string | undefined {
 	const folders = vscode.workspace.workspaceFolders;

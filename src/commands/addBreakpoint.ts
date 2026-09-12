@@ -1,10 +1,10 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { applySingleBreakpointToEditor } from "../breakpointAdapter";
-import { loadScenesConfig, saveScenesConfig, upsertBreakpointToScene } from "../configManager";
-import { extractContextSnippet } from "../healingAdapter";
-import { sceneStateManager } from "../sceneStateManager";
-import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../types";
+import { applySingleBreakpointToEditor } from "../adapters/breakpointAdapter";
+import { loadScenesConfig, saveScenesConfig, upsertBreakpointToScene } from "../config/configManager";
+import { extractContextSnippet } from "../core/healingAdapter";
+import { sceneStateManager } from "../core/sceneStateManager";
+import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";
 
 export async function addBreakpointCommand(): Promise<void> {
 	const editor = vscode.window.activeTextEditor;

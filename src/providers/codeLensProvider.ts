@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
-import { stripJsonComments } from "./configManager";
-import { sceneStateManager } from "./sceneStateManager";
+import { stripJsonComments } from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
 
 function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

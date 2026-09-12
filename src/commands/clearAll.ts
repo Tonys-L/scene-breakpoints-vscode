@@ -1,7 +1,8 @@
-import { clearAllBreakpoints } from "../breakpointAdapter";
-import { sceneStateManager } from "../sceneStateManager";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../configManager";
-import { syncCoordinator } from "../syncCoordinator";
+import { clearAllBreakpoints } from "../adapters/breakpointAdapter";
+import { sceneStateManager } from "../core/sceneStateManager";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../config/configManager";
+import { syncService } from "../services/syncService";
+const syncCoordinator = syncService;
 
 export async function clearAllCommand(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot(false);

@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { collectCurrentBreakpoints } from "../breakpointAdapter";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig, upsertBreakpointToScene } from "../configManager";
-import { sceneStateManager } from "../sceneStateManager";
-import type { SceneBreakpoint } from "../types";
+import { collectCurrentBreakpoints } from "../adapters/breakpointAdapter";
+import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig, upsertBreakpointToScene } from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
+import type { SceneBreakpoint } from "../core/types";
 
 export async function exportSceneCommand(): Promise<void> {
 	const currentBreakpoints = vscode.debug.breakpoints;

@@ -1,9 +1,10 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { applySceneBreakpoints, collectCurrentBreakpoints } from "../breakpointAdapter";
-import { getWorkspaceRoot, loadScenesConfig, mergeScenesBreakpoints, saveScenesConfig } from "../configManager";
-import { sceneStateManager } from "../sceneStateManager";
-import { syncCoordinator } from "../syncCoordinator";
+import { applySceneBreakpoints, collectCurrentBreakpoints } from "../adapters/breakpointAdapter";
+import { getWorkspaceRoot, loadScenesConfig, mergeScenesBreakpoints, saveScenesConfig } from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
+import { syncService } from "../services/syncService";
+const syncCoordinator = syncService;
 import { clearAllCommand } from "./clearAll";
 
 export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
@@ -165,12 +166,12 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 				if (!Array.isArray(sceneList)) continue;
 				for (const item of sceneList) {
 					if (item.type === "function") continue;
-					const srcItem = item as import("../types").SourceSceneBreakpoint;
+					const srcItem = item as import("../core/types").SourceSceneBreakpoint;
 					const matched = healedBreakpoints.find(
-						(h): h is import("../types").SourceSceneBreakpoint =>
+						(h): h is import("../core/types").SourceSceneBreakpoint =>
 							h.type !== "function" &&
-							(h as import("../types").SourceSceneBreakpoint).file === srcItem.file &&
-							(h as import("../types").SourceSceneBreakpoint).contextSnippet?.current ===
+							(h as import("../core/types").SourceSceneBreakpoint).file === srcItem.file &&
+							(h as import("../core/types").SourceSceneBreakpoint).contextSnippet?.current ===
 								srcItem.contextSnippet?.current,
 					);
 					if (matched && srcItem.line !== matched.line) {

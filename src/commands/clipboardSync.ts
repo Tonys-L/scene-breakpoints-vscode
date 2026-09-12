@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { applySceneBreakpoints } from "../breakpointAdapter";
+import { applySceneBreakpoints } from "../adapters/breakpointAdapter";
 import {
 	getWorkspaceRoot,
 	loadScenesConfig,
@@ -9,9 +9,9 @@ import {
 	saveScenesConfig,
 	serializeScenePayload,
 	upsertBreakpointToScene,
-} from "../configManager";
-import { sceneStateManager } from "../sceneStateManager";
-import { SceneNode } from "../sceneTreeProvider";
+} from "../config/configManager";
+import { sceneStateManager } from "../core/sceneStateManager";
+import { SceneNode } from "../providers/sceneTreeProvider";
 import { applySceneCommand } from "./applyScene";
 
 /**

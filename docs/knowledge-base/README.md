@@ -39,7 +39,7 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 ## 项目阶段
 
 **Production (v1.0.2) / Next: v1.1.0**
-- 核心三层隔离架构（SOLID/SoC）与 coordinators 协同调度层全面实施；
+- 核心三层隔离架构（SOLID/SoC）与 services 协同服务层全面实施；
 - 两阶段自愈算法（近距辐射 + 作用域巡航大跨度重锚定）、当前行本体守卫与脱靶警告告警已就绪；
 - 状态机单向数据流、多场景叠加激活（Layered Activation）与防竞态锁已全面落地；
 - 调试启动配置智能联动（Launch Hook）与全双工双向实时同步就绪；

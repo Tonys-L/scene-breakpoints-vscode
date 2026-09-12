@@ -67,3 +67,6 @@ export class SyncCoordinator {
 }
 
 export const syncCoordinator = new SyncCoordinator();
+export const syncService = syncCoordinator;
+export { SyncCoordinator as SyncService };
+

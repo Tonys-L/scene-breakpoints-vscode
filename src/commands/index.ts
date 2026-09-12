@@ -7,7 +7,7 @@ import { showMenuCommand } from "./showMenu";
 import { copySceneToClipboardCommand, importSceneFromClipboardCommand } from "./clipboardSync";
 import { installSkillCommand, diagnoseAiIntegrationCommand } from "./skillCommands";
 import { registerTreeCommands } from "./treeCommands";
-import { SceneTreeDataProvider } from "../sceneTreeProvider";
+import { SceneTreeDataProvider } from "../providers/sceneTreeProvider";
 
 export interface CommandDependencies {
 	treeDataProvider?: SceneTreeDataProvider;
