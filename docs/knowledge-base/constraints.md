@@ -31,21 +31,21 @@
 本项目遵循严密的三层逻辑分层，业务内聚、变更隔离、依赖单向：
 
 ```text
-策略与协同调度层 (src/commands/*, src/services/*)
-    ↓
-核心状态与纯领域层 (src/core/*, src/config/*)
-    ↑
-技术与宿主适配层 (src/adapters/*, src/providers/*, src/views/*)
+策略层 (src/policy/*)    ：回答【选择怎么做？】
+    ↓ (调用核心层契约，装配基础设施层实现)
+核心层 (src/core/*)      ：回答【能做什么？必须遵守什么？】(零外部依赖，定义能力契约与业务不变量)
+    ↑ (实现核心层契约)
+基础设施层 (src/infra/*) ：回答【具体如何完成？】(VS Code 宿主接入、磁盘存储、UI 呈现)
 ```
 
 #### 架构状态
 
 - 当前状态：**已实施**
-- 未隔离的模块：无（已消除所有反向依赖与循环引用，副作用协同调度上浮至 services 独立管理）
+- 未隔离的模块：无（全局严格收敛至 core、infra、policy 三大体系，extension.ts 仅作为唯一装配根 Composition Root）
 
 | 架构状态 | AI 代码定位能力 | 文档策略 | 说明 |
 |----------|----------------|----------|------|
-| 已实施 | 精准：核心层内聚，AI 可直接定位 | 只记录负空间 | 代码结构足够清晰，无需文档补充定位 |
+| 已实施 | 精准：核心层内聚，AI 可直接定位 | 只记录负空间 | 遵循三层隔离后，核心业务规则内聚在核心层，策略决策内聚在策略层，技术实现内聚在基础设施层。AI 通过代码结构即可精准定位，知识库只需记录代码无法表达的内容：约束、不变量、边界条件与禁止事项。 |
 
 ---
 
@@ -53,10 +53,9 @@
 
 | 层 | 模块 | 职责定位 | 依赖方向 | 禁止出现 |
 |---|---|---|---|---|
-| **策略与调度层** | `src/commands/*`<br>`src/services/*` | 处理用户交互输入，监听外部变更并协调状态机、领域层与适配层执行副作用流 | 依赖核心层与适配层 | 包含底层文件去重遍历细节、直接操作 VS Code DAP 接口 |
-| **核心领域层** | `src/core/*`<br>（`sceneStateManager.ts`, `healingAdapter.ts`, `types.ts`） | 维护全局激活场景、核心拓扑快照与防竞态锁（100% SSOT），双向滑动窗口加权打分自愈纯算法 | 零外部环境依赖或仅依赖 VS Code 基础 EventEmitter | 依赖任何具体 UI 控件或文件系统 I/O |
-| **配置与持久化层** | `src/config/*`<br>（`configManager.ts`, `configStorage.ts`, `sceneOperations.ts` 等） | JSON 配置路径推导、防御性数据清洗、纯领域断点拓扑 Diff (`computeBreakpointsTopologyHash`)、幽灵场景校验与合并 | 依赖 Node 文件系统与类型契约（100% 纯逻辑） | 依赖 commands 策略层命令、UI 状态或断点装配下发逻辑 |
-| **宿主适配与视图层** | `src/adapters/*`<br>`src/providers/*`<br>`src/views/*` | 对齐 VS Code DAP 原生断点协议（`adapters/`）、实现 VS Code 标准 Provider 契约（`providers/`：TreeData, CodeLens, TextContent）、状态栏响应式视图渲染（`views/`） | 依赖核心层契约 | 直接执行文件持久化回写（消除隐式 I/O 副作用） |
+| **策略层 (Policy Layer)** | `src/policy/*`<br>（`commands/*`, `schedulers/*`, `payloadSerializer.ts`） | 回答【选择怎么做？】调度命令路由、监听文件与调试生命周期、装配各层服务 | 依赖核心层契约与基础设施层实现 | 包含算法实现细节、直接破坏核心层纯净性 |
+| **核心层 (Core Layer)** | `src/core/*`<br>（`ports/*`, `sceneStateManager.ts`, `healingEngine.ts`, `sceneOperations.ts`, `activationResolver.ts`, `launchResolver.ts`, `skillLifecycleResolver.ts`, `types.ts`） | 回答【能做什么？必须遵守什么？】零外部依赖，定义业务能力契约（Ports）、全局 SSOT 状态机、自愈打分算法与场景领域纯运算 | 零外部环境依赖（绝对禁止依赖 VS Code API 或任何外部框架） | 依赖策略层、基础设施层或任何具体 UI / 文件 I/O |
+| **基础设施层 (Infra Layer)** | `src/infra/*`<br>（`vscode/*`, `storage/*`） | 回答【具体如何完成？】VS Code 原生断点桥接（`vscodeBreakpointBridge`）、调试侧边栏树视图（`sceneTreeProvider`）、状态栏（`statusBarView`）、磁盘持久化（`jsonFileSceneRepository`） | 实现核心层定义的端口契约（Ports） | 反向依赖策略层、直接定义或篡改全局业务主状态 |
 
 ---
 
@@ -64,28 +63,28 @@
 
 | 编号 | 不变量描述 | 检查与保障位置 |
 |------|-----------|--------------|
-| **INV-001** | **断点在场景内的局部唯一性 (Upsert 语义)**：在同一场景中，相同文件+行号，或相同函数名，必须只有一条记录。后录入的配置安全覆盖先前配置。 | `src/configManager.ts` (`upsertBreakpointToScene`) |
-| **INV-002** | **场景激活的纯净隔离性**：激活目标场景时，必须先清除工作区内现存的所有断点（无论散落断点还是其他场景断点），确保无无关调试断点残留。 | `src/breakpointAdapter.ts` (`applySceneBreakpoints`) |
-| **INV-003** | **自愈算法的两阶段全维协同、大跨度重锚定、当前行本体守卫与性能安全**：必须保留前导缩进（支持 Python/Go 语义），仅压缩非行首连续空白为单空格（抵御 Prettier/ESLint 格式化）；采用**两阶段自愈引擎**：阶段一以原行号为中心执行双向交替辐射探测（±30行），阶段二当位移超出视距时利用 `scopeAnchor` 全文定位函数声明行，以函数体（最大 150 行）为基点展开作用域巡航动态重锚定；结合当前行（10分/剥离注释9分）、非空拓扑伴随行（各5分）、作用域/几何父节点（5分，延迟计算+局部缓存杜绝 $O(n^2)$ 卡顿）、缩进深度（3分）全维评分；建立**当前行本体守卫 (Target Existence Guard)**：候选行必须具备当前行本体证据（精确匹配、剥离注释吻合、软相似度 $\ge 70\%$ 或双侧上下文强闭环夹逼），严禁仅凭单侧上下文将断点误挂于相异代码行；采用动态满分置信度比率 $\ge 60\%$ 作为通过门槛，未达标安全标记为 `unmatched` 脱靶并平滑回退原行。 | `src/healingAdapter.ts` (`resolveHealedLine`) |
-| **INV-004** | **单一事实来源 (SSOT) 与视图被动响应性**：状态栏仅作为视图观察者（View），绝不直接持有全局激活场景主状态。全局场景状态机由 `SceneStateManager` 统一定义，通过事件单向流驱动 UI。 | `src/sceneStateManager.ts` 与 `src/statusBar.ts` |
-| **INV-005** | **场景切换过程的原子防竞态 (Race Guard)**：在 `applySceneBreakpoints` 移除旧断点并装载新断点期间，原子锁 `isApplying` 必须为 `true`。在此期间，`onDidChangeBreakpoints` 监听器严禁误将全局激活场景置为 `(None)`，杜绝状态栏闪烁。 | `src/breakpointAdapter.ts` 与 `src/extension.ts` |
-| **INV-006** | **防御性输入守卫 (Defensive Barrier)**：处理任意外部输入（读取用户手写的 `debug-scenes.json`、非合法对象、单文件无工作区模式）时，必须建立类型守卫，不可抛出未捕获的 `TypeError` 或 `NullPointer`。 | `src/configManager.ts` 与 `src/breakpointAdapter.ts` |
-| **INV-007** | **启动项联动的三级优先级匹配与幂等拦截守卫**：调试启动配置推导场景必须严格遵循三级优先级（`env.DEBUG_SCENE` > `bindings` > 智能同名匹配），大小写不敏感；若推导出的场景集合与当前已激活场景集合一致，必须幂等静默放行，0 冗余下发开销；装配过程必须受 `isApplying` 原子锁保护，杜绝打断调试器启动流程。 | `src/configManager.ts` 与 `src/extension.ts` |
-| **INV-008** | **断点全双工同步与死循环防回环守卫 (Echo Loop Guard)**：断点启用/禁用状态在编辑器 DAP、树视图与 JSON 文件间实时同步时，必须受 `isApplyingScene` 原子锁与内部保存时间戳（`markInternalSaving`）隔离保护，杜绝“改断点 $\rightarrow$ 刷文件 $\rightarrow$ 文件监听 $\rightarrow$ 重新装配”的恶性死循环；反向同步仅允许更新当前正处于激活态的场景，严禁污染未激活场景中的配置条目。 | `src/breakpointAdapter.ts`、`src/configManager.ts` 与 `src/extension.ts` |
-| **INV-009** | **幽灵场景存在性推导校验与拦截守卫 (Ghost Scene Guard)**：调试启动配置推导（`resolveLaunchBoundScenes`）或命令激活时，推导出的场景名必须在 `config.scenes` 中真实存在（大小写容错）。未在场景字典中定义的虚假/拼写错误场景必须被强行拦截，绝不作为当前激活状态写入状态机，杜绝状态栏误染绿与断点误清空。 | `src/configManager.ts` 与 `src/commands/applyScene.ts` |
-| **INV-010** | **`activeScenes` 严格回写时序与 SSOT 锁死**：执行场景切换时，必须严格遵循“先落盘 `activeScenes`，后装配 DAP 断点”的时序（`markInternalSaving` $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 释放安全窗）。绝不可颠倒为先装配后落盘，确保磁盘始终为权威 SSOT，杜绝装配异常或崩溃导致磁盘与内存状态分叉。 | `src/commands/applyScene.ts` 与 `src/services/syncCoordinator.ts` |
-| **INV-011** | **多场景断点合并先到先得（First-Declared-Wins）与 `enabled: false` 显式覆盖规范**：以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，断点首次出现即存入合并字典；`enabled: false` 严格参与先到先得去重，后出现的同物理位置断点直接忽略，确保与代码实现 100% 确定性保真。 | `src/config/sceneOperations.ts` (`mergeScenesBreakpoints`) |
-| **INV-012** | **调试会话保护（挂起策略 A）与核心拓扑 Diff 防线**：调试会话进行中（`activeDebugSession` 存在）外部修改断点拓扑时，绝不强制打断开发者心流，标记 `pendingTopologyUpdate = true` 并在会话终止时平滑补发；比对“磁盘新拓扑 vs `lastAppliedTopologyHash`”，若核心断点字段（`file+line+type+condition+hitCondition+logMessage+enabled`）未变，坚决阻断 DAP 重刷。快照在会话终止、清空命令及插件重启时显式失效。 | `src/config/aiActivationResolver.ts` |
-| **INV-013** | **Skill 核心正文指纹唯一性与生命周期判定纯净性**：跨平台 Agent Skill/Rules 的版本判定必须先剥离宿主平台特定的 Frontmatter 元数据头部并对换行符（CRLF/LF）及行末空白执行标准化归一化，基于纯净正文 SHA-256 哈希进行 `O(1)` 反查。未匹配官方历史哈希且正文不一致时，严格判定为用户已自定义修改（`CustomModified`），杜绝不可靠的文本自动合并，必须依托 VS Code 原生 `vscode.diff` 并排比对由用户自主裁决，并在任意覆写操作前强制在同目录下生成带时间戳的 `.bak` 物理备份副本。 | `src/config/skillLifecycleResolver.ts`、`src/commands/skillCommands.ts` 与 `src/providers/templateContentProvider.ts` |
+| **INV-001** | **断点在场景内的局部唯一性 (Upsert 语义)**：在同一场景中，相同文件+行号，或相同函数名，必须只有一条记录。后录入的配置安全覆盖先前配置。 | `src/core/sceneOperations.ts` (`upsertBreakpointToScene`) |
+| **INV-002** | **场景激活的纯净隔离性**：激活目标场景时，必须先清除工作区内现存的所有断点（无论散落断点还是其他场景断点），确保无无关调试断点残留。 | `src/infra/vscode/vscodeBreakpointBridge.ts` (`applySceneBreakpoints`) |
+| **INV-003** | **自愈算法的两阶段全维协同、大跨度重锚定、当前行本体守卫与性能安全**：必须保留前导缩进（支持 Python/Go 语义），仅压缩非行首连续空白为单空格（抵御 Prettier/ESLint 格式化）；采用**两阶段自愈引擎**：阶段一以原行号为中心执行双向交替辐射探测（±30行），阶段二当位移超出视距时利用 `scopeAnchor` 全文定位函数声明行，以函数体（最大 150 行）为基点展开作用域巡航动态重锚定；结合当前行（10分/剥离注释9分）、非空拓扑伴随行（各5分）、作用域/几何父节点（5分，延迟计算+局部缓存杜绝 $O(n^2)$ 卡顿）、缩进深度（3分）全维评分；建立**当前行本体守卫 (Target Existence Guard)**：候选行必须具备当前行本体证据（精确匹配、剥离注释吻合、软相似度 $\ge 70\%$ 或双侧上下文强闭环夹逼），严禁仅凭单侧上下文将断点误挂于相异代码行；采用动态满分置信度比率 $\ge 60\%$ 作为通过门槛，未达标安全标记为 `unmatched` 脱靶并平滑回退原行。 | `src/core/healingEngine.ts` (`resolveHealedLine`) |
+| **INV-004** | **单一事实来源 (SSOT) 与视图被动响应性**：状态栏仅作为视图观察者（View），绝不直接持有全局激活场景主状态。全局场景状态机由 `SceneStateManager` 统一定义，通过事件单向流驱动 UI。 | `src/core/sceneStateManager.ts` 与 `src/infra/vscode/statusBarView.ts` |
+| **INV-005** | **场景切换过程的原子防竞态 (Race Guard)**：在 `applySceneBreakpoints` 移除旧断点并装载新断点期间，原子锁 `isApplying` 必须为 `true`。在此期间，`onDidChangeBreakpoints` 监听器严禁误将全局激活场景置为 `(None)`，杜绝状态栏闪烁。 | `src/infra/vscode/vscodeBreakpointBridge.ts` 与 `src/policy/schedulers/breakpointSyncPolicy.ts` |
+| **INV-006** | **防御性输入守卫 (Defensive Barrier)**：处理任意外部输入（读取用户手写的 `debug-scenes.json`、非合法对象、单文件无工作区模式）时，必须建立类型守卫，不可抛出未捕获的 `TypeError` 或 `NullPointer`。 | `src/infra/storage/jsonFileSceneRepository.ts` 与 `src/infra/vscode/vscodeBreakpointBridge.ts` |
+| **INV-007** | **启动项联动的三级优先级匹配与幂等拦截守卫**：调试启动配置推导场景必须严格遵循三级优先级（`env.DEBUG_SCENE` > `bindings` > 智能同名匹配），大小写不敏感；若推导出的场景集合与当前已激活场景集合一致，必须幂等静默放行，0 冗余下发开销；装配过程必须受 `isApplying` 原子锁保护，杜绝打断调试器启动流程。 | `src/core/launchResolver.ts` 与 `src/policy/schedulers/debugLaunchPolicy.ts` |
+| **INV-008** | **断点全双工同步与死循环防回环守卫 (Echo Loop Guard)**：断点启用/禁用状态在编辑器 DAP、树视图与 JSON 文件间实时同步时，必须受 `isApplyingScene` 原子锁与内部保存时间戳（`markInternalSaving`）隔离保护，杜绝“改断点 $\rightarrow$ 刷文件 $\rightarrow$ 文件监听 $\rightarrow$ 重新装配”的恶性死循环；反向同步仅允许更新当前正处于激活态的场景，严禁污染未激活场景中的配置条目。 | `src/infra/storage/saveLoopGuard.ts`、`src/policy/schedulers/breakpointSyncPolicy.ts` 与 `src/policy/schedulers/configFileWatcherPolicy.ts` |
+| **INV-009** | **幽灵场景存在性推导校验与拦截守卫 (Ghost Scene Guard)**：调试启动配置推导（`resolveLaunchBoundScenes`）或命令激活时，推导出的场景名必须在 `config.scenes` 中真实存在（大小写容错）。未在场景字典中定义的虚假/拼写错误场景必须被强行拦截，绝不作为当前激活状态写入状态机，杜绝状态栏误染绿与断点误清空。 | `src/core/activationResolver.ts` 与 `src/policy/commands/applyScene.ts` |
+| **INV-010** | **`activeScenes` 严格回写时序与 SSOT 锁死**：执行场景切换时，必须严格遵循“先落盘 `activeScenes`，后装配 DAP 断点”的时序（`markInternalSaving` $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 释放安全窗）。绝不可颠倒为先装配后落盘，确保磁盘始终为权威 SSOT，杜绝装配异常或崩溃导致磁盘与内存状态分叉。 | `src/policy/commands/applyScene.ts` 与 `src/infra/storage/saveLoopGuard.ts` |
+| **INV-011** | **多场景断点合并先到先得（First-Declared-Wins）与 `enabled: false` 显式覆盖规范**：以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，断点首次出现即存入合并字典；`enabled: false` 严格参与先到先得去重，后出现的同物理位置断点直接忽略，确保与代码实现 100% 确定性保真。 | `src/core/sceneOperations.ts` (`mergeScenesBreakpoints`) |
+| **INV-012** | **调试会话保护（挂起策略 A）与核心拓扑 Diff 防线**：调试会话进行中（`activeDebugSession` 存在）外部修改断点拓扑时，绝不强制打断开发者心流，标记 `pendingTopologyUpdate = true` 并在会话终止时平滑补发；比对“磁盘新拓扑 vs `lastAppliedTopologyHash`”，若核心断点字段（`file+line+type+condition+hitCondition+logMessage+enabled`）未变，坚决阻断 DAP 重刷。快照在会话终止、清空命令及插件重启时显式失效。 | `src/core/activationResolver.ts` 与 `src/policy/schedulers/sessionLifecyclePolicy.ts` |
+| **INV-013** | **Skill 核心正文指纹唯一性与生命周期判定纯净性**：跨平台 Agent Skill/Rules 的版本判定必须先剥离宿主平台特定的 Frontmatter 元数据头部并对换行符（CRLF/LF）及行末空白执行标准化归一化，基于纯净正文 SHA-256 哈希进行 `O(1)` 反查。未匹配官方历史哈希且正文不一致时，严格判定为用户已自定义修改（`CustomModified`），杜绝不可靠的文本自动合并，必须依托 VS Code 原生 `vscode.diff` 并排比对由用户自主裁决，并在任意覆写操作前强制在同目录下生成带时间戳的 `.bak` 物理备份副本。 | `src/core/skillLifecycleResolver.ts`、`src/policy/commands/skillCommands.ts` 与 `src/infra/vscode/templateContentProvider.ts` |
 
 ---
 
 ## 禁止事项
 
 ### 架构禁止
-- 核心算法层（`healingAdapter.ts`）禁止依赖任何文件写操作或 VS Code UI 弹窗。
-- 适配器层（`breakpointAdapter.ts`）禁止在内部直接调用 `saveScenesConfig` 回写文件（回写必须由命令层显式决策并调用）。
-- 视图层（`statusBar.ts`）禁止定义或修改全局业务主状态。
+- 核心算法层（`src/core/*`）禁止依赖任何文件写操作、VS Code API 或第三方平台 SDK。
+- 基础设施层（`src/infra/*`）禁止反向依赖策略层，禁止直接定义或修改全局业务主状态。
+- 视图层（`src/infra/vscode/*`）仅作为被动观察者，绝不直接持有全局激活场景主状态。
 
 ### 设计禁止
 - 禁止为未知变化提前设计多层无用抽象（YAGNI），保持纯原生 TypeScript 敏捷性。
@@ -118,14 +117,7 @@
 - **真实宿主端到端 (E2E) 测试约束**：核心用户交互（扩展激活、命令调用、DAP 真实断点注入与清空、侧边栏 TreeView、状态栏联动、CodeLens）必须具备由 `@vscode/test-electron` 驱动的真实隔离沙箱 E2E 测试，运行 `npm run test:e2e` 保证真实运行环境 0 运行时未定义错误；
 - **E2E 用例与文档双向同步铁律**：后续任何新增业务能力、修改现有功能、调整 UI 或重构交互命令时，必须同步在 `docs/knowledge-base/e2e-scenarios.md` 中更新测试场景规范，并同步在 `test-e2e/suite/` 编写对应自动化测试用例。未同步用例与文档的代码严禁合并发布。
 
-### 架构与分层约束 (KDD-ARCH-002)
-- **配置管理领域分层 (Facade Pattern)**：`configManager.ts` 纯粹扮演对外聚合门面角色，底层物理拆分为 `configStorage`（磁盘I/O/清洗/指纹）、`sceneOperations`（纯内存CRUD）、`payloadSerializer`（剪贴板DTO）与 `launchResolver`（启动绑定推导）；
-- **并发写盘原子互斥队列**：`saveScenesConfig` 必须受 `isWriting` 与 `pendingSave` 互斥保护，高频连击时串行合并续写，杜绝文件锁冲突；
-- **同步防抖状态聚合**：内部写盘标记、指纹拦截与安全防护窗统一收敛至 `SyncCoordinator` 中枢，严禁各层散落定时器；
-- **DAP 增量 Diff 装配引擎与即刻点亮**：断点装配必须进行增量 Diff 计算，完全匹配的共有断点原地保留（0 闪烁）；添加断点到当前激活场景时立即注入编辑器 DAP 运行时，并同步刷新状态机断点总数基准；
-- **自愈持久化闭环与文件缓存**：自愈探测修正漂移行号后，必须自动反向映射回写持久化至 `debug-scenes.json`，且装配期间对同文件断点复用 `fileLinesCache`，消除重复 I/O；
-- **CodeLens 容错与剪贴板多场景保真**：CodeLens 提取必须先经过 `stripJsonComments` 清洗支持 JSONC；剪贴板导入处于激活态场景时必须保持多场景集合不退化，并即刻触发增量 Diff 注入编辑器。
----
+---
 
 ## 变更记录
 
@@ -160,4 +152,4 @@
 | 2026-09-12 | 落地 @vscode/test-electron 驱动的真实隔离宿主端到端 (E2E) 测试脚手架与用例闭环 | Tony.L | KDD-E2E-TEST-001 |
 | 2026-09-12 | 确立 34 大全量 E2E 场景规范 (e2e-scenarios.md) 与功能演进必须同步更新用例的铁律 | Tony.L | KDD-E2E-SPEC-001 |
 | 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (INV-013, v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |
-| 2026-09-13 | 建立清晰的 7 大架构分层目录 (core, config, adapters, providers, coordinators, views, commands)，完成职责极致归位 | Tony.L | KDD-ARCH-LAYERS-001 |
+| 2026-09-13 | 实施纯正 KDD 三层隔离架构重构，建立 core（纯领域零外部依赖）、infra（基础设施可替换）、policy（策略易变）三大体系，完成所有遗留过渡目录安全清场，架构状态宣布【已实施】 | Tony.L | KDD-CLEAN-THREE-TIER-001 |
