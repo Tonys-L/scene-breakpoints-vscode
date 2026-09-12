@@ -49,6 +49,37 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 4. **激活场景**：将根级 `"activeScenes": ["auth-login-flow"]` 设置为目标场景名并保存文件。
 5. **引导调试**：告知用户断点已就绪，提示用户按 **F5** 启动调试直接命中现场。
 
+## 场景激活的三种途径（AI 协同策略）
+
+生成断点场景后，AI 可根据工作区环境选择以下三种途径让断点生效：
+
+### 途径 1：`launch.json` 自动联动绑定（推荐，体验最丝滑 ⭐⭐⭐）
+- **适用场景**：工作区中已存在 `.vscode/launch.json`，用户习惯按 **F5** 启动调试。
+- **操作方式**：检查 `launch.json`，获取启动项配置名称（如 `"Launch Program"`），在 `debug-scenes.json` 的 `bindings` 中配置映射：
+  ```json
+  "bindings": {
+    "Launch Program": ["auth-login-flow"]
+  }
+  ```
+- **核心优势**：**完全无需额外配置权限**！用户一按 F5，插件在调试器启动瞬间全自动加载对应场景断点并清理杂散断点，开箱即用。
+
+### 途径 2：声明式即时自动激活（AI 静默打点 ⭐⭐）
+- **适用场景**：AI 刚生成完场景，希望用户一保存文件，编辑器中的代码行就能立刻看到打上的红点。
+- **操作方式**：在 `debug-scenes.json` 根级写入 `"activeScenes": ["auth-login-flow"]`。
+- **前置前提**：插件设有安全防误触守卫，需确保工作区 `.vscode/settings.json` 中开启了权限：
+  ```json
+  {
+    "sceneBreakpoints.allowAiFileActivation": true
+  }
+  ```
+  *(AI 可在首次为用户初始化断点时，顺手在 settings.json 中配置此项)*。
+
+### 途径 3：侧边栏视觉手动切换（通用兜底 ⭐）
+- **适用场景**：用户习惯在界面上点选，或工作区未配置自动激活权限时。
+- **引导话术**：告知用户“已为您生成场景 `auth-login-flow`，您可以在 VS Code 左侧【运行与调试】面板展开【Scene Breakpoints】，点击该场景后面的 **▶（激活）** 按钮即可生效”。
+
+---
+
 ## 完整示例
 
 用户请求：“帮我排查登录时密码校验失败的问题”
@@ -58,6 +89,9 @@ AI 静态分析代码后写入 `.vscode/debug-scenes.json`：
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+  "bindings": {
+    "Launch App": ["login-debug"]
+  },
   "activeScenes": ["login-debug"],
   "scenes": {
     "login-debug": [
@@ -87,4 +121,4 @@ AI 静态分析代码后写入 `.vscode/debug-scenes.json`：
 }
 ```
 
-保存文件后，插件响应式捕获变更，自动卸载历史旧断点，精准点亮 `login-debug` 场景断点，用户按 F5 即刻进入调试排查心流。
+保存文件后，断点已准备就绪；若配置了联动绑定，用户按 **F5** 即刻进入调试排查心流。

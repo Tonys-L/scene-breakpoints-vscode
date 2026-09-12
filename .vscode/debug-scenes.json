@@ -1,8 +1,77 @@
 {
-  "bindings": {
-    "Launch Extension": "scene-activation-flow"
-  },
   "scenes": {
+    "demo-all-breakpoints": [
+      {
+        "type": "line",
+        "file": "demo/debug-demo.mjs",
+        "line": 22,
+        "enabled": true,
+        "desc": "步骤1 (普通行断点): 检查订单入口与初始总额",
+        "contextSnippet": {
+          "current": "const orderUser = order.user;"
+        }
+      },
+      {
+        "type": "condition",
+        "file": "demo/debug-demo.mjs",
+        "line": 26,
+        "condition": "order.vipLevel === \"SVIP\"",
+        "enabled": true,
+        "desc": "步骤2 (条件断点): 仅在 VIP 等级为 SVIP 时停下",
+        "contextSnippet": {
+          "current": "if (order.vipLevel === \"SVIP\") {"
+        }
+      },
+      {
+        "type": "logpoint",
+        "file": "demo/debug-demo.mjs",
+        "line": 38,
+        "logMessage": "🛒 [Logpoint 日志] 正在核算商品: {item.name}, 单价: ¥{item.price}",
+        "enabled": true,
+        "desc": "步骤3 (日志断点 Logpoint): 不暂停，向控制台输出商品信息",
+        "contextSnippet": {
+          "current": "const subtotal = item.price * item.quantity;"
+        }
+      },
+      {
+        "type": "hitCount",
+        "file": "demo/debug-demo.mjs",
+        "line": 41,
+        "hitCondition": ">2",
+        "enabled": true,
+        "desc": "步骤4 (命中计数断点): 循环核算超过 2 次(第3件商品起)才停下",
+        "contextSnippet": {
+          "current": "totalAmount += subtotal;"
+        }
+      },
+      {
+        "type": "function",
+        "functionName": "executeFinalPayment",
+        "enabled": true,
+        "desc": "步骤5 (函数断点): 调用支付结算函数时自动拦截暂停"
+      }
+    ],
+    "demo-vip-only": [
+      {
+        "type": "condition",
+        "file": "demo/debug-demo.mjs",
+        "line": 26,
+        "condition": "order.vipLevel === \"SVIP\"",
+        "enabled": true,
+        "desc": "仅在 SVIP 时停下排查特惠",
+        "contextSnippet": {
+          "current": "if (order.vipLevel === \"SVIP\") {"
+        }
+      }
+    ],
+    "demo-payment-only": [
+      {
+        "type": "function",
+        "functionName": "executeFinalPayment",
+        "enabled": true,
+        "desc": "仅在核心支付网关扣款处暂停"
+      }
+    ],
     "scene-activation-flow": [
       {
         "type": "line",
@@ -223,5 +292,14 @@
         }
       }
     ]
-  }
+  },
+  "bindings": {
+    "🚀 运行断点全功能实测 Demo (Node.js)": [
+      "demo-all-breakpoints"
+    ],
+    "Launch Extension": "scene-activation-flow"
+  },
+  "activeScenes": [
+    "demo-all-breakpoints"
+  ]
 }
