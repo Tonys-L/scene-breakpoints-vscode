@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Pre-release Automated Testing Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Run unit test suites
+        run: npm test
+
+      - name: Run E2E test suites with xvfb
+        run: xvfb-run -a npm run test:e2e
+
+  package-and-release:
+    name: Package VSIX & Publish GitHub Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package VSIX extension
+        run: npm run package
+
+      - name: Locate VSIX artifact
+        id: vsix
+        run: |
+          VSIX_FILE=$(ls *.vsix | head -n 1)
+          echo "Found VSIX: $VSIX_FILE"
+          echo "file=$VSIX_FILE" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release and upload VSIX
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.vsix.outputs.file }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

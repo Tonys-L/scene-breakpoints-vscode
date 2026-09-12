@@ -5,6 +5,8 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=Release&logo=github" alt="GitHub Release" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md"><img src="https://img.shields.io/badge/Docs-User%20Guide-orange" alt="User Guide" /></a>
   </p>
