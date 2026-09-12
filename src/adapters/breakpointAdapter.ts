@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { extractContextSnippet, resolveHealedLine } from "../core/healingAdapter";
+import { extractContextSnippet, resolveHealedLine } from "../core/healingEngine";
 import { sceneStateManager } from "../core/sceneStateManager";
 import { computeBreakpointsTopologyHash } from "../config/aiActivationResolver";
 import type { ContextSnippet, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../core/types";

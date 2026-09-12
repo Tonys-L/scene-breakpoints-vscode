@@ -1,4 +1,31 @@
-import * as vscode from "vscode";
+export interface Disposable {
+	dispose(): void;
+}
+
+export type Listener<T> = (data: T) => void;
+
+class PureEventEmitter<T> {
+	private listeners = new Set<Listener<T>>();
+
+	public readonly event = (listener: Listener<T>): Disposable => {
+		this.listeners.add(listener);
+		return {
+			dispose: () => {
+				this.listeners.delete(listener);
+			},
+		};
+	};
+
+	public fire(data: T): void {
+		for (const listener of this.listeners) {
+			listener(data);
+		}
+	}
+
+	public dispose(): void {
+		this.listeners.clear();
+	}
+}
 
 export interface SceneState {
 	activeScenes: string[];
@@ -12,7 +39,7 @@ class SceneStateManager {
 	private baselineBreakpointCount = 0;
 	private unmatchedBreakpointsKeySet = new Set<string>();
 
-	private readonly _onDidChangeState = new vscode.EventEmitter<SceneState>();
+	private readonly _onDidChangeState = new PureEventEmitter<SceneState>();
 	public readonly onDidChangeState = this._onDidChangeState.event;
 
 	public getActiveScenes(): string[] {

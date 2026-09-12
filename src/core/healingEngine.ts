@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as vscode from "vscode";
 import type { ContextSnippet, SourceSceneBreakpoint } from "./types";
+
 
 export type HealStatus = "matched" | "healed" | "unmatched";
 
