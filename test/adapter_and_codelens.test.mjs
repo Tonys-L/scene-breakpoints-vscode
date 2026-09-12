@@ -8,7 +8,9 @@ function escapeRegex(str) {
 }
 
 function normalizePathToPosix(filePath, workspaceRoot) {
-	const relPath = path.relative(workspaceRoot, filePath).replace(/\\/g, "/");
+	const isWindowsPath = /^[a-zA-Z]:/.test(filePath) || /^[a-zA-Z]:/.test(workspaceRoot) || filePath.includes("\\");
+	const p = isWindowsPath ? path.win32 : path;
+	const relPath = p.relative(workspaceRoot, filePath).replace(/\\/g, "/");
 	return relPath;
 }
 
@@ -53,6 +55,12 @@ export function runAdapterAndCodeLensTests() {
 		const posixPath = normalizePathToPosix(winFile, wsRoot);
 		assert.strictEqual(posixPath, "src/components/auth/login.ts", "Windows 反斜杠路径必须统一归一化为 /");
 		assert.ok(!posixPath.includes("\\"), "路径中严禁残留 Windows 反斜杠");
+
+		// POSIX 路径交叉验证
+		const posixWsRoot = "/home/runner/work/repo";
+		const posixFile = "/home/runner/work/repo/src/components/auth/login.ts";
+		const posixResult = normalizePathToPosix(posixFile, posixWsRoot);
+		assert.strictEqual(posixResult, "src/components/auth/login.ts", "POSIX 路径必须保持标准 /");
 	}
 
 	// 2. CodeLens 场景名正则逃逸 (特殊字符逃逸能力)
