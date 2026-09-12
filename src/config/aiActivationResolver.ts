@@ -1,1 +1,1 @@
-export * from "../core/activationResolver";
+export * from "../core/activationResolver.ts";
