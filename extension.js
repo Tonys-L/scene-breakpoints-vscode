@@ -33,7 +33,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode24 = __toESM(require("vscode"));
+var vscode18 = __toESM(require("vscode"));
 
 // src/domain/healingEngine.ts
 var fs = __toESM(require("node:fs"));
@@ -1861,203 +1861,27 @@ function renderStatusBar(activeScenes, isDirty = false) {
   }
 }
 
-// src/infra/vscode/controllers/index.ts
-var vscode15 = __toESM(require("vscode"));
+// src/infra/vscode/commands/index.ts
+var vscode12 = __toESM(require("vscode"));
 
-// src/infra/vscode/controllers/addBreakpoint.ts
+// src/infra/vscode/commands/sceneCommands.ts
+var fs4 = __toESM(require("node:fs"));
 var path6 = __toESM(require("node:path"));
-var vscode8 = __toESM(require("vscode"));
+var vscode9 = __toESM(require("vscode"));
 
-// src/application/useCaseQueue.ts
-var UseCaseQueue = class {
+// src/application/sceneService.ts
+var SerialQueue = class {
   currentQueue = Promise.resolve();
-  /**
-   * 将异步业务用例入队排队执行
-   * 前一个用例无论成功还是失败，后续用例均能依次执行，不会产生隐式阻塞，且结果正确返回给调用者
-   */
-  run(useCase) {
-    const result = this.currentQueue.then(useCase, useCase);
+  run(task) {
+    const result = this.currentQueue.then(task, task);
     this.currentQueue = result.catch(() => {
     });
     return result;
   }
 };
-var useCaseQueue = new UseCaseQueue();
-
-// src/application/addBreakpoint.ts
-async function addBreakpoint(params) {
-  return useCaseQueue.run(async () => {
-    const {
-      workspaceRoot,
-      targetScene,
-      breakpoint,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      loopGuard = saveLoopGuard
-    } = params;
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    if (!config.scenes) {
-      config.scenes = {};
-    }
-    upsertBreakpointToScene(config, targetScene, breakpoint);
-    loopGuard.markInternalSaving();
-    sceneRepository.saveScenesConfig(workspaceRoot, config);
-    let isImmediatelyApplied = false;
-    if (sceneStateManager.isSceneActive(targetScene)) {
-      await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
-      sceneStateManager.setBaselineBreakpointCount(sceneStateManager.getBaselineBreakpointCount() + 1);
-      isImmediatelyApplied = true;
-    }
-    return {
-      success: true,
-      isImmediatelyApplied
-    };
-  });
-}
-
-// src/infra/vscode/controllers/addBreakpoint.ts
-async function addBreakpointCommand() {
-  const editor = vscode8.window.activeTextEditor;
-  if (!editor) {
-    vscode8.window.showWarningMessage(vscode8.l10n.t("No active editor file detected"));
-    return;
-  }
-  const fullFilePath = editor.document.fileName;
-  const workspaceFolder = vscode8.workspace.getWorkspaceFolder(editor.document.uri);
-  const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : path6.dirname(editor.document.fileName);
-  const relativeFilePath = path6.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
-  const fileNameOnly = path6.basename(fullFilePath);
-  const currentLine = editor.selection.active.line + 1;
-  const config = loadScenesConfig(workspaceRoot);
-  const existingScenes = Object.keys(config.scenes || {});
-  const sceneQuickPickItems = [
-    ...existingScenes.map((s) => ({ label: `$(symbol-event) ${s}`, sceneName: s })),
-    { label: vscode8.l10n.t("$(add) [New Scene...]"), sceneName: "__NEW__" }
-  ];
-  const selectedSceneItem = await vscode8.window.showQuickPick(sceneQuickPickItems, {
-    placeHolder: vscode8.l10n.t("Select a scene to add the current line breakpoint to")
-  });
-  if (!selectedSceneItem) return;
-  let targetScene = selectedSceneItem.sceneName;
-  if (targetScene === "__NEW__") {
-    const newSceneName = await vscode8.window.showInputBox({
-      prompt: vscode8.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
-      validateInput: (value) => {
-        if (!value || !value.trim()) return vscode8.l10n.t("Scene name cannot be empty");
-        return null;
-      }
-    });
-    if (!newSceneName) return;
-    targetScene = newSceneName.trim();
-    if (!config.scenes[targetScene]) {
-      config.scenes[targetScene] = [];
-    }
-  }
-  const typeItems = [
-    {
-      label: `$(debug-breakpoint) ${vscode8.l10n.t("Line Breakpoint")}`,
-      description: vscode8.l10n.t("Pause execution when hit"),
-      type: "line"
-    },
-    {
-      label: `$(debug-breakpoint-conditional) ${vscode8.l10n.t("Conditional Breakpoint")}`,
-      description: vscode8.l10n.t("Pause when expression evaluates to true"),
-      type: "condition"
-    },
-    {
-      label: `$(debug-breakpoint-data) ${vscode8.l10n.t("Hit Count Breakpoint")}`,
-      description: vscode8.l10n.t("Pause when hit count condition is satisfied"),
-      type: "hitCount"
-    },
-    {
-      label: `$(debug-breakpoint-log) ${vscode8.l10n.t("Logpoint")}`,
-      description: vscode8.l10n.t("Print log message to debug console without pausing"),
-      type: "logpoint"
-    },
-    {
-      label: `$(debug-breakpoint-function) ${vscode8.l10n.t("Function Breakpoint")}`,
-      description: vscode8.l10n.t("Pause when a named function is invoked"),
-      type: "function"
-    }
-  ];
-  const selectedTypeItem = await vscode8.window.showQuickPick(typeItems, {
-    placeHolder: vscode8.l10n.t("Select breakpoint type")
-  });
-  if (!selectedTypeItem) return;
-  const bpType = selectedTypeItem.type;
-  let condition;
-  let hitCondition;
-  let logMessage;
-  let functionName;
-  if (bpType === "condition") {
-    condition = await vscode8.window.showInputBox({
-      prompt: vscode8.l10n.t("Enter condition expression (e.g. user.isAdmin === true)"),
-      placeHolder: "user.isAdmin === true"
-    });
-    if (condition === void 0) return;
-  } else if (bpType === "hitCount") {
-    hitCondition = await vscode8.window.showInputBox({
-      prompt: vscode8.l10n.t("Enter hit count condition (e.g. > 5 or % 10 === 0)"),
-      placeHolder: "> 5"
-    });
-    if (hitCondition === void 0) return;
-  } else if (bpType === "logpoint") {
-    logMessage = await vscode8.window.showInputBox({
-      prompt: vscode8.l10n.t("Enter log message to print (supports {var} interpolation)"),
-      placeHolder: "User state: {user.name}, retries: {retryCount}"
-    });
-    if (logMessage === void 0) return;
-  } else if (bpType === "function") {
-    functionName = await vscode8.window.showInputBox({
-      prompt: vscode8.l10n.t("Enter function name to break on"),
-      placeHolder: "handleUserAuthentication",
-      validateInput: (v) => !v || !v.trim() ? vscode8.l10n.t("Function name cannot be empty") : null
-    });
-    if (!functionName) return;
-  }
-  const description = await vscode8.window.showInputBox({
-    prompt: vscode8.l10n.t("Enter breakpoint description (optional, current line: {0}:{1})", fileNameOnly, currentLine),
-    placeHolder: vscode8.l10n.t("e.g. Check steering message injection in decision loop")
-  });
-  let newEntry;
-  if (bpType === "function") {
-    newEntry = {
-      type: "function",
-      functionName: functionName.trim(),
-      condition: condition?.trim() || void 0,
-      hitCondition: hitCondition?.trim() || void 0,
-      desc: description?.trim() || void 0
-    };
-  } else {
-    const contextSnippet = extractContextSnippet(editor.document, editor.selection.active.line);
-    newEntry = {
-      type: bpType,
-      file: relativeFilePath.includes("/") ? relativeFilePath : fileNameOnly,
-      line: currentLine,
-      condition: condition?.trim() || void 0,
-      hitCondition: hitCondition?.trim() || void 0,
-      logMessage: logMessage?.trim() || void 0,
-      desc: description?.trim() || void 0,
-      contextSnippet
-    };
-  }
-  await addBreakpoint({
-    workspaceRoot,
-    targetScene,
-    breakpoint: newEntry
-  });
-  const summaryLabel = bpType === "function" ? functionName : `${fileNameOnly}:${currentLine}`;
-  vscode8.window.showInformationMessage(
-    vscode8.l10n.t("Saved breakpoint to scene [{0}]: {1}:{2} {3}", targetScene, summaryLabel, bpType, newEntry.desc ? `("${newEntry.desc}")` : "")
-  );
-}
-
-// src/infra/vscode/controllers/applyScene.ts
-var vscode9 = __toESM(require("vscode"));
-
-// src/application/activateScene.ts
+var queue = new SerialQueue();
 async function activateScene(params) {
-  return useCaseQueue.run(async () => {
+  return queue.run(async () => {
     const {
       workspaceRoot,
       targetScenes: rawTargetScenes,
@@ -2142,10 +1966,37 @@ async function activateScene(params) {
     };
   });
 }
-
-// src/application/clearAll.ts
+async function addBreakpoint(params) {
+  return queue.run(async () => {
+    const {
+      workspaceRoot,
+      targetScene,
+      breakpoint,
+      sceneRepository = jsonFileSceneRepository,
+      breakpointBridge = vscodeBreakpointBridge,
+      loopGuard = saveLoopGuard
+    } = params;
+    const config = sceneRepository.loadScenesConfig(workspaceRoot);
+    if (!config.scenes) {
+      config.scenes = {};
+    }
+    upsertBreakpointToScene(config, targetScene, breakpoint);
+    loopGuard.markInternalSaving();
+    sceneRepository.saveScenesConfig(workspaceRoot, config);
+    let isImmediatelyApplied = false;
+    if (sceneStateManager.isSceneActive(targetScene)) {
+      await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
+      sceneStateManager.setBaselineBreakpointCount(sceneStateManager.getBaselineBreakpointCount() + 1);
+      isImmediatelyApplied = true;
+    }
+    return {
+      success: true,
+      isImmediatelyApplied
+    };
+  });
+}
 async function clearAll(params = {}) {
-  return useCaseQueue.run(async () => {
+  return queue.run(async () => {
     const {
       workspaceRoot,
       sceneRepository = jsonFileSceneRepository,
@@ -2164,130 +2015,8 @@ async function clearAll(params = {}) {
     sceneStateManager.setActiveScene(void 0);
   });
 }
-
-// src/infra/vscode/controllers/clearAll.ts
-async function clearAllCommand() {
-  const workspaceRoot = getWorkspaceRoot(false);
-  await clearAll({ workspaceRoot });
-}
-
-// src/infra/vscode/controllers/applyScene.ts
-async function applySceneCommand(sceneParam) {
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) return;
-  const config = loadScenesConfig(workspaceRoot);
-  const sceneNames = Object.keys(config.scenes || {});
-  if (sceneNames.length === 0) {
-    vscode9.window.showWarningMessage(vscode9.l10n.t("No scenes configured in debug-scenes.json yet"));
-    return;
-  }
-  let targetScenes;
-  if (Array.isArray(sceneParam)) {
-    targetScenes = sceneParam.map((s) => String(s).trim()).filter(Boolean);
-  } else if (typeof sceneParam === "string" && sceneParam.trim()) {
-    if (sceneParam.includes(",")) {
-      targetScenes = sceneParam.split(",").map((s) => s.trim()).filter(Boolean);
-    } else {
-      targetScenes = [sceneParam.trim()];
-    }
-  }
-  if (!targetScenes) {
-    const activeEditor = vscode9.window.activeTextEditor;
-    if (activeEditor && activeEditor.document.fileName.endsWith("debug-scenes.json")) {
-      const currentLine = activeEditor.selection.active.line;
-      for (let i = currentLine; i >= 0; i--) {
-        const lineText = activeEditor.document.lineAt(i).text;
-        for (const sName of sceneNames) {
-          if (lineText.includes(`"${sName}"`) && lineText.includes(":")) {
-            targetScenes = [sName];
-            break;
-          }
-        }
-        if (targetScenes) break;
-      }
-    }
-  }
-  if (!targetScenes) {
-    const currentActiveScenes = sceneStateManager.getActiveScenes();
-    const items = sceneNames.map((name) => ({
-      label: name,
-      description: vscode9.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
-      picked: currentActiveScenes.includes(name)
-    }));
-    const picked = await vscode9.window.showQuickPick(items, {
-      canPickMany: true,
-      placeHolder: vscode9.l10n.t("Select one or more debug scenes to activate (check to layer breakpoints)")
-    });
-    if (picked === void 0) return;
-    targetScenes = picked.map((it) => it.label);
-  }
-  if (targetScenes.length === 0) {
-    await clearAllCommand();
-    return;
-  }
-  const currentActive = sceneStateManager.getActiveScene();
-  const isDirty = sceneStateManager.getIsDirty();
-  if (currentActive && isDirty) {
-    const actionAppend = vscode9.l10n.t("Save & Append to [{0}]", currentActive);
-    const actionDiscard = vscode9.l10n.t("Discard Temporary Breakpoints");
-    const chosen = await vscode9.window.showWarningMessage(
-      vscode9.l10n.t(
-        "Workspace has unsaved temporary breakpoints in scene [{0}]. What would you like to do before switching/reloading?",
-        currentActive
-      ),
-      { modal: true },
-      actionAppend,
-      actionDiscard
-    );
-    if (!chosen) return;
-    if (chosen === actionAppend) {
-      const currentBps = vscodeBreakpointBridge.collectCurrentBreakpoints(workspaceRoot);
-      config.scenes[currentActive] = currentBps;
-      saveScenesConfig(workspaceRoot, config);
-    }
-  }
-  const result = await activateScene({
-    workspaceRoot,
-    targetScenes
-  });
-  if (!result.success) {
-    vscode9.window.showErrorMessage(
-      vscode9.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", "))
-    );
-    return;
-  }
-  if (result.missingScenes.length > 0) {
-    vscode9.window.showWarningMessage(
-      vscode9.l10n.t("Scene(s) [{0}] not found and skipped", result.missingScenes.join(", "))
-    );
-  }
-  const primarySceneLabel = result.validTargetScenes.length === 1 ? result.validTargetScenes[0] : result.validTargetScenes.join(" + ");
-  if (result.healedCount > 0) {
-    vscode9.window.showInformationMessage(
-      vscode9.l10n.t(
-        "Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
-        primarySceneLabel,
-        result.loadedCount,
-        result.healedCount
-      )
-    );
-  } else {
-    vscode9.window.showInformationMessage(
-      vscode9.l10n.t(
-        "Scene(s) [{0}] activated! Set {1} target breakpoint(s) and cleaned others.",
-        primarySceneLabel,
-        result.loadedCount
-      )
-    );
-  }
-}
-
-// src/infra/vscode/controllers/exportScene.ts
-var vscode10 = __toESM(require("vscode"));
-
-// src/application/exportScene.ts
 async function exportScene(params) {
-  return useCaseQueue.run(async () => {
+  return queue.run(async () => {
     const {
       workspaceRoot,
       targetScene,
@@ -2319,61 +2048,68 @@ async function exportScene(params) {
     };
   });
 }
-
-// src/infra/vscode/controllers/exportScene.ts
-async function exportSceneCommand() {
-  const currentBreakpoints = vscode10.debug.breakpoints;
-  if (!currentBreakpoints || currentBreakpoints.length === 0) {
-    vscode10.window.showWarningMessage(vscode10.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."));
-    return;
-  }
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) return;
-  const sceneName = await vscode10.window.showInputBox({
-    prompt: vscode10.l10n.t("Enter scene identifier to export current breakpoints to (e.g. order-flow-debug)"),
-    placeHolder: "order-flow-debug",
-    validateInput: (value) => {
-      if (!value || !value.trim()) return vscode10.l10n.t("Scene name cannot be empty");
-      return null;
-    }
-  });
-  if (!sceneName || !sceneName.trim()) return;
-  const targetScene = sceneName.trim();
-  const config = loadScenesConfig(workspaceRoot);
-  let mode = "overwrite";
-  if (config.scenes[targetScene] && config.scenes[targetScene].length > 0) {
-    const action = await vscode10.window.showQuickPick(
-      [
-        { label: vscode10.l10n.t("Overwrite Existing Scene"), value: "overwrite" },
-        { label: vscode10.l10n.t("Append to Existing Scene"), value: "append" }
-      ],
-      {
-        placeHolder: vscode10.l10n.t("Scene [{0}] already exists. Choose action:", targetScene)
+async function handleExternalChange(params) {
+  return queue.run(async () => {
+    const {
+      workspaceRoot,
+      allowAiActivation,
+      isDebuggingActive,
+      sceneRepository = jsonFileSceneRepository,
+      breakpointBridge = vscodeBreakpointBridge,
+      onPendingMessage
+    } = params;
+    const config = sceneRepository.loadScenesConfig(workspaceRoot);
+    const currentActives = sceneStateManager.getActiveScenes();
+    const diff = resolveActiveScenesDiff({
+      allowAiActivation,
+      currentActiveScenes: currentActives,
+      rawActiveScenes: config.activeScenes,
+      scenesDict: config.scenes
+    });
+    if (diff.shouldApply) {
+      if (diff.action === "apply") {
+        await activateScene({
+          workspaceRoot,
+          targetScenes: diff.targetScenes,
+          sceneRepository,
+          breakpointBridge
+        });
+        return { action: "applied", targetScenes: diff.targetScenes };
+      } else if (diff.action === "clear") {
+        await clearAll({
+          workspaceRoot,
+          sceneRepository,
+          breakpointBridge
+        });
+        return { action: "cleared" };
       }
-    );
-    if (!action) return;
-    mode = action.value;
-  }
-  const result = await exportScene({
-    workspaceRoot,
-    targetScene,
-    mode
+    } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
+      const merged = mergeScenesBreakpoints(config, currentActives);
+      const newTopologyHash = computeBreakpointsTopologyHash(merged);
+      if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
+        return { action: "noop" };
+      }
+      if (isDebuggingActive) {
+        sceneStateManager.setPendingTopologyUpdate(true);
+        if (onPendingMessage) {
+          onPendingMessage();
+        }
+        return { action: "pending" };
+      }
+      await breakpointBridge.applySceneBreakpoints(
+        workspaceRoot,
+        currentActives.join("+"),
+        merged
+      );
+      sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
+      return { action: "applied", targetScenes: currentActives };
+    }
+    return { action: "noop" };
   });
-  if (result.success) {
-    sceneStateManager.setActiveScene(targetScene, result.count);
-    await vscode10.commands.executeCommand("sceneBreakpoints.refreshView");
-    vscode10.window.showInformationMessage(
-      vscode10.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene)
-    );
-  }
 }
 
-// src/infra/vscode/controllers/showMenu.ts
-var fs4 = __toESM(require("node:fs"));
-var vscode12 = __toESM(require("vscode"));
-
-// src/infra/vscode/controllers/clipboardSync.ts
-var vscode11 = __toESM(require("vscode"));
+// src/infra/vscode/commands/clipboardCommands.ts
+var vscode8 = __toESM(require("vscode"));
 
 // src/application/payloadSerializer.ts
 function generateScenePayload(sceneName, breakpoints) {
@@ -2540,14 +2276,14 @@ function parseScenePayload(rawText, defaultSceneName) {
   };
 }
 
-// src/infra/vscode/controllers/clipboardSync.ts
+// src/infra/vscode/commands/clipboardCommands.ts
 async function copySceneToClipboardCommand(target) {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
   const config = loadScenesConfig(workspaceRoot);
   const sceneNames = Object.keys(config.scenes || {});
   if (sceneNames.length === 0) {
-    vscode11.window.showWarningMessage(vscode11.l10n.t("No scenes configured in debug-scenes.json yet"));
+    vscode8.window.showWarningMessage(vscode8.l10n.t("No scenes configured in debug-scenes.json yet"));
     return;
   }
   let targetScene;
@@ -2559,14 +2295,14 @@ async function copySceneToClipboardCommand(target) {
     }
   }
   if (!targetScene) {
-    const picked = await vscode11.window.showQuickPick(
+    const picked = await vscode8.window.showQuickPick(
       sceneNames.map((name) => ({
         label: `$(symbol-event) ${name}`,
-        description: vscode11.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
+        description: vscode8.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
         sceneName: name
       })),
       {
-        placeHolder: vscode11.l10n.t("Select a scene to copy to clipboard")
+        placeHolder: vscode8.l10n.t("Select a scene to copy to clipboard")
       }
     );
     if (!picked) return;
@@ -2574,40 +2310,40 @@ async function copySceneToClipboardCommand(target) {
   }
   const breakpoints = config.scenes[targetScene] || [];
   if (breakpoints.length === 0) {
-    vscode11.window.showWarningMessage(
-      vscode11.l10n.t("Scene [{0}] has no breakpoints to copy.", targetScene)
+    vscode8.window.showWarningMessage(
+      vscode8.l10n.t("Scene [{0}] has no breakpoints to copy.", targetScene)
     );
     return;
   }
   const payloadStr = serializeScenePayload(targetScene, breakpoints);
-  await vscode11.env.clipboard.writeText(payloadStr);
-  vscode11.window.showInformationMessage(
-    vscode11.l10n.t("Scene [{0}] copied to clipboard ({1} breakpoint(s))!", targetScene, breakpoints.length)
+  await vscode8.env.clipboard.writeText(payloadStr);
+  vscode8.window.showInformationMessage(
+    vscode8.l10n.t("Scene [{0}] copied to clipboard ({1} breakpoint(s))!", targetScene, breakpoints.length)
   );
 }
 async function importSceneFromClipboardCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
-  const clipboardText = await vscode11.env.clipboard.readText();
+  const clipboardText = await vscode8.env.clipboard.readText();
   if (!clipboardText || !clipboardText.trim()) {
-    vscode11.window.showWarningMessage(
-      vscode11.l10n.t("Clipboard is empty or does not contain valid text.")
+    vscode8.window.showWarningMessage(
+      vscode8.l10n.t("Clipboard is empty or does not contain valid text.")
     );
     return;
   }
   const parseResult = parseScenePayload(clipboardText);
   if (!parseResult.success) {
-    const viewFormatAction = vscode11.l10n.t("View Supported Formats");
-    const action = await vscode11.window.showErrorMessage(
-      vscode11.l10n.t("Failed to import scene from clipboard: {0}", parseResult.error),
+    const viewFormatAction = vscode8.l10n.t("View Supported Formats");
+    const action = await vscode8.window.showErrorMessage(
+      vscode8.l10n.t("Failed to import scene from clipboard: {0}", parseResult.error),
       viewFormatAction
     );
     if (action === viewFormatAction) {
-      const doc = await vscode11.workspace.openTextDocument({
+      const doc = await vscode8.workspace.openTextDocument({
         language: "jsonc",
         content: getSupportedFormatsTemplate()
       });
-      await vscode11.window.showTextDocument(doc, { preview: true });
+      await vscode8.window.showTextDocument(doc, { preview: true });
     }
     return;
   }
@@ -2615,35 +2351,35 @@ async function importSceneFromClipboardCommand() {
   let finalSceneName = parseResult.sceneName;
   const importedBreakpoints = parseResult.breakpoints;
   if (config.scenes[finalSceneName] && config.scenes[finalSceneName].length > 0) {
-    const action = await vscode11.window.showQuickPick(
+    const action = await vscode8.window.showQuickPick(
       [
         {
-          label: vscode11.l10n.t("Overwrite Existing Scene"),
-          description: vscode11.l10n.t("Replace existing [{0}] completely", finalSceneName),
+          label: vscode8.l10n.t("Overwrite Existing Scene"),
+          description: vscode8.l10n.t("Replace existing [{0}] completely", finalSceneName),
           value: "overwrite"
         },
         {
-          label: vscode11.l10n.t("Append & Merge Breakpoints"),
-          description: vscode11.l10n.t("Keep existing breakpoints and upsert imported ones", finalSceneName),
+          label: vscode8.l10n.t("Append & Merge Breakpoints"),
+          description: vscode8.l10n.t("Keep existing breakpoints and upsert imported ones", finalSceneName),
           value: "append"
         },
         {
-          label: vscode11.l10n.t("Rename Imported Scene"),
-          description: vscode11.l10n.t("Save under a new scene name", finalSceneName),
+          label: vscode8.l10n.t("Rename Imported Scene"),
+          description: vscode8.l10n.t("Save under a new scene name", finalSceneName),
           value: "rename"
         }
       ],
       {
-        placeHolder: vscode11.l10n.t("Scene [{0}] already exists. Choose action:", finalSceneName)
+        placeHolder: vscode8.l10n.t("Scene [{0}] already exists. Choose action:", finalSceneName)
       }
     );
     if (!action) return;
     if (action.value === "rename") {
-      const newName = await vscode11.window.showInputBox({
-        prompt: vscode11.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
+      const newName = await vscode8.window.showInputBox({
+        prompt: vscode8.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
         value: `${finalSceneName}-copy`,
         validateInput: (val) => {
-          if (!val || !val.trim()) return vscode11.l10n.t("Scene name cannot be empty");
+          if (!val || !val.trim()) return vscode8.l10n.t("Scene name cannot be empty");
           return null;
         }
       });
@@ -2662,16 +2398,16 @@ async function importSceneFromClipboardCommand() {
   }
   SceneNode.expandedScenes.add(finalSceneName);
   saveScenesConfig(workspaceRoot, config);
-  await vscode11.commands.executeCommand("sceneBreakpoints.refreshView");
+  await vscode8.commands.executeCommand("sceneBreakpoints.refreshView");
   if (sceneStateManager.isSceneActive(finalSceneName)) {
     const activeScenes = sceneStateManager.getActiveScenes();
     const merged = mergeScenesBreakpoints(config, activeScenes);
     await applySceneBreakpoints(workspaceRoot, activeScenes.join("+"), merged);
     sceneStateManager.setActiveScenes(activeScenes, merged.length);
   }
-  const activateAction = vscode11.l10n.t("Activate Scene");
-  const choice = await vscode11.window.showInformationMessage(
-    vscode11.l10n.t(
+  const activateAction = vscode8.l10n.t("Activate Scene");
+  const choice = await vscode8.window.showInformationMessage(
+    vscode8.l10n.t(
       "Successfully imported scene [{0}] with {1} breakpoint(s)!",
       finalSceneName,
       config.scenes[finalSceneName].length
@@ -2683,7 +2419,301 @@ async function importSceneFromClipboardCommand() {
   }
 }
 
-// src/infra/vscode/controllers/showMenu.ts
+// src/infra/vscode/commands/sceneCommands.ts
+async function clearAllCommand() {
+  const workspaceRoot = getWorkspaceRoot(false);
+  await clearAll({ workspaceRoot });
+}
+async function applySceneCommand(sceneParam) {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const config = loadScenesConfig(workspaceRoot);
+  const sceneNames = Object.keys(config.scenes || {});
+  if (sceneNames.length === 0) {
+    vscode9.window.showWarningMessage(vscode9.l10n.t("No scenes configured in debug-scenes.json yet"));
+    return;
+  }
+  let targetScenes;
+  if (Array.isArray(sceneParam)) {
+    targetScenes = sceneParam.map((s) => String(s).trim()).filter(Boolean);
+  } else if (typeof sceneParam === "string" && sceneParam.trim()) {
+    if (sceneParam.includes(",")) {
+      targetScenes = sceneParam.split(",").map((s) => s.trim()).filter(Boolean);
+    } else {
+      targetScenes = [sceneParam.trim()];
+    }
+  }
+  if (!targetScenes) {
+    const activeEditor = vscode9.window.activeTextEditor;
+    if (activeEditor && activeEditor.document.fileName.endsWith("debug-scenes.json")) {
+      const currentLine = activeEditor.selection.active.line;
+      for (let i = currentLine; i >= 0; i--) {
+        const lineText = activeEditor.document.lineAt(i).text;
+        for (const sName of sceneNames) {
+          if (lineText.includes(`"${sName}"`) && lineText.includes(":")) {
+            targetScenes = [sName];
+            break;
+          }
+        }
+        if (targetScenes) break;
+      }
+    }
+  }
+  if (!targetScenes) {
+    const currentActiveScenes = sceneStateManager.getActiveScenes();
+    const items = sceneNames.map((name) => ({
+      label: name,
+      description: vscode9.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
+      picked: currentActiveScenes.includes(name)
+    }));
+    const picked = await vscode9.window.showQuickPick(items, {
+      canPickMany: true,
+      placeHolder: vscode9.l10n.t("Select one or more debug scenes to activate (check to layer breakpoints)")
+    });
+    if (picked === void 0) return;
+    targetScenes = picked.map((it) => it.label);
+  }
+  if (targetScenes.length === 0) {
+    await clearAllCommand();
+    return;
+  }
+  const currentActive = sceneStateManager.getActiveScene();
+  const isDirty = sceneStateManager.getIsDirty();
+  if (currentActive && isDirty) {
+    const actionAppend = vscode9.l10n.t("Save & Append to [{0}]", currentActive);
+    const actionDiscard = vscode9.l10n.t("Discard Temporary Breakpoints");
+    const chosen = await vscode9.window.showWarningMessage(
+      vscode9.l10n.t(
+        "Workspace has unsaved temporary breakpoints in scene [{0}]. What would you like to do before switching/reloading?",
+        currentActive
+      ),
+      { modal: true },
+      actionAppend,
+      actionDiscard
+    );
+    if (!chosen) return;
+    if (chosen === actionAppend) {
+      const currentBps = vscodeBreakpointBridge.collectCurrentBreakpoints(workspaceRoot);
+      config.scenes[currentActive] = currentBps;
+      saveScenesConfig(workspaceRoot, config);
+    }
+  }
+  const result = await activateScene({
+    workspaceRoot,
+    targetScenes
+  });
+  if (!result.success) {
+    vscode9.window.showErrorMessage(
+      vscode9.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", "))
+    );
+    return;
+  }
+  if (result.missingScenes.length > 0) {
+    vscode9.window.showWarningMessage(
+      vscode9.l10n.t("Scene(s) [{0}] not found and skipped", result.missingScenes.join(", "))
+    );
+  }
+  const primarySceneLabel = result.validTargetScenes.length === 1 ? result.validTargetScenes[0] : result.validTargetScenes.join(" + ");
+  if (result.healedCount > 0) {
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t(
+        "Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
+        primarySceneLabel,
+        result.loadedCount,
+        result.healedCount
+      )
+    );
+  } else {
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t(
+        "Scene(s) [{0}] activated! Set {1} target breakpoint(s) and cleaned others.",
+        primarySceneLabel,
+        result.loadedCount
+      )
+    );
+  }
+}
+async function addBreakpointCommand() {
+  const editor = vscode9.window.activeTextEditor;
+  if (!editor) {
+    vscode9.window.showWarningMessage(vscode9.l10n.t("No active editor file detected"));
+    return;
+  }
+  const fullFilePath = editor.document.fileName;
+  const workspaceFolder = vscode9.workspace.getWorkspaceFolder(editor.document.uri);
+  const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : path6.dirname(editor.document.fileName);
+  const relativeFilePath = path6.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
+  const fileNameOnly = path6.basename(fullFilePath);
+  const currentLine = editor.selection.active.line + 1;
+  const config = loadScenesConfig(workspaceRoot);
+  const existingScenes = Object.keys(config.scenes || {});
+  const sceneQuickPickItems = [
+    ...existingScenes.map((s) => ({ label: `$(symbol-event) ${s}`, sceneName: s })),
+    { label: vscode9.l10n.t("$(add) [New Scene...]"), sceneName: "__NEW__" }
+  ];
+  const selectedSceneItem = await vscode9.window.showQuickPick(sceneQuickPickItems, {
+    placeHolder: vscode9.l10n.t("Select a scene to add the current line breakpoint to")
+  });
+  if (!selectedSceneItem) return;
+  let targetScene = selectedSceneItem.sceneName;
+  if (targetScene === "__NEW__") {
+    const newSceneName = await vscode9.window.showInputBox({
+      prompt: vscode9.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
+      validateInput: (value) => {
+        if (!value || !value.trim()) return vscode9.l10n.t("Scene name cannot be empty");
+        return null;
+      }
+    });
+    if (!newSceneName) return;
+    targetScene = newSceneName.trim();
+    if (!config.scenes[targetScene]) {
+      config.scenes[targetScene] = [];
+    }
+  }
+  const typeItems = [
+    {
+      label: `$(debug-breakpoint) ${vscode9.l10n.t("Line Breakpoint")}`,
+      description: vscode9.l10n.t("Pause execution when hit"),
+      type: "line"
+    },
+    {
+      label: `$(debug-breakpoint-conditional) ${vscode9.l10n.t("Conditional Breakpoint")}`,
+      description: vscode9.l10n.t("Pause when expression evaluates to true"),
+      type: "condition"
+    },
+    {
+      label: `$(debug-breakpoint-data) ${vscode9.l10n.t("Hit Count Breakpoint")}`,
+      description: vscode9.l10n.t("Pause when hit count condition is satisfied"),
+      type: "hitCount"
+    },
+    {
+      label: `$(debug-breakpoint-log) ${vscode9.l10n.t("Logpoint")}`,
+      description: vscode9.l10n.t("Print log message to debug console without pausing"),
+      type: "logpoint"
+    },
+    {
+      label: `$(debug-breakpoint-function) ${vscode9.l10n.t("Function Breakpoint")}`,
+      description: vscode9.l10n.t("Pause when a named function is invoked"),
+      type: "function"
+    }
+  ];
+  const selectedTypeItem = await vscode9.window.showQuickPick(typeItems, {
+    placeHolder: vscode9.l10n.t("Select breakpoint type")
+  });
+  if (!selectedTypeItem) return;
+  const bpType = selectedTypeItem.type;
+  let condition;
+  let hitCondition;
+  let logMessage;
+  let functionName;
+  if (bpType === "condition") {
+    condition = await vscode9.window.showInputBox({
+      prompt: vscode9.l10n.t("Enter condition expression (e.g. user.isAdmin === true)"),
+      placeHolder: "user.isAdmin === true"
+    });
+    if (condition === void 0) return;
+  } else if (bpType === "hitCount") {
+    hitCondition = await vscode9.window.showInputBox({
+      prompt: vscode9.l10n.t("Enter hit count condition (e.g. > 5 or % 10 === 0)"),
+      placeHolder: "> 5"
+    });
+    if (hitCondition === void 0) return;
+  } else if (bpType === "logpoint") {
+    logMessage = await vscode9.window.showInputBox({
+      prompt: vscode9.l10n.t("Enter log message to print (supports {var} interpolation)"),
+      placeHolder: "User state: {user.name}, retries: {retryCount}"
+    });
+    if (logMessage === void 0) return;
+  } else if (bpType === "function") {
+    functionName = await vscode9.window.showInputBox({
+      prompt: vscode9.l10n.t("Enter function name to break on"),
+      placeHolder: "handleUserAuthentication",
+      validateInput: (v) => !v || !v.trim() ? vscode9.l10n.t("Function name cannot be empty") : null
+    });
+    if (!functionName) return;
+  }
+  const description = await vscode9.window.showInputBox({
+    prompt: vscode9.l10n.t("Enter breakpoint description (optional, current line: {0}:{1})", fileNameOnly, currentLine),
+    placeHolder: vscode9.l10n.t("e.g. Check steering message injection in decision loop")
+  });
+  let newEntry;
+  if (bpType === "function") {
+    newEntry = {
+      type: "function",
+      functionName: functionName.trim(),
+      condition: condition?.trim() || void 0,
+      hitCondition: hitCondition?.trim() || void 0,
+      desc: description?.trim() || void 0
+    };
+  } else {
+    const contextSnippet = extractContextSnippet(editor.document, editor.selection.active.line);
+    newEntry = {
+      type: bpType,
+      file: relativeFilePath.includes("/") ? relativeFilePath : fileNameOnly,
+      line: currentLine,
+      condition: condition?.trim() || void 0,
+      hitCondition: hitCondition?.trim() || void 0,
+      logMessage: logMessage?.trim() || void 0,
+      desc: description?.trim() || void 0,
+      contextSnippet
+    };
+  }
+  await addBreakpoint({
+    workspaceRoot,
+    targetScene,
+    breakpoint: newEntry
+  });
+  const summaryLabel = bpType === "function" ? functionName : `${fileNameOnly}:${currentLine}`;
+  vscode9.window.showInformationMessage(
+    vscode9.l10n.t("Saved breakpoint to scene [{0}]: {1}:{2} {3}", targetScene, summaryLabel, bpType, newEntry.desc ? `("${newEntry.desc}")` : "")
+  );
+}
+async function exportSceneCommand() {
+  const currentBreakpoints = vscode9.debug.breakpoints;
+  if (!currentBreakpoints || currentBreakpoints.length === 0) {
+    vscode9.window.showWarningMessage(vscode9.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."));
+    return;
+  }
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const sceneName = await vscode9.window.showInputBox({
+    prompt: vscode9.l10n.t("Enter scene identifier to export current breakpoints to (e.g. order-flow-debug)"),
+    placeHolder: "order-flow-debug",
+    validateInput: (value) => {
+      if (!value || !value.trim()) return vscode9.l10n.t("Scene name cannot be empty");
+      return null;
+    }
+  });
+  if (!sceneName || !sceneName.trim()) return;
+  const targetScene = sceneName.trim();
+  const config = loadScenesConfig(workspaceRoot);
+  let mode = "overwrite";
+  if (config.scenes[targetScene] && config.scenes[targetScene].length > 0) {
+    const action = await vscode9.window.showQuickPick(
+      [
+        { label: vscode9.l10n.t("Overwrite Existing Scene"), value: "overwrite" },
+        { label: vscode9.l10n.t("Append to Existing Scene"), value: "append" }
+      ],
+      {
+        placeHolder: vscode9.l10n.t("Scene [{0}] already exists. Choose action:", targetScene)
+      }
+    );
+    if (!action) return;
+    mode = action.value;
+  }
+  const result = await exportScene({
+    workspaceRoot,
+    targetScene,
+    mode
+  });
+  if (result.success) {
+    sceneStateManager.setActiveScene(targetScene, result.count);
+    await vscode9.commands.executeCommand("sceneBreakpoints.refreshView");
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene)
+    );
+  }
+}
 async function showMenuCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
@@ -2702,56 +2732,56 @@ async function showMenuCommand() {
       }
       let description;
       if (isActive) {
-        description = isDirty ? vscode12.l10n.t("(Active - Unsaved)") : vscode12.l10n.t("(Active)");
+        description = isDirty ? vscode9.l10n.t("(Active - Unsaved)") : vscode9.l10n.t("(Active)");
       }
       items.push({
         label,
         description,
-        detail: vscode12.l10n.t("{0} breakpoint(s)", bps.length),
+        detail: vscode9.l10n.t("{0} breakpoint(s)", bps.length),
         action: "switch",
         sceneName: name
       });
     }
   } else {
     items.push({
-      label: `$(info) ${vscode12.l10n.t("No scenes configured yet")}`,
-      description: vscode12.l10n.t("Add breakpoints or export active ones to create a scene")
+      label: `$(info) ${vscode9.l10n.t("No scenes configured yet")}`,
+      description: vscode9.l10n.t("Add breakpoints or export active ones to create a scene")
     });
   }
   items.push({
-    label: vscode12.l10n.t("Quick Actions"),
-    kind: vscode12.QuickPickItemKind.Separator
+    label: vscode9.l10n.t("Quick Actions"),
+    kind: vscode9.QuickPickItemKind.Separator
   });
   items.push(
     {
-      label: `$(checklist) ${vscode12.l10n.t("Multi-Select Scenes to Activate...")}`,
-      description: vscode12.l10n.t("Check multiple scenes to layer breakpoints together"),
+      label: `$(checklist) ${vscode9.l10n.t("Multi-Select Scenes to Activate...")}`,
+      description: vscode9.l10n.t("Check multiple scenes to layer breakpoints together"),
       action: "multiSelect"
     },
     {
-      label: `$(cloud-upload) ${vscode12.l10n.t("Export Active Breakpoints as Scene...")}`,
-      description: vscode12.l10n.t("Save current editor breakpoints into debug-scenes.json"),
+      label: `$(cloud-upload) ${vscode9.l10n.t("Export Active Breakpoints as Scene...")}`,
+      description: vscode9.l10n.t("Save current editor breakpoints into debug-scenes.json"),
       action: "export"
     },
     {
-      label: `$(cloud-download) ${vscode12.l10n.t("Import Scene from Clipboard...")}`,
-      description: vscode12.l10n.t("Parse and import scene breakpoints from clipboard"),
+      label: `$(cloud-download) ${vscode9.l10n.t("Import Scene from Clipboard...")}`,
+      description: vscode9.l10n.t("Parse and import scene breakpoints from clipboard"),
       action: "importClipboard"
     },
     {
-      label: `$(clear-all) ${vscode12.l10n.t("Clear All Breakpoints")}`,
-      description: vscode12.l10n.t("Clear all breakpoints from current workspace"),
+      label: `$(clear-all) ${vscode9.l10n.t("Clear All Breakpoints")}`,
+      description: vscode9.l10n.t("Clear all breakpoints from current workspace"),
       action: "clear"
     },
     {
-      label: `$(file-code) ${vscode12.l10n.t("Open debug-scenes.json")}`,
-      description: vscode12.l10n.t("Edit configuration file directly"),
+      label: `$(file-code) ${vscode9.l10n.t("Open debug-scenes.json")}`,
+      description: vscode9.l10n.t("Edit configuration file directly"),
       action: "openConfig"
     }
   );
-  const quickPick = vscode12.window.createQuickPick();
+  const quickPick = vscode9.window.createQuickPick();
   quickPick.items = items;
-  quickPick.placeholder = vscode12.l10n.t("Select a scene to activate, or choose a management action");
+  quickPick.placeholder = vscode9.l10n.t("Select a scene to activate, or choose a management action");
   quickPick.matchOnDescription = true;
   quickPick.matchOnDetail = true;
   const firstActive = activeScenes[0];
@@ -2788,8 +2818,8 @@ async function showMenuCommand() {
         if (!fs4.existsSync(configPath)) {
           saveScenesConfig(workspaceRoot, { scenes: {} });
         }
-        const doc = await vscode12.workspace.openTextDocument(configPath);
-        await vscode12.window.showTextDocument(doc);
+        const doc = await vscode9.workspace.openTextDocument(configPath);
+        await vscode9.window.showTextDocument(doc);
         break;
       }
     }
@@ -2798,10 +2828,10 @@ async function showMenuCommand() {
   quickPick.show();
 }
 
-// src/infra/vscode/controllers/skillCommands.ts
+// src/infra/vscode/commands/skillCommands.ts
 var fs5 = __toESM(require("node:fs"));
 var path7 = __toESM(require("node:path"));
-var vscode13 = __toESM(require("vscode"));
+var vscode10 = __toESM(require("vscode"));
 function formatSkillContent(baseContent, target) {
   if (target.customHeader) {
     let baseStr = Buffer.from(baseContent).toString("utf-8");
@@ -2817,7 +2847,7 @@ function backupSkillFile(targetFilePath) {
   return backupPath;
 }
 async function writeSkillToTarget(context, workspaceRoot, target) {
-  const skillSourceUri = vscode13.Uri.joinPath(
+  const skillSourceUri = vscode10.Uri.joinPath(
     context.extensionUri,
     "skills",
     "scene-breakpoints",
@@ -2825,23 +2855,23 @@ async function writeSkillToTarget(context, workspaceRoot, target) {
   );
   let content;
   try {
-    content = await vscode13.workspace.fs.readFile(skillSourceUri);
+    content = await vscode10.workspace.fs.readFile(skillSourceUri);
   } catch (error) {
-    vscode13.window.showErrorMessage(
-      vscode13.l10n.t("Failed to read built-in Skill template: {0}", String(error))
+    vscode10.window.showErrorMessage(
+      vscode10.l10n.t("Failed to read built-in Skill template: {0}", String(error))
     );
     return false;
   }
-  const targetDirUri = vscode13.Uri.file(path7.join(workspaceRoot, target.dir));
-  const targetFileUri = vscode13.Uri.file(path7.join(workspaceRoot, target.dir, target.file));
+  const targetDirUri = vscode10.Uri.file(path7.join(workspaceRoot, target.dir));
+  const targetFileUri = vscode10.Uri.file(path7.join(workspaceRoot, target.dir, target.file));
   const targetContent = formatSkillContent(content, target);
   try {
-    await vscode13.workspace.fs.createDirectory(targetDirUri);
-    await vscode13.workspace.fs.writeFile(targetFileUri, targetContent);
+    await vscode10.workspace.fs.createDirectory(targetDirUri);
+    await vscode10.workspace.fs.writeFile(targetFileUri, targetContent);
     return true;
   } catch (error) {
-    vscode13.window.showErrorMessage(
-      vscode13.l10n.t("Failed to write Skill file: {0}", String(error))
+    vscode10.window.showErrorMessage(
+      vscode10.l10n.t("Failed to write Skill file: {0}", String(error))
     );
     return false;
   }
@@ -2849,13 +2879,13 @@ async function writeSkillToTarget(context, workspaceRoot, target) {
 async function installSkillCommand(context) {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) {
-    vscode13.window.showErrorMessage(vscode13.l10n.t("Please open a workspace folder first."));
+    vscode10.window.showErrorMessage(vscode10.l10n.t("Please open a workspace folder first."));
     return;
   }
   const targets = await pickSkillTargets(workspaceRoot);
   if (!targets || targets.length === 0) {
-    vscode13.window.showInformationMessage(
-      vscode13.l10n.t("No target AI environments selected. Installation cancelled.")
+    vscode10.window.showInformationMessage(
+      vscode10.l10n.t("No target AI environments selected. Installation cancelled.")
     );
     return;
   }
@@ -2863,20 +2893,20 @@ async function installSkillCommand(context) {
     const success = await writeSkillToTarget(context, workspaceRoot, target);
     if (!success) return;
   }
-  vscode13.window.showInformationMessage(
-    vscode13.l10n.t("Scene Breakpoints Skill successfully deployed to target directory.")
+  vscode10.window.showInformationMessage(
+    vscode10.l10n.t("Scene Breakpoints Skill successfully deployed to target directory.")
   );
 }
 async function diagnoseAiIntegrationCommand(context) {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) {
-    vscode13.window.showErrorMessage(vscode13.l10n.t("Please open a workspace folder first."));
+    vscode10.window.showErrorMessage(vscode10.l10n.t("Please open a workspace folder first."));
     return;
   }
-  const config = vscode13.workspace.getConfiguration("sceneBreakpoints");
+  const config = vscode10.workspace.getConfiguration("sceneBreakpoints");
   const allowAiActivation = config.get("allowAiFileActivation", false);
   const activeScenes = sceneStateManager.getActiveScenes();
-  const skillSourceUri = vscode13.Uri.joinPath(
+  const skillSourceUri = vscode10.Uri.joinPath(
     context.extensionUri,
     "skills",
     "scene-breakpoints",
@@ -2884,45 +2914,45 @@ async function diagnoseAiIntegrationCommand(context) {
   );
   let rawOfficialTemplate = "";
   try {
-    const rawBytes = await vscode13.workspace.fs.readFile(skillSourceUri);
+    const rawBytes = await vscode10.workspace.fs.readFile(skillSourceUri);
     rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
   } catch {
   }
   const targetItems = getSupportedSkillTargets();
   const diagnostics = [];
   diagnostics.push({
-    label: allowAiActivation ? `$(pass) ${vscode13.l10n.t("AI File Activation: Enabled")}` : `$(warning) ${vscode13.l10n.t("AI File Activation: Disabled (Click to Enable)")}`,
-    description: allowAiActivation ? vscode13.l10n.t("AI Agent can declaratively activate scenes via activeScenes") : vscode13.l10n.t("External activeScenes modifications are currently ignored"),
+    label: allowAiActivation ? `$(pass) ${vscode10.l10n.t("AI File Activation: Enabled")}` : `$(warning) ${vscode10.l10n.t("AI File Activation: Disabled (Click to Enable)")}`,
+    description: allowAiActivation ? vscode10.l10n.t("AI Agent can declaratively activate scenes via activeScenes") : vscode10.l10n.t("External activeScenes modifications are currently ignored"),
     action: async () => {
       if (!allowAiActivation) {
-        await config.update("allowAiFileActivation", true, vscode13.ConfigurationTarget.Workspace);
-        vscode13.window.showInformationMessage(
-          vscode13.l10n.t("AI File Activation has been enabled for this workspace.")
+        await config.update("allowAiFileActivation", true, vscode10.ConfigurationTarget.Workspace);
+        vscode10.window.showInformationMessage(
+          vscode10.l10n.t("AI File Activation has been enabled for this workspace.")
         );
       }
     }
   });
   diagnostics.push({
-    label: `$(symbol-event) ${vscode13.l10n.t("Active Scenes: [{0}]", activeScenes.length > 0 ? activeScenes.join(", ") : "None")}`,
-    description: vscode13.l10n.t("Current effective breakpoint scenes")
+    label: `$(symbol-event) ${vscode10.l10n.t("Active Scenes: [{0}]", activeScenes.length > 0 ? activeScenes.join(", ") : "None")}`,
+    description: vscode10.l10n.t("Current effective breakpoint scenes")
   });
   diagnostics.push({
-    label: vscode13.l10n.t("Skill Deployment & Version Status across Platforms:"),
-    kind: vscode13.QuickPickItemKind.Separator
+    label: vscode10.l10n.t("Skill Deployment & Version Status across Platforms:"),
+    kind: vscode10.QuickPickItemKind.Separator
   });
   for (const target of targetItems) {
     const fullPath = path7.join(workspaceRoot, target.dir, target.file);
     const exists = fs5.existsSync(fullPath);
     if (!exists) {
       diagnostics.push({
-        label: `$(add) ${target.label} (${vscode13.l10n.t("Not Installed - Click to Install")})`,
+        label: `$(add) ${target.label} (${vscode10.l10n.t("Not Installed - Click to Install")})`,
         description: target.description,
-        detail: vscode13.l10n.t("Click to deploy v{0} Skill", LATEST_SKILL_VERSION),
+        detail: vscode10.l10n.t("Click to deploy v{0} Skill", LATEST_SKILL_VERSION),
         action: async () => {
           const success = await writeSkillToTarget(context, workspaceRoot, target);
           if (success) {
-            vscode13.window.showInformationMessage(
-              vscode13.l10n.t("Skill installed to {0}", target.label)
+            vscode10.window.showInformationMessage(
+              vscode10.l10n.t("Skill installed to {0}", target.label)
             );
           }
         }
@@ -2933,81 +2963,81 @@ async function diagnoseAiIntegrationCommand(context) {
     const lifecycle = resolveSkillLifecycleState(localContent, rawOfficialTemplate);
     if (lifecycle.status === "UpToDate") {
       diagnostics.push({
-        label: `$(pass) ${target.label} (${vscode13.l10n.t("Up to Date: v{0}", LATEST_SKILL_VERSION)})`,
+        label: `$(pass) ${target.label} (${vscode10.l10n.t("Up to Date: v{0}", LATEST_SKILL_VERSION)})`,
         description: target.description,
-        detail: vscode13.l10n.t("Installed: {0}", fullPath),
+        detail: vscode10.l10n.t("Installed: {0}", fullPath),
         action: async () => {
-          const reInstall = await vscode13.window.showQuickPick(
+          const reInstall = await vscode10.window.showQuickPick(
             [
-              { label: vscode13.l10n.t("Reinstall / Overwrite with latest template"), value: true },
-              { label: vscode13.l10n.t("Cancel"), value: false }
+              { label: vscode10.l10n.t("Reinstall / Overwrite with latest template"), value: true },
+              { label: vscode10.l10n.t("Cancel"), value: false }
             ],
-            { placeHolder: vscode13.l10n.t("Already up to date. Do you want to reinstall?") }
+            { placeHolder: vscode10.l10n.t("Already up to date. Do you want to reinstall?") }
           );
           if (reInstall?.value) {
             await writeSkillToTarget(context, workspaceRoot, target);
-            vscode13.window.showInformationMessage(
-              vscode13.l10n.t("Skill reinstalled to {0}", target.label)
+            vscode10.window.showInformationMessage(
+              vscode10.l10n.t("Skill reinstalled to {0}", target.label)
             );
           }
         }
       });
     } else if (lifecycle.status === "CleanOutdated") {
       diagnostics.push({
-        label: `$(sync) ${target.label} (${vscode13.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", LATEST_SKILL_VERSION)})`,
+        label: `$(sync) ${target.label} (${vscode10.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", LATEST_SKILL_VERSION)})`,
         description: target.description,
-        detail: vscode13.l10n.t("Official template outdated. Click to update smoothly."),
+        detail: vscode10.l10n.t("Official template outdated. Click to update smoothly."),
         action: async () => {
           const success = await writeSkillToTarget(context, workspaceRoot, target);
           if (success) {
-            vscode13.window.showInformationMessage(
-              vscode13.l10n.t("Skill successfully updated to v{0} ({1})", LATEST_SKILL_VERSION, target.label)
+            vscode10.window.showInformationMessage(
+              vscode10.l10n.t("Skill successfully updated to v{0} ({1})", LATEST_SKILL_VERSION, target.label)
             );
           }
         }
       });
     } else {
       diagnostics.push({
-        label: `$(diff) ${target.label} (${vscode13.l10n.t("Customized (Click to Diff / Update)")})`,
+        label: `$(diff) ${target.label} (${vscode10.l10n.t("Customized (Click to Diff / Update)")})`,
         description: target.description,
-        detail: vscode13.l10n.t("Modified locally. Click to view diff or backup & update."),
+        detail: vscode10.l10n.t("Modified locally. Click to view diff or backup & update."),
         action: async () => {
-          const choice = await vscode13.window.showQuickPick(
+          const choice = await vscode10.window.showQuickPick(
             [
               {
-                label: `$(diff) ${vscode13.l10n.t("View Side-by-Side Diff with Latest Official Version")}`,
+                label: `$(diff) ${vscode10.l10n.t("View Side-by-Side Diff with Latest Official Version")}`,
                 value: "diff"
               },
               {
-                label: `$(save) ${vscode13.l10n.t("Backup & Overwrite with Latest Version")}`,
+                label: `$(save) ${vscode10.l10n.t("Backup & Overwrite with Latest Version")}`,
                 value: "backup"
               },
               {
-                label: `$(close) ${vscode13.l10n.t("Keep Current Changes")}`,
+                label: `$(close) ${vscode10.l10n.t("Keep Current Changes")}`,
                 value: "cancel"
               }
             ],
             {
-              placeHolder: vscode13.l10n.t("Local modifications detected in {0}. Choose action:", target.file)
+              placeHolder: vscode10.l10n.t("Local modifications detected in {0}. Choose action:", target.file)
             }
           );
           if (choice?.value === "diff") {
             const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
             const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
             templateContentProvider.setTemplateContent(target.file, expectedStr);
-            const localUri = vscode13.Uri.file(fullPath);
-            const virtualUri = vscode13.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
-            await vscode13.commands.executeCommand(
+            const localUri = vscode10.Uri.file(fullPath);
+            const virtualUri = vscode10.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
+            await vscode10.commands.executeCommand(
               "vscode.diff",
               localUri,
               virtualUri,
-              `${target.label} (${vscode13.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`
+              `${target.label} (${vscode10.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`
             );
           } else if (choice?.value === "backup") {
             const backupPath = backupSkillFile(fullPath);
             await writeSkillToTarget(context, workspaceRoot, target);
-            vscode13.window.showInformationMessage(
-              vscode13.l10n.t(
+            vscode10.window.showInformationMessage(
+              vscode10.l10n.t(
                 "Skill updated to v{0}. Original backed up to: {1}",
                 LATEST_SKILL_VERSION,
                 path7.basename(backupPath)
@@ -3018,8 +3048,8 @@ async function diagnoseAiIntegrationCommand(context) {
       });
     }
   }
-  const selected = await vscode13.window.showQuickPick(diagnostics, {
-    placeHolder: vscode13.l10n.t("Scene Breakpoints AI Integration Diagnostics")
+  const selected = await vscode10.window.showQuickPick(diagnostics, {
+    placeHolder: vscode10.l10n.t("Scene Breakpoints AI Integration Diagnostics")
   });
   if (selected?.action) {
     await selected.action();
@@ -3030,7 +3060,7 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   if (lastNotifiedVer === LATEST_SKILL_VERSION) {
     return;
   }
-  const skillSourceUri = vscode13.Uri.joinPath(
+  const skillSourceUri = vscode10.Uri.joinPath(
     context.extensionUri,
     "skills",
     "scene-breakpoints",
@@ -3038,7 +3068,7 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   );
   let rawOfficialTemplate = "";
   try {
-    const rawBytes = await vscode13.workspace.fs.readFile(skillSourceUri);
+    const rawBytes = await vscode10.workspace.fs.readFile(skillSourceUri);
     rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
   } catch {
     return;
@@ -3063,16 +3093,16 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   }
   await context.workspaceState.update("lastNotifiedSkillVersion", LATEST_SKILL_VERSION);
   const cleanOutdatedList = outdatedTargets.filter((t) => t.status === "CleanOutdated");
-  const updateAction = cleanOutdatedList.length > 0 ? vscode13.l10n.t("Update Clean Skills") : void 0;
-  const diagnoseAction = vscode13.l10n.t("Open Diagnostics");
-  const dismissAction = vscode13.l10n.t("Later");
+  const updateAction = cleanOutdatedList.length > 0 ? vscode10.l10n.t("Update Clean Skills") : void 0;
+  const diagnoseAction = vscode10.l10n.t("Open Diagnostics");
+  const dismissAction = vscode10.l10n.t("Later");
   const actions = [diagnoseAction];
   if (updateAction) {
     actions.unshift(updateAction);
   }
   actions.push(dismissAction);
-  const selected = await vscode13.window.showInformationMessage(
-    vscode13.l10n.t(
+  const selected = await vscode10.window.showInformationMessage(
+    vscode10.l10n.t(
       "Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).",
       outdatedTargets.length,
       LATEST_SKILL_VERSION
@@ -3083,8 +3113,8 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
     for (const { target } of cleanOutdatedList) {
       await writeSkillToTarget(context, workspaceRoot, target);
     }
-    vscode13.window.showInformationMessage(
-      vscode13.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, LATEST_SKILL_VERSION)
+    vscode10.window.showInformationMessage(
+      vscode10.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, LATEST_SKILL_VERSION)
     );
   } else if (selected === diagnoseAction) {
     await diagnoseAiIntegrationCommand(context);
@@ -3161,32 +3191,32 @@ async function pickSkillTargets(workspaceRoot) {
   for (const item of items) {
     const fullPath = path7.join(workspaceRoot, item.dir, item.file);
     if (fs5.existsSync(fullPath)) {
-      item.description = `${item.description} (${vscode13.l10n.t("Installed")})`;
+      item.description = `${item.description} (${vscode10.l10n.t("Installed")})`;
       item.picked = true;
     }
   }
-  return await vscode13.window.showQuickPick(items, {
+  return await vscode10.window.showQuickPick(items, {
     canPickMany: true,
-    placeHolder: vscode13.l10n.t("Select target AI Agent environments to install Skill")
+    placeHolder: vscode10.l10n.t("Select target AI Agent environments to install Skill")
   });
 }
 
-// src/infra/vscode/controllers/treeCommands.ts
+// src/infra/vscode/commands/treeCommands.ts
 var fs6 = __toESM(require("node:fs"));
 var path8 = __toESM(require("node:path"));
-var vscode14 = __toESM(require("vscode"));
+var vscode11 = __toESM(require("vscode"));
 var syncCoordinator2 = saveLoopGuard;
 function registerTreeCommands(context, treeDataProvider) {
-  const refreshViewCmd = vscode14.commands.registerCommand("sceneBreakpoints.refreshView", () => {
+  const refreshViewCmd = vscode11.commands.registerCommand("sceneBreakpoints.refreshView", () => {
     treeDataProvider.refresh();
   });
-  const createNewSceneCmd = vscode14.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
+  const createNewSceneCmd = vscode11.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
     const workspaceRoot = getWorkspaceRoot(true);
     if (!workspaceRoot) return;
-    const sceneName = await vscode14.window.showInputBox({
-      prompt: vscode14.l10n.t("Enter new scene identifier (e.g. auth-flow)"),
+    const sceneName = await vscode11.window.showInputBox({
+      prompt: vscode11.l10n.t("Enter new scene identifier (e.g. auth-flow)"),
       placeHolder: "auth-flow",
-      validateInput: (v) => !v || !v.trim() ? vscode14.l10n.t("Scene name cannot be empty") : null
+      validateInput: (v) => !v || !v.trim() ? vscode11.l10n.t("Scene name cannot be empty") : null
     });
     if (!sceneName) return;
     const config = loadScenesConfig(workspaceRoot);
@@ -3196,12 +3226,12 @@ function registerTreeCommands(context, treeDataProvider) {
       syncCoordinator2.markInternalSaving();
       saveScenesConfig(workspaceRoot, config);
       treeDataProvider.refresh();
-      vscode14.window.showInformationMessage(vscode14.l10n.t("Created empty scene [{0}]", target));
+      vscode11.window.showInformationMessage(vscode11.l10n.t("Created empty scene [{0}]", target));
     } else {
-      vscode14.window.showWarningMessage(vscode14.l10n.t("Scene [{0}] already exists", target));
+      vscode11.window.showWarningMessage(vscode11.l10n.t("Scene [{0}] already exists", target));
     }
   });
-  const applySceneItemCmd = vscode14.commands.registerCommand(
+  const applySceneItemCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.applySceneItem",
     async (node) => {
       if (node && node.sceneName) {
@@ -3210,7 +3240,7 @@ function registerTreeCommands(context, treeDataProvider) {
       }
     }
   );
-  const toggleSceneActivationCmd = vscode14.commands.registerCommand(
+  const toggleSceneActivationCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.toggleSceneActivation",
     async (node) => {
       if (node && node.sceneName) {
@@ -3219,16 +3249,16 @@ function registerTreeCommands(context, treeDataProvider) {
       }
     }
   );
-  const renameSceneItemCmd = vscode14.commands.registerCommand(
+  const renameSceneItemCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.renameSceneItem",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const newName = await vscode14.window.showInputBox({
-        prompt: vscode14.l10n.t("Enter new identifier for scene [{0}]", node.sceneName),
+      const newName = await vscode11.window.showInputBox({
+        prompt: vscode11.l10n.t("Enter new identifier for scene [{0}]", node.sceneName),
         value: node.sceneName,
-        validateInput: (v) => !v || !v.trim() ? vscode14.l10n.t("Scene name cannot be empty") : null
+        validateInput: (v) => !v || !v.trim() ? vscode11.l10n.t("Scene name cannot be empty") : null
       });
       if (!newName || newName.trim() === node.sceneName) return;
       const config = loadScenesConfig(workspaceRoot);
@@ -3242,21 +3272,21 @@ function registerTreeCommands(context, treeDataProvider) {
           sceneStateManager.setActiveScenes(updated);
         }
         treeDataProvider.refresh();
-        vscode14.window.showInformationMessage(
-          vscode14.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName.trim())
+        vscode11.window.showInformationMessage(
+          vscode11.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName.trim())
         );
       }
     }
   );
-  const deleteSceneItemCmd = vscode14.commands.registerCommand(
+  const deleteSceneItemCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.deleteSceneItem",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const confirmText = vscode14.l10n.t("Delete");
-      const choice = await vscode14.window.showWarningMessage(
-        vscode14.l10n.t("Are you sure you want to delete scene [{0}]? This action cannot be undone.", node.sceneName),
+      const confirmText = vscode11.l10n.t("Delete");
+      const choice = await vscode11.window.showWarningMessage(
+        vscode11.l10n.t("Are you sure you want to delete scene [{0}]? This action cannot be undone.", node.sceneName),
         { modal: true },
         confirmText
       );
@@ -3272,11 +3302,11 @@ function registerTreeCommands(context, treeDataProvider) {
           sceneStateManager.setActiveScenes(remaining);
         }
         treeDataProvider.refresh();
-        vscode14.window.showInformationMessage(vscode14.l10n.t("Deleted scene [{0}]", node.sceneName));
+        vscode11.window.showInformationMessage(vscode11.l10n.t("Deleted scene [{0}]", node.sceneName));
       }
     }
   );
-  const removeBpItemCmd = vscode14.commands.registerCommand(
+  const removeBpItemCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.removeBreakpointItem",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
@@ -3291,7 +3321,7 @@ function registerTreeCommands(context, treeDataProvider) {
       }
     }
   );
-  const toggleBpItemCmd = vscode14.commands.registerCommand(
+  const toggleBpItemCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.toggleBreakpointItem",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
@@ -3314,7 +3344,7 @@ function registerTreeCommands(context, treeDataProvider) {
       }
     }
   );
-  const enableAllBreakpointsInSceneCmd = vscode14.commands.registerCommand(
+  const enableAllBreakpointsInSceneCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.enableAllBreakpointsInScene",
     async (node) => {
       if (!node || !node.sceneName) return;
@@ -3332,11 +3362,11 @@ function registerTreeCommands(context, treeDataProvider) {
             await syncBreakpointEnabledToEditor(workspaceRoot, bp, true);
           }
         }
-        vscode14.window.showInformationMessage(vscode14.l10n.t("Enabled all breakpoints in scene [{0}]", node.sceneName));
+        vscode11.window.showInformationMessage(vscode11.l10n.t("Enabled all breakpoints in scene [{0}]", node.sceneName));
       }
     }
   );
-  const disableAllBreakpointsInSceneCmd = vscode14.commands.registerCommand(
+  const disableAllBreakpointsInSceneCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.disableAllBreakpointsInScene",
     async (node) => {
       if (!node || !node.sceneName) return;
@@ -3354,27 +3384,27 @@ function registerTreeCommands(context, treeDataProvider) {
             await syncBreakpointEnabledToEditor(workspaceRoot, bp, false);
           }
         }
-        vscode14.window.showInformationMessage(vscode14.l10n.t("Disabled all breakpoints in scene [{0}]", node.sceneName));
+        vscode11.window.showInformationMessage(vscode11.l10n.t("Disabled all breakpoints in scene [{0}]", node.sceneName));
       }
     }
   );
-  const duplicateSceneCmd = vscode14.commands.registerCommand(
+  const duplicateSceneCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.duplicateScene",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
       const defaultTargetName = `${node.sceneName}-copy`;
-      const newName = await vscode14.window.showInputBox({
-        prompt: vscode14.l10n.t("Enter target identifier for duplicated scene"),
+      const newName = await vscode11.window.showInputBox({
+        prompt: vscode11.l10n.t("Enter target identifier for duplicated scene"),
         value: defaultTargetName,
-        validateInput: (v) => !v || !v.trim() ? vscode14.l10n.t("Scene name cannot be empty") : null
+        validateInput: (v) => !v || !v.trim() ? vscode11.l10n.t("Scene name cannot be empty") : null
       });
       if (!newName) return;
       const config = loadScenesConfig(workspaceRoot);
       const target = newName.trim();
       if (config.scenes[target]) {
-        vscode14.window.showWarningMessage(vscode14.l10n.t("Scene [{0}] already exists", target));
+        vscode11.window.showWarningMessage(vscode11.l10n.t("Scene [{0}] already exists", target));
         return;
       }
       const duplicated = duplicateSceneInConfig(config, node.sceneName, target);
@@ -3382,13 +3412,13 @@ function registerTreeCommands(context, treeDataProvider) {
         syncCoordinator2.markInternalSaving();
         saveScenesConfig(workspaceRoot, config);
         treeDataProvider.refresh();
-        vscode14.window.showInformationMessage(
-          vscode14.l10n.t("Duplicated scene [{0}] as [{1}]", node.sceneName, target)
+        vscode11.window.showInformationMessage(
+          vscode11.l10n.t("Duplicated scene [{0}] as [{1}]", node.sceneName, target)
         );
       }
     }
   );
-  const revealInConfigFileCmd = vscode14.commands.registerCommand(
+  const revealInConfigFileCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.revealInConfigFile",
     async (node) => {
       if (!node || !node.sceneName || !node.breakpoint) return;
@@ -3396,29 +3426,29 @@ function registerTreeCommands(context, treeDataProvider) {
       if (!workspaceRoot) return;
       const configPath = path8.join(workspaceRoot, ".vscode", "debug-scenes.json");
       if (!fs6.existsSync(configPath)) {
-        vscode14.window.showWarningMessage(
-          vscode14.l10n.t("Failed to read debug-scenes.json: {0}", vscode14.l10n.t("File does not exist"))
+        vscode11.window.showWarningMessage(
+          vscode11.l10n.t("Failed to read debug-scenes.json: {0}", vscode11.l10n.t("File does not exist"))
         );
         return;
       }
       try {
         const content = fs6.readFileSync(configPath, "utf-8");
         const targetLine = findBreakpointLineInJson(content, node.sceneName, node.breakpoint);
-        const doc = await vscode14.workspace.openTextDocument(vscode14.Uri.file(configPath));
-        const editor = await vscode14.window.showTextDocument(doc, { preview: false });
+        const doc = await vscode11.workspace.openTextDocument(vscode11.Uri.file(configPath));
+        const editor = await vscode11.window.showTextDocument(doc, { preview: false });
         const lineIdx = Math.max(0, targetLine - 1);
-        const pos = new vscode14.Position(lineIdx, 0);
-        const range = new vscode14.Range(pos, pos);
-        editor.selection = new vscode14.Selection(pos, pos);
-        editor.revealRange(range, vscode14.TextEditorRevealType.InCenter);
+        const pos = new vscode11.Position(lineIdx, 0);
+        const range = new vscode11.Range(pos, pos);
+        editor.selection = new vscode11.Selection(pos, pos);
+        editor.revealRange(range, vscode11.TextEditorRevealType.InCenter);
       } catch (err) {
-        vscode14.window.showErrorMessage(
-          vscode14.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err))
+        vscode11.window.showErrorMessage(
+          vscode11.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err))
         );
       }
     }
   );
-  const moveBpUpCmd = vscode14.commands.registerCommand(
+  const moveBpUpCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointUp",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
@@ -3433,7 +3463,7 @@ function registerTreeCommands(context, treeDataProvider) {
       }
     }
   );
-  const moveBpDownCmd = vscode14.commands.registerCommand(
+  const moveBpDownCmd = vscode11.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointDown",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
@@ -3466,10 +3496,10 @@ function registerTreeCommands(context, treeDataProvider) {
   );
 }
 
-// src/infra/vscode/controllers/index.ts
+// src/infra/vscode/commands/index.ts
 function registerAllCommands(context, deps) {
   const commands6 = [
-    // 核心断点场景交互
+    // 核心场景断点命令
     ["sceneBreakpoints.addBreakpoint", addBreakpointCommand],
     ["sceneBreakpoints.applyScene", applySceneCommand],
     ["sceneBreakpoints.clearAll", clearAllCommand],
@@ -3483,100 +3513,38 @@ function registerAllCommands(context, deps) {
     ["sceneBreakpoints.diagnoseAiIntegration", () => diagnoseAiIntegrationCommand(context)]
   ];
   for (const [commandId, handler] of commands6) {
-    context.subscriptions.push(vscode15.commands.registerCommand(commandId, handler));
+    context.subscriptions.push(vscode12.commands.registerCommand(commandId, handler));
   }
   if (deps?.treeDataProvider) {
     registerTreeCommands(context, deps.treeDataProvider);
   }
 }
 
-// src/infra/vscode/listeners/aiActivationListener.ts
-var vscode16 = __toESM(require("vscode"));
+// src/infra/vscode/listeners/debugLifecycleListener.ts
+var path9 = __toESM(require("node:path"));
+var vscode14 = __toESM(require("vscode"));
 
-// src/application/handleExternalChange.ts
-async function handleExternalChange(params) {
-  return useCaseQueue.run(async () => {
-    const {
-      workspaceRoot,
-      allowAiActivation,
-      isDebuggingActive,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      onPendingMessage
-    } = params;
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    const currentActives = sceneStateManager.getActiveScenes();
-    const diff = resolveActiveScenesDiff({
-      allowAiActivation,
-      currentActiveScenes: currentActives,
-      rawActiveScenes: config.activeScenes,
-      scenesDict: config.scenes
-    });
-    if (diff.shouldApply) {
-      if (diff.action === "apply") {
-        await activateScene({
-          workspaceRoot,
-          targetScenes: diff.targetScenes,
-          sceneRepository,
-          breakpointBridge
-        });
-        return { action: "applied", targetScenes: diff.targetScenes };
-      } else if (diff.action === "clear") {
-        await clearAll({
-          workspaceRoot,
-          sceneRepository,
-          breakpointBridge
-        });
-        return { action: "cleared" };
-      }
-    } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
-      const merged = mergeScenesBreakpoints(config, currentActives);
-      const newTopologyHash = computeBreakpointsTopologyHash(merged);
-      if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
-        return { action: "noop" };
-      }
-      if (isDebuggingActive) {
-        sceneStateManager.setPendingTopologyUpdate(true);
-        if (onPendingMessage) {
-          onPendingMessage();
-        }
-        return { action: "pending" };
-      }
-      await breakpointBridge.applySceneBreakpoints(
-        workspaceRoot,
-        currentActives.join("+"),
-        merged
-      );
-      sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
-      return { action: "applied", targetScenes: currentActives };
-    }
-    return { action: "noop" };
-  });
-}
-
-// src/infra/vscode/listeners/aiActivationListener.ts
+// src/infra/vscode/listeners/configFileWatcherListener.ts
+var fs7 = __toESM(require("node:fs"));
+var vscode13 = __toESM(require("vscode"));
+var syncCoordinator3 = saveLoopGuard;
 async function handleExternalScenesFileChange(workspaceRoot) {
-  const allowAiActivation = vscode16.workspace.getConfiguration("sceneBreakpoints").get("allowAiFileActivation", false);
+  const allowAiActivation = vscode13.workspace.getConfiguration("sceneBreakpoints").get("allowAiFileActivation", false);
   await handleExternalChange({
     workspaceRoot,
     allowAiActivation,
-    isDebuggingActive: !!vscode16.debug.activeDebugSession,
+    isDebuggingActive: !!vscode13.debug.activeDebugSession,
     onPendingMessage: () => {
-      vscode16.window.setStatusBarMessage(
-        vscode16.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
+      vscode13.window.setStatusBarMessage(
+        vscode13.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
         5e3
       );
     }
   });
 }
-
-// src/infra/vscode/listeners/configFileWatcherListener.ts
-var fs7 = __toESM(require("node:fs"));
-var vscode17 = __toESM(require("vscode"));
-var syncCoordinator3 = saveLoopGuard;
 function registerConfigFileWatcherService(treeDataProvider) {
   let fileChangeDebounceTimer;
-  const fileWatcher = vscode17.workspace.createFileSystemWatcher("**/debug-scenes.json");
+  const fileWatcher = vscode13.workspace.createFileSystemWatcher("**/debug-scenes.json");
   fileWatcher.onDidChange((uri) => {
     if (fileChangeDebounceTimer) {
       clearTimeout(fileChangeDebounceTimer);
@@ -3607,15 +3575,128 @@ function registerConfigFileWatcherService(treeDataProvider) {
   return fileWatcher;
 }
 
+// src/infra/vscode/listeners/debugLifecycleListener.ts
+function registerDebugLaunchService() {
+  return vscode14.debug.registerDebugConfigurationProvider("*", {
+    async resolveDebugConfiguration(_folder, config) {
+      const autoActivate = vscode14.workspace.getConfiguration("sceneBreakpoints").get("autoActivateOnLaunch", true);
+      if (autoActivate && config) {
+        const workspaceRoot = getWorkspaceRoot(false);
+        if (workspaceRoot) {
+          const scenesConfig = loadScenesConfig(workspaceRoot);
+          const targetScenes = resolveLaunchBoundScenes(
+            scenesConfig,
+            config.name,
+            config.env?.DEBUG_SCENE
+          );
+          if (targetScenes.length > 0) {
+            const currentActives = sceneStateManager.getActiveScenes();
+            const isIdentical = currentActives.length === targetScenes.length && currentActives.every((s, idx) => s === targetScenes[idx]);
+            if (!isIdentical) {
+              await applySceneCommand(targetScenes);
+            }
+          }
+        }
+      }
+      return config;
+    }
+  });
+}
+function registerDebugPauseService(treeView, treeDataProvider) {
+  const disposables = [];
+  const revealPausedBreakpoint = async (file, line) => {
+    await treeDataProvider.revealPausedLocation(treeView, file, line);
+  };
+  const trackerFactory = vscode14.debug.registerDebugAdapterTrackerFactory("*", {
+    createDebugAdapterTracker() {
+      return {
+        onDidSendMessage(msg) {
+          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames && msg.body.stackFrames.length > 0) {
+            const topFrame = msg.body.stackFrames[0];
+            if (topFrame.source?.path && typeof topFrame.line === "number") {
+              revealPausedBreakpoint(topFrame.source.path, topFrame.line);
+            }
+          } else if (msg?.type === "event") {
+            if (msg.event === "continued" || msg.event === "terminated") {
+              treeDataProvider.clearPausedLocation();
+            }
+          }
+        }
+      };
+    }
+  });
+  disposables.push(trackerFactory);
+  const checkEditorPausedBreakpoint = (editor) => {
+    if (!vscode14.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") {
+      return;
+    }
+    const workspaceRoot = getWorkspaceRoot(false);
+    if (!workspaceRoot) return;
+    const activeScenes = sceneStateManager.getActiveScenes();
+    if (activeScenes.length === 0) return;
+    const config = loadScenesConfig(workspaceRoot);
+    const currentFile = editor.document.uri.fsPath;
+    const currentLine = editor.selection.active.line + 1;
+    const isHitInScene = activeScenes.some((scene) => {
+      const list = config.scenes[scene] || [];
+      return list.some((bp) => {
+        if (bp.type === "function") return false;
+        const src = bp;
+        if (Number(src.line) !== currentLine) return false;
+        const full = path9.isAbsolute(src.file) ? src.file : path9.join(workspaceRoot, src.file);
+        const n1 = currentFile.replace(/\\/g, "/").toLowerCase();
+        const n2 = full.replace(/\\/g, "/").toLowerCase();
+        const n3 = src.file.replace(/\\/g, "/").toLowerCase();
+        return n1 === n2 || n1.endsWith("/" + n3) || n1.endsWith(n3);
+      });
+    });
+    if (isHitInScene) {
+      revealPausedBreakpoint(currentFile, currentLine);
+    }
+  };
+  disposables.push(
+    vscode14.window.onDidChangeActiveTextEditor((e) => checkEditorPausedBreakpoint(e)),
+    vscode14.window.onDidChangeTextEditorSelection((e) => checkEditorPausedBreakpoint(e.textEditor))
+  );
+  const stackItemListener = vscode14.debug.onDidChangeActiveStackItem?.(async (item) => {
+    if (item && item.source?.path && typeof item.line === "number") {
+      await revealPausedBreakpoint(item.source.path, item.line);
+    } else if (!item) {
+      treeDataProvider.clearPausedLocation();
+    }
+  });
+  if (stackItemListener) {
+    disposables.push(stackItemListener);
+  }
+  disposables.push(
+    vscode14.debug.onDidTerminateDebugSession(() => {
+      treeDataProvider.clearPausedLocation();
+    })
+  );
+  return vscode14.Disposable.from(...disposables);
+}
+function registerSessionLifecycleService() {
+  return vscode14.debug.onDidTerminateDebugSession(async () => {
+    sceneStateManager.clearLastAppliedTopologyHash();
+    if (sceneStateManager.isPendingTopologyUpdate()) {
+      sceneStateManager.setPendingTopologyUpdate(false);
+      const workspaceRoot = getWorkspaceRoot(false);
+      if (workspaceRoot) {
+        await handleExternalScenesFileChange(workspaceRoot);
+      }
+    }
+  });
+}
+
 // src/infra/vscode/listeners/breakpointSyncListener.ts
-var vscode18 = __toESM(require("vscode"));
+var vscode15 = __toESM(require("vscode"));
 var syncCoordinator4 = saveLoopGuard;
 function registerBreakpointSyncService(treeDataProvider) {
-  return vscode18.debug.onDidChangeBreakpoints(async (event) => {
+  return vscode15.debug.onDidChangeBreakpoints(async (event) => {
     if (sceneStateManager.isApplyingScene()) {
       return;
     }
-    const currentCount = vscode18.debug.breakpoints.length;
+    const currentCount = vscode15.debug.breakpoints.length;
     if (currentCount === 0) {
       sceneStateManager.setActiveScene(void 0, 0);
       return;
@@ -3645,15 +3726,15 @@ function registerBreakpointSyncService(treeDataProvider) {
 }
 
 // src/infra/vscode/listeners/chatSkillListener.ts
-var vscode19 = __toESM(require("vscode"));
+var vscode16 = __toESM(require("vscode"));
 function registerChatSkillService(context) {
-  if (typeof vscode19.chat?.registerSkillProvider === "function") {
+  if (typeof vscode16.chat?.registerSkillProvider === "function") {
     const skillProvider = {
-      onDidChangeSkills: new vscode19.EventEmitter().event,
+      onDidChangeSkills: new vscode16.EventEmitter().event,
       provideSkills() {
         return [
           {
-            uri: vscode19.Uri.joinPath(
+            uri: vscode16.Uri.joinPath(
               context.extensionUri,
               "skills",
               "scene-breakpoints",
@@ -3664,7 +3745,7 @@ function registerChatSkillService(context) {
       }
     };
     try {
-      return vscode19.chat.registerSkillProvider(skillProvider);
+      return vscode16.chat.registerSkillProvider(skillProvider);
     } catch {
     }
   }
@@ -3672,129 +3753,8 @@ function registerChatSkillService(context) {
   } };
 }
 
-// src/infra/vscode/listeners/debugLaunchListener.ts
-var vscode20 = __toESM(require("vscode"));
-function registerDebugLaunchService() {
-  return vscode20.debug.registerDebugConfigurationProvider("*", {
-    async resolveDebugConfiguration(_folder, config) {
-      const autoActivate = vscode20.workspace.getConfiguration("sceneBreakpoints").get("autoActivateOnLaunch", true);
-      if (autoActivate && config) {
-        const workspaceRoot = getWorkspaceRoot(false);
-        if (workspaceRoot) {
-          const scenesConfig = loadScenesConfig(workspaceRoot);
-          const targetScenes = resolveLaunchBoundScenes(
-            scenesConfig,
-            config.name,
-            config.env?.DEBUG_SCENE
-          );
-          if (targetScenes.length > 0) {
-            const currentActives = sceneStateManager.getActiveScenes();
-            const isIdentical = currentActives.length === targetScenes.length && currentActives.every((s, idx) => s === targetScenes[idx]);
-            if (!isIdentical) {
-              await applySceneCommand(targetScenes);
-            }
-          }
-        }
-      }
-      return config;
-    }
-  });
-}
-
-// src/infra/vscode/listeners/debugPauseListener.ts
-var path9 = __toESM(require("node:path"));
-var vscode21 = __toESM(require("vscode"));
-function registerDebugPauseService(treeView, treeDataProvider) {
-  const disposables = [];
-  const revealPausedBreakpoint = async (file, line) => {
-    await treeDataProvider.revealPausedLocation(treeView, file, line);
-  };
-  const trackerFactory = vscode21.debug.registerDebugAdapterTrackerFactory("*", {
-    createDebugAdapterTracker() {
-      return {
-        onDidSendMessage(msg) {
-          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames && msg.body.stackFrames.length > 0) {
-            const topFrame = msg.body.stackFrames[0];
-            if (topFrame.source?.path && typeof topFrame.line === "number") {
-              revealPausedBreakpoint(topFrame.source.path, topFrame.line);
-            }
-          } else if (msg?.type === "event") {
-            if (msg.event === "continued" || msg.event === "terminated") {
-              treeDataProvider.clearPausedLocation();
-            }
-          }
-        }
-      };
-    }
-  });
-  disposables.push(trackerFactory);
-  const checkEditorPausedBreakpoint = (editor) => {
-    if (!vscode21.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") {
-      return;
-    }
-    const workspaceRoot = getWorkspaceRoot(false);
-    if (!workspaceRoot) return;
-    const activeScenes = sceneStateManager.getActiveScenes();
-    if (activeScenes.length === 0) return;
-    const config = loadScenesConfig(workspaceRoot);
-    const currentFile = editor.document.uri.fsPath;
-    const currentLine = editor.selection.active.line + 1;
-    const isHitInScene = activeScenes.some((scene) => {
-      const list = config.scenes[scene] || [];
-      return list.some((bp) => {
-        if (bp.type === "function") return false;
-        const src = bp;
-        if (Number(src.line) !== currentLine) return false;
-        const full = path9.isAbsolute(src.file) ? src.file : path9.join(workspaceRoot, src.file);
-        const n1 = currentFile.replace(/\\/g, "/").toLowerCase();
-        const n2 = full.replace(/\\/g, "/").toLowerCase();
-        const n3 = src.file.replace(/\\/g, "/").toLowerCase();
-        return n1 === n2 || n1.endsWith("/" + n3) || n1.endsWith(n3);
-      });
-    });
-    if (isHitInScene) {
-      revealPausedBreakpoint(currentFile, currentLine);
-    }
-  };
-  disposables.push(
-    vscode21.window.onDidChangeActiveTextEditor((e) => checkEditorPausedBreakpoint(e)),
-    vscode21.window.onDidChangeTextEditorSelection((e) => checkEditorPausedBreakpoint(e.textEditor))
-  );
-  const stackItemListener = vscode21.debug.onDidChangeActiveStackItem?.(async (item) => {
-    if (item && item.source?.path && typeof item.line === "number") {
-      await revealPausedBreakpoint(item.source.path, item.line);
-    } else if (!item) {
-      treeDataProvider.clearPausedLocation();
-    }
-  });
-  if (stackItemListener) {
-    disposables.push(stackItemListener);
-  }
-  disposables.push(
-    vscode21.debug.onDidTerminateDebugSession(() => {
-      treeDataProvider.clearPausedLocation();
-    })
-  );
-  return vscode21.Disposable.from(...disposables);
-}
-
-// src/infra/vscode/listeners/sessionLifecycleListener.ts
-var vscode22 = __toESM(require("vscode"));
-function registerSessionLifecycleService() {
-  return vscode22.debug.onDidTerminateDebugSession(async () => {
-    sceneStateManager.clearLastAppliedTopologyHash();
-    if (sceneStateManager.isPendingTopologyUpdate()) {
-      sceneStateManager.setPendingTopologyUpdate(false);
-      const workspaceRoot = getWorkspaceRoot(false);
-      if (workspaceRoot) {
-        await handleExternalScenesFileChange(workspaceRoot);
-      }
-    }
-  });
-}
-
 // src/infra/vscode/listeners/treeInteractionListener.ts
-var vscode23 = __toESM(require("vscode"));
+var vscode17 = __toESM(require("vscode"));
 var syncCoordinator5 = saveLoopGuard;
 function registerTreeInteractionService(treeView, treeDataProvider) {
   const disposables = [];
@@ -3827,7 +3787,7 @@ function registerTreeInteractionService(treeView, treeDataProvider) {
           const list = config.scenes[item.sceneName];
           if (list && list[item.index]) {
             const targetBp = list[item.index];
-            const newEnabled = state === vscode23.TreeItemCheckboxState.Checked;
+            const newEnabled = state === vscode17.TreeItemCheckboxState.Checked;
             if (targetBp.enabled !== newEnabled) {
               targetBp.enabled = newEnabled;
               item.breakpoint.enabled = newEnabled;
@@ -3852,14 +3812,14 @@ function registerTreeInteractionService(treeView, treeDataProvider) {
       }
     })
   );
-  return vscode23.Disposable.from(...disposables);
+  return vscode17.Disposable.from(...disposables);
 }
 
 // src/extension.ts
 function activate(context) {
   initStatusBarItem(context);
   const treeDataProvider = new SceneTreeDataProvider(context.extensionPath);
-  const treeView = vscode24.window.createTreeView("sceneBreakpointsView", {
+  const treeView = vscode18.window.createTreeView("sceneBreakpointsView", {
     treeDataProvider,
     showCollapseAll: true
   });
@@ -3880,12 +3840,12 @@ function activate(context) {
     // AI Agent Chat Skill 动态注入服务
     registerChatSkillService(context),
     // 场景一键激活 CodeLens 透镜按钮
-    vscode24.languages.registerCodeLensProvider(
+    vscode18.languages.registerCodeLensProvider(
       { pattern: "**/debug-scenes.json" },
       new SceneCodeLensProvider()
     ),
     // Skill 官方模版虚拟文档比对提供者
-    vscode24.workspace.registerTextDocumentContentProvider(
+    vscode18.workspace.registerTextDocumentContentProvider(
       TemplateContentProvider.scheme,
       templateContentProvider
     ),

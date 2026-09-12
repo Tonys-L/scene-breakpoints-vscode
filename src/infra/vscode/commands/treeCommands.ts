@@ -17,7 +17,7 @@ import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { BreakpointNode, SceneNode, SceneTreeDataProvider } from "../sceneTreeProvider";
 import { saveLoopGuard } from "../../storage/saveLoopGuard";
 const syncCoordinator = saveLoopGuard;
-import { applySceneCommand } from "./applyScene";
+import { applySceneCommand } from "./sceneCommands";
 
 /**
  * 注册侧边栏场景管理树视图相关的所有用户交互与上下文命令

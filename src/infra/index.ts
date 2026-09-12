@@ -5,5 +5,5 @@ export * from "./vscode/sceneTreeProvider";
 export * from "./vscode/sceneCodeLensProvider";
 export * from "./vscode/templateContentProvider";
 export * from "./vscode/statusBarView";
-export * from "./vscode/controllers";
+export * from "./vscode/commands";
 export * from "./vscode/listeners";

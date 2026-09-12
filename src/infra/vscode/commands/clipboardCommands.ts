@@ -5,7 +5,7 @@ import { mergeScenesBreakpoints, upsertBreakpointToScene } from "../../../domain
 import { getSupportedFormatsTemplate, parseScenePayload, serializeScenePayload } from "../../../application/payloadSerializer";
 import { sceneStateManager } from "../../../domain/sceneStateManager";
 import { SceneNode } from "../sceneTreeProvider";
-import { applySceneCommand } from "./applyScene";
+import { applySceneCommand } from "./sceneCommands";
 
 /**
  * 复制指定场景至系统剪贴板 (以标准 JSON 格式共享)

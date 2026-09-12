@@ -74,17 +74,44 @@
 
 ### 3. 应用用例层 (Application Layer) — `src/application/`
 - **定位**：面向用户用例、回答“业务流程怎么做”。
-- **职责**：纯业务用例编排（Use Cases），协调领域层算法与端口契约，**受单写者串行队列保护（消除并发交错竞态），0 处 VS Code 宿主依赖**。
+- **职责**：高内聚业务服务（Application Service），编排业务流程，调度领域模型与端口契约，**内置单写者串行队列保护（消除并发交错竞态），0 处 VS Code 宿主依赖**。
 - **文件结构**：
   ```text
   src/application/
-  ├── useCaseQueue.ts            # 并发控制：单写者串行互斥队列 (彻底阻断多源并发用例交错)
-  ├── activateScene.ts           # 纯用例：存在性校验 ➔ 合并断点 ➔ 落盘权威 SSOT ➔ 装配 DAP ➔ 刷新内存投影
-  ├── addBreakpoint.ts           # 纯用例：upsert 断点到场景 ➔ 落盘权威 SSOT ➔ 激活态即刻点亮
-  ├── clearAll.ts                # 纯用例：清空配置 activeScenes ➔ 清空宿主断点 ➔ 复位内存投影
-  ├── exportScene.ts             # 纯用例：抓取断点 ➔ 落盘写入权威 SSOT 指定场景
-  ├── handleExternalChange.ts    # 纯用例：比对差异 ➔ 调度激活/清空 ➔ 会话保护与核心拓扑 Diff
-  └── payloadSerializer.ts       # 纯工具：场景断点数据序列化与剪贴板 Payload 清洗
+  ├── sceneService.ts            # 高内聚场景服务：内置单写者串行队列，聚合 activateScene、addBreakpoint、clearAll、exportScene、handleExternalChange
+  ├── payloadSerializer.ts       # 纯工具：场景断点数据序列化与剪贴板 Payload 清洗
+  └── index.ts                   # 统一导出中枢
+  ```
+
+---
+
+### 4. 基础设施层 (Infra Layer) — `src/infra/`
+- **定位**：技术适配、回答“具体如何完成”。
+- **文件结构**：
+  ```text
+  src/infra/
+  ├── storage/                   # 持久化存储适配
+  │   ├── jsonFileSceneRepository.ts
+  │   └── saveLoopGuard.ts
+  └── vscode/                    # VS Code 宿主适配器
+      ├── commands/              # 命令交互中枢 (4 大高内聚命令模块)
+      │   ├── sceneCommands.ts       # 场景生命周期命令 (applyScene, clearAll, addBreakpoint, exportScene, showMenu)
+      │   ├── clipboardCommands.ts   # 剪贴板快速流转与团队共享
+      │   ├── treeCommands.ts        # 调试侧边栏树节点交互
+      │   ├── skillCommands.ts       # AI Agent 技能安装与诊断
+      │   └── index.ts               # 表驱动集中注册
+      ├── listeners/             # 宿主事件监听器 (5 大高内聚监听模块)
+      │   ├── debugLifecycleListener.ts     # 调试启动前推导、运行时命中断点高亮、会话终止清理
+      │   ├── configFileWatcherListener.ts  # 配置文件变化监听与外部变更/AI激活调度
+      │   ├── breakpointSyncListener.ts     # 编辑器原生断点事件反向同步
+      │   ├── treeInteractionListener.ts    # 树视图折叠展开与勾选
+      │   ├── chatSkillListener.ts          # VS Code 1.90+ Chat API 技能
+      │   └── index.ts
+      ├── vscodeBreakpointBridge.ts
+      ├── sceneTreeProvider.ts
+      ├── statusBarView.ts
+      ├── sceneCodeLensProvider.ts
+      └── templateContentProvider.ts
   ```
 
 ---

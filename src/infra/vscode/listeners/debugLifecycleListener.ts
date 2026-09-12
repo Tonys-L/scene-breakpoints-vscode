@@ -1,13 +1,58 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
-import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { resolveLaunchBoundScenes } from "../../../domain/launchResolver";
 import { sceneStateManager } from "../../../domain/sceneStateManager";
 import type { SourceSceneBreakpoint } from "../../../domain/types";
+import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
+import { applySceneCommand } from "../commands/sceneCommands";
+import { SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
+import { handleExternalScenesFileChange } from "./configFileWatcherListener";
 
 /**
- * 调试暂停协同服务 (Debug Pause Listener)
- * 职责：专职负责在调试运行时捕获断点命中与单步暂停事件，向树视图下发高亮位置与驱动跟随
+ * 1. 调试启动联动监听服务 (Debug Launch Lifecycle)
+ * 职责：在调试配置启动前，依据三级优先级推导关联场景，并在满足非重复条件时幂等激活目标场景
+ */
+export function registerDebugLaunchService(): vscode.Disposable {
+	return vscode.debug.registerDebugConfigurationProvider("*", {
+		async resolveDebugConfiguration(
+			_folder: vscode.WorkspaceFolder | undefined,
+			config: vscode.DebugConfiguration,
+		) {
+			const autoActivate = vscode.workspace
+				.getConfiguration("sceneBreakpoints")
+				.get<boolean>("autoActivateOnLaunch", true);
+
+			if (autoActivate && config) {
+				const workspaceRoot = getWorkspaceRoot(false);
+				if (workspaceRoot) {
+					const scenesConfig = loadScenesConfig(workspaceRoot);
+					const targetScenes = resolveLaunchBoundScenes(
+						scenesConfig,
+						config.name,
+						config.env?.DEBUG_SCENE,
+					);
+
+					if (targetScenes.length > 0) {
+						// 幂等守卫 (Idempotency Guard)：若当前激活的场景与目标一致，跳过重复切换
+						const currentActives = sceneStateManager.getActiveScenes();
+						const isIdentical =
+							currentActives.length === targetScenes.length &&
+							currentActives.every((s, idx) => s === targetScenes[idx]);
+
+						if (!isIdentical) {
+							await applySceneCommand(targetScenes);
+						}
+					}
+				}
+			}
+			return config;
+		},
+	});
+}
+
+/**
+ * 2. 调试运行时单步暂停与断点命中断点协同服务 (Debug Pause Lifecycle)
+ * 职责：在调试运行时捕获断点命中与单步暂停事件，向树视图下发高亮位置与驱动跟随
  */
 export function registerDebugPauseService(
 	treeView: vscode.TreeView<SceneTreeItem>,
@@ -15,12 +60,11 @@ export function registerDebugPauseService(
 ): vscode.Disposable {
 	const disposables: vscode.Disposable[] = [];
 
-	// 核心协同方法：将命中断点位置下发给树视图提供者处理
 	const revealPausedBreakpoint = async (file: string, line: number): Promise<void> => {
 		await treeDataProvider.revealPausedLocation(treeView, file, line);
 	};
 
-	// 1. DAP 底层协议跟踪工厂：拦截 stackTrace 响应（最精准、最通用的暂停栈帧提取），并感知 continued/terminated
+	// DAP 底层协议跟踪：拦截 stackTrace 响应感知命中断点
 	const trackerFactory = vscode.debug.registerDebugAdapterTrackerFactory("*", {
 		createDebugAdapterTracker() {
 			return {
@@ -46,7 +90,7 @@ export function registerDebugPauseService(
 	});
 	disposables.push(trackerFactory);
 
-	// 2. 编辑器焦点与光标联动守护：调试暂停时 VS Code 宿主会自动激活命中断点的源码文件与代码行
+	// 编辑器焦点与光标联动守护
 	const checkEditorPausedBreakpoint = (editor?: vscode.TextEditor): void => {
 		if (!vscode.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") {
 			return;
@@ -85,7 +129,7 @@ export function registerDebugPauseService(
 		vscode.window.onDidChangeTextEditorSelection((e) => checkEditorPausedBreakpoint(e.textEditor)),
 	);
 
-	// 3. 活动堆栈帧变动事件（作为补充感知渠道）
+	// 活动堆栈项监听
 	const stackItemListener = (vscode.debug as any).onDidChangeActiveStackItem?.(async (item: any) => {
 		if (item && item.source?.path && typeof item.line === "number") {
 			await revealPausedBreakpoint(item.source.path, item.line);
@@ -97,7 +141,7 @@ export function registerDebugPauseService(
 		disposables.push(stackItemListener);
 	}
 
-	// 4. 调试会话终止时可靠复位树视图暂停指示高亮
+	// 调试会话终止时可靠复位高亮
 	disposables.push(
 		vscode.debug.onDidTerminateDebugSession(() => {
 			treeDataProvider.clearPausedLocation();
@@ -107,4 +151,37 @@ export function registerDebugPauseService(
 	return vscode.Disposable.from(...disposables);
 }
 
+/**
+ * 3. 调试会话终止与后置拓扑补发服务 (Session Lifecycle)
+ * 职责：监听调试会话终止事件，失效清空核心拓扑快照，并在存在挂起的外部拓扑更新时平滑自动补发装配重刷
+ */
+export function registerSessionLifecycleService(): vscode.Disposable {
+	return vscode.debug.onDidTerminateDebugSession(async () => {
+		sceneStateManager.clearLastAppliedTopologyHash();
+		if (sceneStateManager.isPendingTopologyUpdate()) {
+			sceneStateManager.setPendingTopologyUpdate(false);
+			const workspaceRoot = getWorkspaceRoot(false);
+			if (workspaceRoot) {
+				await handleExternalScenesFileChange(workspaceRoot);
+			}
+		}
+	});
+}
+
+/**
+ * 调试全生命周期统一注册
+ */
+export function registerDebugLifecycleServices(
+	treeView: vscode.TreeView<SceneTreeItem>,
+	treeDataProvider: SceneTreeDataProvider,
+): vscode.Disposable {
+	return vscode.Disposable.from(
+		registerDebugLaunchService(),
+		registerDebugPauseService(treeView, treeDataProvider),
+		registerSessionLifecycleService(),
+	);
+}
+
+export const registerDebugLaunchCoordinator = registerDebugLaunchService;
 export const registerDebugPauseCoordinator = registerDebugPauseService;
+export const registerSessionLifecycleCoordinator = registerSessionLifecycleService;
