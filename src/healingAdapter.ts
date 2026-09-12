@@ -35,11 +35,12 @@ export function cleanLine(text: unknown): string {
 }
 
 /**
- * 剥离行尾单行注释 (// 或 #) 并清除尾部多余空白
+ * 剥离行尾单行注释 (// 或 # 或 --) 并清除尾部多余空白
+ * 覆盖 C/C++, Java, C#, Go, Rust, Swift, Kotlin, JS/TS, Python, Ruby, Shell, SQL, Lua
  */
 export function stripTrailingComment(line: string): string {
 	if (!line) return "";
-	return line.replace(/\s*(?:\/\/|#).*$/, "").trim();
+	return line.replace(/\s*(?:\/\/|#|--).*$/, "").trim();
 }
 
 /**
@@ -99,25 +100,30 @@ const CONTROL_FLOW_KEYWORDS = new Set([
 ]);
 
 /**
- * 常见编程语言的函数/方法声明正则模式 (支持 JS/TS, Python, Go, Rust, Java, C/C++)
+ * 常见编程语言的函数/方法/类声明正则模式 (支持 JS/TS, Python, Go, Rust, Java, C#, C/C++, Swift, Kotlin, PHP, Ruby)
  */
 const SCOPE_PATTERNS: RegExp[] = [
-	// Python: def foo(...) or class Foo(...)
+	// Python / Ruby: def foo(...) or async def foo(...)
 	/^\s*(?:async\s+)?def\s+([a-zA-Z0-9_$]+)/,
-	// JS/TS/PHP: function foo(...) or async function foo(...)
+	// JS / TS / PHP: function foo(...) or async function foo(...)
 	/^\s*(?:export\s+)?(?:async\s+)?function(?:\s+([a-zA-Z0-9_$]+)|\s*\()/i,
-	// Go: func (r *Receiver) Method(...) or func Function(...)
-	/^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/,
+	// Go / Swift / Kotlin: func (r *Receiver) Method(...) or fun Method(...)
+	/^\s*(?:(?:pub|public|private|protected|internal|override|final)\s+)*(?:func|fun)\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/i,
 	// Rust: fn foo(...) or pub fn foo(...)
 	/^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_$]+)/,
 	// 类构造函数 constructor(...)
 	/^\s*(?:public|private|protected)*\s*constructor\b/i,
 	// 类属性访问器 get prop() / set prop(v)
 	/^\s*(?:public|private|protected|static)*\s*(?:get|set)\s+([a-zA-Z0-9_$]+)/i,
+	// Java / C# / C++ 类方法: 修饰符 + 返回类型(可能带泛型或指针) + 方法名(参数)
+	/^\s*(?:(?:public|private|protected|static|final|native|synchronized|abstract|virtual|override|async)\s+)+[a-zA-Z0-9_$<>,\[\]\s*&]+\s+([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\s*[{;]/i,
 	// 类方法或对象方法: methodName(...) { or methodName = (...) =>
 	/^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?(?:<[^>]*>)?\s*\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
-	// Class / Struct / Interface
-	/^\s*(?:export\s+)?(?:class|struct|interface|type)\s+([a-zA-Z0-9_$]+)/,
+	// Class / Struct / Interface / Trait / Enum / Type
+	/^\s*(?:export\s+)?(?:class|struct|interface|trait|enum|type)\s+([a-zA-Z0-9_$]+)/,
+	// Rust impl 块: impl Trait for Struct or impl Struct
+	/^\s*impl(?:\s+<[^>]+>)?(?:\s+[a-zA-Z0-9_$]+)?\s+for\s+([a-zA-Z0-9_$]+)/,
+	/^\s*impl(?:\s+<[^>]+>)?\s+([a-zA-Z0-9_$]+)/,
 ];
 
 /**
@@ -474,8 +480,21 @@ export async function resolveHealedLine(
 			let p2BestIdx = -1;
 			let p2BestScore = -1;
 			const searchEnd = Math.min(lines.length - 1, scopeHeaderIdx + SCOPE_BODY_SEARCH_WINDOW);
+			const headerLine = lines[scopeHeaderIdx] || "";
+			const isPythonStyle = headerLine.trim().endsWith(":");
+			const headerIndent = countIndent(headerLine);
 
 			for (let i = scopeHeaderIdx; i <= searchEnd; i++) {
+				// Python 缩进边界保护：若进入后续行且缩进回退至 <= headerIndent 且为非空非注释代码，说明已脱离该 Python 函数作用域
+				if (isPythonStyle && i > scopeHeaderIdx) {
+					const lineContent = lines[i];
+					if (lineContent && lineContent.trim() && !lineContent.trim().startsWith("#")) {
+						if (countIndent(lineContent) <= headerIndent) {
+							break; // 严格阻止跨函数误匹配
+						}
+					}
+				}
+
 				const distance = Math.abs(i - origIdx);
 				const { score, hasDirectMatch } = calculateCandidateLineScore(
 					lines,

@@ -328,4 +328,136 @@ suite("Suite 04: 自愈回写、AI 声明式编排与系统级防灾守卫", () 
       fs.writeFileSync(samplePath, originalSampleContent, "utf-8");
     }
   });
+
+  test("TC-HEAL-03: Python 缩进敏感与 # 注释生态自然漂移自愈与持久化闭环", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const pyPath = vscode.Uri.joinPath(workspaceFolders[0].uri, "src", "service.py").fsPath;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+    const origPyContent = fs.readFileSync(pyPath, "utf-8");
+
+    try {
+      // 1. 配置 Python 场景 (断点在第 6 行: if amount <= 0:)
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      config.scenes["python-healing-scene"] = [
+        {
+          type: "line",
+          file: "src/service.py",
+          line: 6,
+          enabled: true,
+          desc: "Python 金额校验分支",
+          contextSnippet: {
+            prev: "def process_payment(self, order_id, amount):",
+            current: "if amount <= 0:",
+            next: 'raise ValueError("Invalid amount")',
+            scopeAnchor: "process_payment",
+            indent: 8,
+          },
+        },
+      ];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      // 2. 初始装配
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["python-healing-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      let bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 6, "Python 初始断点应在第 6 行");
+
+      // 3. 模拟插入 3 行 Python 格式注释，代码下移至第 9 行
+      const doc = await vscode.workspace.openTextDocument(pyPath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(0, 0), "# py comment 1\n# py comment 2\n# py comment 3\n");
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+
+      // 4. 再次装配触发自愈
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["python-healing-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 5. 验证 DAP 断点自愈到第 9 行
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 9, "Python 缩进断点必须智能自愈漂移到第 9 行");
+
+      // 6. 验证持久化回写
+      const updatedConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      const savedBp = updatedConfig.scenes["python-healing-scene"]?.[0];
+      assert.strictEqual(savedBp?.line, 9, "Python 自愈后必须持久化回写更新 line 为 9");
+    } finally {
+      const doc = await vscode.workspace.openTextDocument(pyPath);
+      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+      const revertEdit = new vscode.WorkspaceEdit();
+      revertEdit.replace(doc.uri, fullRange, origPyContent);
+      await vscode.workspace.applyEdit(revertEdit);
+      await doc.save();
+    }
+  });
+
+  test("TC-HEAL-04: Go 接收者方法 func (c *Calculator) 多语言自愈与持久化闭环", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const goPath = vscode.Uri.joinPath(workspaceFolders[0].uri, "src", "calculator.go").fsPath;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+    const origGoContent = fs.readFileSync(goPath, "utf-8");
+
+    try {
+      // 1. 配置 Go 场景 (断点在第 8 行: result := x * y)
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      config.scenes["go-healing-scene"] = [
+        {
+          type: "line",
+          file: "src/calculator.go",
+          line: 8,
+          enabled: true,
+          desc: "Go 乘法计算核心行",
+          contextSnippet: {
+            prev: "func (c *Calculator) Multiply(x float64, y float64) float64 {",
+            current: "result := x * y",
+            next: "return result",
+            scopeAnchor: "Multiply",
+            indent: 1,
+          },
+        },
+      ];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      // 2. 初始装配
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["go-healing-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      let bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 8, "Go 初始断点应在第 8 行");
+
+      // 3. 模拟插入 2 行 Go 注释，使代码下移至第 10 行
+      const doc = await vscode.workspace.openTextDocument(goPath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(0, 0), "// go comment 1\n// go comment 2\n");
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+
+      // 4. 再次装配触发自愈
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["go-healing-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 5. 验证 DAP 断点自愈到第 10 行
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 10, "Go 接收者方法断点必须智能自愈漂移到第 10 行");
+
+      // 6. 验证持久化回写
+      const updatedConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      const savedBp = updatedConfig.scenes["go-healing-scene"]?.[0];
+      assert.strictEqual(savedBp?.line, 10, "Go 自愈后必须持久化回写更新 line 为 10");
+    } finally {
+      const doc = await vscode.workspace.openTextDocument(goPath);
+      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+      const revertEdit = new vscode.WorkspaceEdit();
+      revertEdit.replace(doc.uri, fullRange, origGoContent);
+      await vscode.workspace.applyEdit(revertEdit);
+      await doc.save();
+    }
+  });
 });
