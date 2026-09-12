@@ -114,7 +114,8 @@
 ### 测试约束
 - 核心算法层（自愈引擎）、数据管理层（配置解析/Git冲突/Upsert/启动推导/反向同步）与状态机层（SSOT/脏状态）必须具备独立的自动化单元测试；
 - 每次算法与领域状态逻辑修改后，必须运行 `npm test`（`node test/run-all.mjs`）确保所有测试套件 100% 通过；
-- 测试用例必须覆盖缩进倍率解耦、跨函数作用域隔离、软相似度上下文门禁防误判、以及异常语法容错。
+- 测试用例必须覆盖缩进倍率解耦、跨函数作用域隔离、软相似度上下文门禁防误判、以及异常语法容错；
+- **真实宿主端到端 (E2E) 测试约束**：核心用户交互（扩展激活、命令调用、DAP 真实断点注入与清空）必须具备由 `@vscode/test-electron` 驱动的真实隔离沙箱 E2E 测试，运行 `npm run test:e2e` 保证真实运行环境 0 运行时未定义错误。
 
 ### 架构与分层约束 (KDD-ARCH-002)
 - **配置管理领域分层 (Facade Pattern)**：`configManager.ts` 纯粹扮演对外聚合门面角色，底层物理拆分为 `configStorage`（磁盘I/O/清洗/指纹）、`sceneOperations`（纯内存CRUD）、`payloadSerializer`（剪贴板DTO）与 `launchResolver`（启动绑定推导）；
@@ -155,3 +156,4 @@
 | 2026-09-12 | 架构解耦：建立 coordinators 协同调度层，根治循环依赖并统一状态机 SSOT (v1.1.0) | Tony.L | KDD-ARCH-DECOUPLE-001 |
 | 2026-09-12 | 全面补齐命令中枢、同步协调器、并发互斥队列与即刻点亮单测，升级为 11 大全维自动化套件 (v1.1.0) | Tony.L | KDD-TEST-007 |
 | 2026-09-12 | 沉淀 skill_design.md 规范至知识库：新增 INV-010 回写时序、INV-011 多场景合并先到先得、INV-012 会话保护与禁止 conditional 约束 | Tony.L | KDD-SKILL-MIGRATE-001 |
+| 2026-09-12 | 落地 @vscode/test-electron 驱动的真实隔离宿主端到端 (E2E) 测试脚手架与用例闭环 | Tony.L | KDD-E2E-TEST-001 |

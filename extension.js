@@ -405,6 +405,25 @@ function mergeScenesBreakpoints(config, sceneNames) {
 
 // src/config/payloadSerializer.ts
 var vscode2 = __toESM(require("vscode"));
+function generateScenePayload(sceneName, breakpoints) {
+  const payload = {
+    $schema: "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+    version: "1.0",
+    sceneName: sceneName.trim(),
+    exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    breakpoints: breakpoints.map((bp) => {
+      if (bp.type !== "function") {
+        return {
+          ...bp,
+          file: bp.file.replace(/\\/g, "/")
+        };
+      }
+      return bp;
+    })
+  };
+  return JSON.stringify(payload, null, 2);
+}
+var serializeScenePayload = generateScenePayload;
 function stripMarkdownCodeBlocks(text) {
   const trimmed = text.trim();
   const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
@@ -588,7 +607,7 @@ function resolveLaunchBoundScenes(config, launchName, envScene) {
 }
 
 // src/config/aiActivationResolver.ts
-function computeBreakpointsTopologyHash2(breakpoints) {
+function computeBreakpointsTopologyHash(breakpoints) {
   if (!Array.isArray(breakpoints) || breakpoints.length === 0) {
     return "";
   }
@@ -666,6 +685,9 @@ var SceneStateManager = class {
   onDidChangeState = this._onDidChangeState.event;
   getActiveScenes() {
     return [...this.currentActiveScenes];
+  }
+  getActiveScene() {
+    return this.currentActiveScenes[0];
   }
   isSceneActive(sceneName) {
     return this.currentActiveScenes.includes(sceneName);
@@ -1275,7 +1297,7 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
       (bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`
     );
     sceneStateManager.setUnmatchedBreakpoints(unmatchedKeys);
-    setLastAppliedTopologyHash(computeBreakpointsTopologyHash(bpsToLoad));
+    sceneStateManager.setLastAppliedTopologyHash(computeBreakpointsTopologyHash(bpsToLoad));
     return {
       loadedCount: targetBreakpoints.length,
       healedCount,
@@ -2061,7 +2083,51 @@ var SceneTreeDataProvider = class {
 };
 
 // src/commands/clipboardSync.ts
-async function importSceneFromClipboardCommand2() {
+async function copySceneToClipboardCommand(target) {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const config = loadScenesConfig(workspaceRoot);
+  const sceneNames = Object.keys(config.scenes || {});
+  if (sceneNames.length === 0) {
+    vscode11.window.showWarningMessage(vscode11.l10n.t("No scenes configured in debug-scenes.json yet"));
+    return;
+  }
+  let targetScene;
+  if (target) {
+    if (typeof target === "string") {
+      targetScene = target.trim();
+    } else if (target.sceneName) {
+      targetScene = target.sceneName;
+    }
+  }
+  if (!targetScene) {
+    const picked = await vscode11.window.showQuickPick(
+      sceneNames.map((name) => ({
+        label: `$(symbol-event) ${name}`,
+        description: vscode11.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
+        sceneName: name
+      })),
+      {
+        placeHolder: vscode11.l10n.t("Select a scene to copy to clipboard")
+      }
+    );
+    if (!picked) return;
+    targetScene = picked.sceneName;
+  }
+  const breakpoints = config.scenes[targetScene] || [];
+  if (breakpoints.length === 0) {
+    vscode11.window.showWarningMessage(
+      vscode11.l10n.t("Scene [{0}] has no breakpoints to copy.", targetScene)
+    );
+    return;
+  }
+  const payloadStr = serializeScenePayload(targetScene, breakpoints);
+  await vscode11.env.clipboard.writeText(payloadStr);
+  vscode11.window.showInformationMessage(
+    vscode11.l10n.t("Scene [{0}] copied to clipboard ({1} breakpoint(s))!", targetScene, breakpoints.length)
+  );
+}
+async function importSceneFromClipboardCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
   const clipboardText = await vscode11.env.clipboard.readText();
@@ -2254,7 +2320,7 @@ async function showMenuCommand() {
         await exportSceneCommand();
         break;
       case "importClipboard":
-        await importSceneFromClipboardCommand2();
+        await importSceneFromClipboardCommand();
         break;
       case "clear":
         await clearAllCommand();
@@ -2802,7 +2868,7 @@ async function handleExternalScenesFileChange(workspaceRoot) {
     }
   } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
     const merged = mergeScenesBreakpoints(config, currentActives);
-    const newTopologyHash = computeBreakpointsTopologyHash2(merged);
+    const newTopologyHash = computeBreakpointsTopologyHash(merged);
     if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
       return;
     }

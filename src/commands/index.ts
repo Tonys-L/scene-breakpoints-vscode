@@ -4,7 +4,7 @@ import { applySceneCommand } from "./applyScene";
 import { clearAllCommand } from "./clearAll";
 import { exportSceneCommand } from "./exportScene";
 import { showMenuCommand } from "./showMenu";
-import { copySceneCommand, importSceneCommand } from "./clipboardSync";
+import { copySceneToClipboardCommand, importSceneFromClipboardCommand } from "./clipboardSync";
 import { installSkillCommand, diagnoseAiIntegrationCommand } from "./skillCommands";
 import { registerTreeCommands } from "./treeCommands";
 import { SceneTreeDataProvider } from "../sceneTreeProvider";

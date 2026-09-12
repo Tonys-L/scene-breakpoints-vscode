@@ -19,6 +19,10 @@ class SceneStateManager {
 		return [...this.currentActiveScenes];
 	}
 
+	public getActiveScene(): string | undefined {
+		return this.currentActiveScenes[0];
+	}
+
 	public isSceneActive(sceneName: string): boolean {
 		return this.currentActiveScenes.includes(sceneName);
 	}

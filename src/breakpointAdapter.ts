@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { extractContextSnippet, resolveHealedLine } from "./healingAdapter";
 import { sceneStateManager } from "./sceneStateManager";
+import { computeBreakpointsTopologyHash } from "./config/aiActivationResolver";
 import type { ContextSnippet, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "./types";
 
 export interface ApplySceneResult {
@@ -165,7 +166,7 @@ export async function applySceneBreakpoints(
 		sceneStateManager.setUnmatchedBreakpoints(unmatchedKeys);
 
 		// 成功装配至 DAP 后，固化当时实际下发的断点核心拓扑快照 Hash (用于防冗余重刷 Diff)
-		setLastAppliedTopologyHash(computeBreakpointsTopologyHash(bpsToLoad));
+		sceneStateManager.setLastAppliedTopologyHash(computeBreakpointsTopologyHash(bpsToLoad));
 
 		return {
 			loadedCount: targetBreakpoints.length,

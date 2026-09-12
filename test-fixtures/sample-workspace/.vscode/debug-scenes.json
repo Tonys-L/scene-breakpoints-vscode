@@ -1,0 +1,33 @@
+{
+  "scenes": {
+    "login-flow": [
+      {
+        "type": "line",
+        "file": "src/sample.ts",
+        "line": 3,
+        "enabled": true,
+        "desc": "检查 normalized email"
+      },
+      {
+        "type": "condition",
+        "file": "src/sample.ts",
+        "line": 6,
+        "condition": "pass === \"secret123\"",
+        "enabled": true,
+        "desc": "验证密码"
+      }
+    ],
+    "discount-flow": [
+      {
+        "type": "line",
+        "file": "src/sample.ts",
+        "line": 12,
+        "enabled": true,
+        "desc": "VIP 折扣分支"
+      }
+    ]
+  },
+  "activeScenes": [
+    "login-flow"
+  ]
+}

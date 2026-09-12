@@ -175,18 +175,6 @@
         "title": "%command.duplicateScene%",
         "icon": "$(files)",
         "category": "Scene"
-      },
-      {
-        "command": "sceneBreakpoints.installSkill",
-        "title": "%command.installSkill%",
-        "icon": "$(tools)",
-        "category": "Scene"
-      },
-      {
-        "command": "sceneBreakpoints.diagnoseAiIntegration",
-        "title": "%command.diagnoseAiIntegration%",
-        "icon": "$(sparkle)",
-        "category": "Scene"
       }
     ],
     "views": {
@@ -339,7 +327,16 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "node build.mjs",
+    "build:test": "npx esbuild test-e2e/index.ts test-e2e/suite/extension.test.ts --bundle --outdir=out-test --format=cjs --platform=node --external:vscode --external:mocha",
     "test": "node test/run-all.mjs",
+    "test:unit": "node test/run-all.mjs",
+    "test:e2e": "npm run build && npm run build:test && node test-e2e/runTest.mjs",
     "package": "npx -y @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.20.2",
+    "@vscode/test-electron": "^3.1.0",
+    "mocha": "^12.0.1"
   }
 }
