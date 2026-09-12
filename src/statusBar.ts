@@ -3,6 +3,10 @@ import { sceneStateManager } from "./sceneStateManager";
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 
+export function getStatusBarItem(): vscode.StatusBarItem | undefined {
+	return statusBarItem;
+}
+
 export function initStatusBarItem(context: vscode.ExtensionContext): vscode.StatusBarItem {
 	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
 	statusBarItem.command = "sceneBreakpoints.showMenu";

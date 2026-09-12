@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { SceneCodeLensProvider } from "./codeLensProvider";
 import { applySceneCommand, registerAllCommands } from "./commands";
-import { initStatusBarItem } from "./statusBar";
+import { getStatusBarItem, initStatusBarItem } from "./statusBar";
 import { sceneStateManager } from "./sceneStateManager";
 import { syncCoordinator } from "./syncCoordinator";
 
@@ -262,6 +262,12 @@ export function activate(context: vscode.ExtensionContext) {
 		terminateSessionListener,
 		{ dispose: () => sceneStateManager.dispose() },
 	);
+
+	return {
+		treeDataProvider,
+		treeView,
+		getStatusBarItem,
+	};
 }
 
 export function deactivate() {}

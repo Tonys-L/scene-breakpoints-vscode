@@ -2795,6 +2795,9 @@ function registerAllCommands(context, deps) {
 // src/statusBar.ts
 var vscode16 = __toESM(require("vscode"));
 var statusBarItem;
+function getStatusBarItem() {
+  return statusBarItem;
+}
 function initStatusBarItem(context) {
   statusBarItem = vscode16.window.createStatusBarItem(vscode16.StatusBarAlignment.Left, 10);
   statusBarItem.command = "sceneBreakpoints.showMenu";
@@ -3074,6 +3077,11 @@ function activate(context) {
     terminateSessionListener,
     { dispose: () => sceneStateManager.dispose() }
   );
+  return {
+    treeDataProvider,
+    treeView,
+    getStatusBarItem
+  };
 }
 function deactivate() {
 }

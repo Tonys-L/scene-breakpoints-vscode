@@ -28,6 +28,7 @@
     ]
   },
   "activeScenes": [
-    "login-flow"
+    "login-flow",
+    "discount-flow"
   ]
 }
