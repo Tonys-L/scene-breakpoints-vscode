@@ -7,5 +7,6 @@ export {
 	HEALING_SEARCH_WINDOW,
 } from "./healingEngine";
 export * from "./sceneStateManager";
+export * from "./activationResolver";
 
 

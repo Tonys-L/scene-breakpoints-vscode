@@ -1,0 +1,6 @@
+export * from "./storage/jsonFileSceneRepository";
+export * from "./vscode/vscodeBreakpointBridge";
+export * from "./vscode/sceneTreeProvider";
+export * from "./vscode/sceneCodeLensProvider";
+export * from "./vscode/templateContentProvider";
+export * from "./vscode/statusBarView";
