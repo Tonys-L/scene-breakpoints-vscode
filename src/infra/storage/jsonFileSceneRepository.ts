@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { syncService } from "../../services/syncService";
+import { syncService } from "./saveLoopGuard";
 const syncCoordinator = syncService;
 import type { ScenesConfig } from "../../core/types";
 import type { ISceneRepository } from "../../core/ports/sceneRepository";

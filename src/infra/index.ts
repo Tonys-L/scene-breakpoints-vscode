@@ -1,4 +1,5 @@
 export * from "./storage/jsonFileSceneRepository";
+export * from "./storage/saveLoopGuard";
 export * from "./vscode/vscodeBreakpointBridge";
 export * from "./vscode/sceneTreeProvider";
 export * from "./vscode/sceneCodeLensProvider";

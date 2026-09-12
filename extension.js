@@ -35,7 +35,7 @@ __export(extension_exports, {
 module.exports = __toCommonJS(extension_exports);
 var vscode25 = __toESM(require("vscode"));
 
-// src/policy/saveLoopGuard.ts
+// src/infra/storage/saveLoopGuard.ts
 var SaveLoopGuard = class {
   internalSavingTimer;
   _isInternalSaving = false;
