@@ -171,3 +171,4 @@
 | :--- | :--- | :--- | :--- |
 | 2026-09-12 | 初始版本：建立 Scene Breakpoints 全量 10 大维度、34 大端到端 (E2E) 测试场景规范矩阵 | Tony.L | KDD-E2E-SPEC-001 |
 | 2026-09-12 | 自动化套件落地：完成 Suite 01~04 全量自动化 E2E 用例补齐（31 个核心测试 100% 绿灯通过），修复 `loadScenesConfig` 遗漏解析 `activeScenes` 的核心契约缺陷 | Tony.L | #TASK-E2E-AUTO |
+| 2026-09-12 | 自愈 E2E 补齐：通过 WorkspaceEdit 动态位移源码成功将 TC-HEAL-01（行号漂移自愈与持久化回写闭环）与 TC-HEAL-02（未匹配脱靶告警）全量实装为自动化测试（33 个 E2E 用例 100% 通过） | Tony.L | #TASK-E2E-HEAL |

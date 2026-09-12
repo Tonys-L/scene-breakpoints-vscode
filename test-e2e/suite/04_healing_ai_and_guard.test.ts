@@ -214,4 +214,118 @@ suite("Suite 04: 自愈回写、AI 声明式编排与系统级防灾守卫", () 
       if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
     }
   });
+
+  test("TC-HEAL-01: 代码行号自然漂移自愈与持久化回写闭环 (KDD-HEALING-LOOP-001)", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const samplePath = vscode.Uri.joinPath(workspaceFolders[0].uri, "src", "sample.ts").fsPath;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+    const originalSampleContent = fs.readFileSync(samplePath, "utf-8");
+
+    try {
+      // 1. 在配置中定义带有代码指纹的自愈测试场景
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      config.scenes["healing-drift-scene"] = [
+        {
+          type: "line",
+          file: "src/sample.ts",
+          line: 3,
+          enabled: true,
+          desc: "待自愈断点",
+          contextSnippet: {
+            prev: "const normalized = email.trim().toLowerCase();",
+            current: "if (!normalized) {",
+            next: "throw new Error(\"Invalid email\");",
+            scopeAnchor: "loginUser",
+            indent: 2,
+          },
+        },
+      ];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      // 2. 初始装配场景，验证注入在第 3 行
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["healing-drift-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      let bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 3, "初始应定位在第 3 行");
+
+      // 3. 模拟开发者在源码断点前插入 4 行代码，使目标代码由第 3 行下移至第 7 行
+      const doc = await vscode.workspace.openTextDocument(samplePath);
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(0, 0), "// comment 1\n// comment 2\n// comment 3\n// comment 4\n");
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+
+      // 4. 再次触发激活/装配场景
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["healing-drift-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 5. 核心断言 1：DAP 真实断点自动自愈漂移至第 7 行！
+      assert.strictEqual(vscode.debug.breakpoints.length, 1);
+      bp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+      assert.strictEqual(bp.location.range.start.line + 1, 7, "自愈引擎必须将 DAP 断点智能更新到第 7 行");
+
+      // 6. 核心断言 2：debug-scenes.json 必须自动反向回写，将 line 更新为 7 完成闭环！
+      const updatedConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      const savedBp = updatedConfig.scenes["healing-drift-scene"]?.[0];
+      assert.strictEqual(savedBp?.line, 7, "自愈引擎必须自动持久化回写至 debug-scenes.json");
+    } finally {
+      const doc = await vscode.workspace.openTextDocument(samplePath);
+      const fullRange = new vscode.Range(0, 0, doc.lineCount, 0);
+      const revertEdit = new vscode.WorkspaceEdit();
+      revertEdit.replace(doc.uri, fullRange, originalSampleContent);
+      await vscode.workspace.applyEdit(revertEdit);
+      await doc.save();
+    }
+  });
+
+  test("TC-HEAL-02: 破坏性修改未匹配脱靶告警 (KDD-UNMATCHED-WARN-001)", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const samplePath = vscode.Uri.joinPath(workspaceFolders[0].uri, "src", "sample.ts").fsPath;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+    const originalSampleContent = fs.readFileSync(samplePath, "utf-8");
+
+    // 监听脱靶警告弹窗
+    const origWarn = vscode.window.showWarningMessage;
+    let unmatchedWarnPopped = false;
+    (vscode.window as any).showWarningMessage = async (msg: string, ...args: any[]) => {
+      if (msg.includes("unmatched") || msg.includes("未匹配") || msg.includes("脱靶")) {
+        unmatchedWarnPopped = true;
+      }
+      return undefined;
+    };
+
+    try {
+      // 1. 配置一个带有精确指纹的断点
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      config.scenes["unmatched-test-scene"] = [
+        {
+          type: "line",
+          file: "src/sample.ts",
+          line: 3,
+          enabled: true,
+          contextSnippet: {
+            prev: "unique_prev_token_xyz",
+            current: "unique_current_target_xyz",
+            next: "unique_next_token_xyz",
+            scopeAnchor: "someFunction",
+          },
+        },
+      ];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+      // 2. 装配场景（源码中完全不存在该指纹，探测脱靶）
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["unmatched-test-scene"]);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // 3. 验证脱靶告警机制触发
+      assert.strictEqual(unmatchedWarnPopped, true, "脱靶失联断点装配时必须触发警告通知");
+    } finally {
+      (vscode.window as any).showWarningMessage = origWarn;
+      fs.writeFileSync(samplePath, originalSampleContent, "utf-8");
+    }
+  });
 });
