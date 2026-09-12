@@ -1,4 +1,9 @@
-# Skill: manage-scenes
+---
+name: scene-breakpoints
+description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows and code reading
+---
+
+# Skill: scene-breakpoints
 
 ## 何时使用
 

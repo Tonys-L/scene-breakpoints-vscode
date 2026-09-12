@@ -133,5 +133,7 @@
   "Skill installed to {0}": "Skill 已成功安装至 {0}",
   "Scene Breakpoints AI Integration Diagnostics": "Scene Breakpoints AI 集成状态诊断",
   "$(alert) Breakpoint changes pending. Will apply on next debug session.": "$(alert) 断点配置已变更，为保障调试心流将在下次调试启动时生效。",
-  "Installed": "已安装"
+  "Installed": "已安装",
+  "No target AI environments selected. Installation cancelled.": "未勾选任何目标 AI 环境，已取消安装。"
 }
+

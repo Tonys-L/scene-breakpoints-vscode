@@ -235,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
 						uri: vscode.Uri.joinPath(
 							context.extensionUri,
 							"skills",
-							"manage-scenes",
+							"scene-breakpoints",
 							"SKILL.md",
 						),
 					},

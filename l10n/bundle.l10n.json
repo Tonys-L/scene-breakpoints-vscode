@@ -133,5 +133,7 @@
   "Skill installed to {0}": "Skill installed to {0}",
   "Scene Breakpoints AI Integration Diagnostics": "Scene Breakpoints AI Integration Diagnostics",
   "$(alert) Breakpoint changes pending. Will apply on next debug session.": "$(alert) Breakpoint changes pending. Will apply on next debug session.",
-  "Installed": "Installed"
+  "Installed": "Installed",
+  "No target AI environments selected. Installation cancelled.": "No target AI environments selected. Installation cancelled."
 }
+

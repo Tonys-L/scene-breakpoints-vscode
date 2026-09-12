@@ -170,14 +170,14 @@
 - **严格先到先得与 enabled 覆盖规范 (INV-011)**：多场景叠加激活时以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，首个声明该位置的断点生效，其 `enabled: false` 同样优先锁定，后声明的同位置断点直接忽略；
 - **双重保护防线 (INV-012)**：调试会话进行中（`activeDebugSession`）修改断点拓扑时采用挂起策略（策略 A），待会话终止后自动平滑补偿；核心断点拓扑 Diff (`computeBreakpointsTopologyHash`) 阻断无实质断点变动（如仅改 `desc`、`bindings` 或未激活闲置场景）的 DAP 重刷；
 - **8 大主流 VS Code AI Agent 集成矩阵一键分发**：支持将断点编排 Skill 一键分发至工作区：
-  1. Cursor：`.cursor/rules/manage-scenes.mdc`（含 YAML Frontmatter 契约）
-  2. Windsurf：`.windsurf/rules/manage-scenes.md`
-  3. Cline：`.clinerules/manage-scenes.md`
-  4. Roo Code：`.roorules/manage-scenes.md`
-  5. Continue：`.continue/prompts/manage-scenes.prompt`
-  6. VS Code / GitHub Copilot：`.github/skills/manage-scenes/SKILL.md`
-  7. Trae IDE：`.trae/skills/manage-scenes/SKILL.md`
-  8. Antigravity：`.agents/skills/manage-scenes/SKILL.md`
+  1. Cursor：`.cursor/rules/scene-breakpoints.mdc`（含 YAML Frontmatter 契约）
+  2. Windsurf：`.windsurf/rules/scene-breakpoints.md`
+  3. Cline：`.clinerules/scene-breakpoints.md`
+  4. Roo Code：`.roorules/scene-breakpoints.md`
+  5. Continue：`.continue/prompts/scene-breakpoints.prompt`
+  6. VS Code / GitHub Copilot：`.github/skills/scene-breakpoints/SKILL.md`
+  7. Trae IDE：`.trae/skills/scene-breakpoints/SKILL.md`
+  8. Antigravity：`.agents/skills/scene-breakpoints/SKILL.md`
 - **VS Code Chat Skill Provider 宿主动态注入**：检测宿主 `vscode.chat.registerSkillProvider` 能力，支持内存动态虚拟挂载，无需落盘物理文件；
 - **全维集成状态诊断 (`diagnoseAiIntegration`)**：集中诊断 `allowAiFileActivation` 授权开关、当前激活场景列表与 8 大 Agent 路径部署状态，并提供交互式一键修复与安装。
 

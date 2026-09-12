@@ -182,11 +182,11 @@ suite("Suite 04: 自愈回写、AI 声明式编排与系统级防灾守卫", () 
       await vscode.commands.executeCommand("sceneBreakpoints.installSkill");
       await new Promise((resolve) => setTimeout(resolve, 400));
 
-      // 验证 .cursor/rules/manage-scenes.mdc 文件被真实生成
-      const mdcUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".cursor", "rules", "manage-scenes.mdc");
+      // 验证 .cursor/rules/scene-breakpoints.mdc 文件被真实生成
+      const mdcUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".cursor", "rules", "scene-breakpoints.mdc");
       assert.ok(fs.existsSync(mdcUri.fsPath), "Cursor 规范规则文件必须成功写入");
       const content = fs.readFileSync(mdcUri.fsPath, "utf-8");
-      assert.ok(content.includes("manage-scenes"), "生成的文件内容应包含 Skill 指南规范");
+      assert.ok(content.includes("scene-breakpoints"), "生成的文件内容应包含 Skill 指南规范");
     } finally {
       (vscode.window as any).showQuickPick = origQuickPick;
     }

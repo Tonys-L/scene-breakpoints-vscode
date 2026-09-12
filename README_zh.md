@@ -33,7 +33,7 @@
 ## ✨ 它能帮你做什么？
 
 <p align="center">
-  <img src="./docs/images/treeview-interactive.gif" alt="Scene Breakpoints 动态演示" width="100%" />
+  <img src="./docs/images/sb.gif" alt="Scene Breakpoints 动态演示" width="100%" />
 </p>
 
 - 🗺️ **记录业务关键流程，秒变代码路线图**
@@ -130,6 +130,32 @@
   }
 }
 ```
+
+---
+
+## 🤖 AI Agent 协同与一键 Skill 赋能
+
+Scene Breakpoints 原生设计为 **AI 友好**，无需借助外部复杂 MCP 服务，即可实现与主流 AI 编程助手的无缝联动：
+
+### 1. 免 MCP 声明式断点激活
+- AI 只需声明式修改 `.vscode/debug-scenes.json` 根级字段 `"activeScenes": ["target-flow"]` 并保存，插件内部的 FileWatcher 将自动感应，秒级重刷断点并点亮状态栏。
+- 用户默认拥有绝对控制权（设置项 `sceneBreakpoints.allowAiFileActivation` 可一键开启/关闭外部文件激活授权）。
+
+### 2. 8 大主流 VS Code AI Agent Skill 一键部署
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，即可一键将 `scene-breakpoints` 专属技能部署到工作区：
+- **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
+- **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
+- **Windsurf**: `.windsurf/rules/scene-breakpoints.md`
+- **Cline (Claude Dev)**: `.clinerules/scene-breakpoints.md`
+- **Roo Code**: `.roorules/scene-breakpoints.md`
+- **Continue.dev**: `.continue/prompts/scene-breakpoints.prompt`
+- **GitHub Copilot**: `.github/skills/scene-breakpoints/SKILL.md`
+- **Trae IDE**: `.trae/skills/scene-breakpoints/SKILL.md`
+
+安装后，向 AI 说一句：“*帮我分析登录失败的原因，并建立断点场景*”，AI 便会自动研读代码、组织断点并写入场景激活！
+
+### 3. AI 集成状态全维诊断
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`**，可一目了然查看当前各平台 Skill 部署情况、授权状态并提供一键修复。
 
 ---
 

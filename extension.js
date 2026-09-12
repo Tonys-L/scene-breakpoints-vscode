@@ -2367,7 +2367,8 @@ var path8 = __toESM(require("node:path"));
 var vscode13 = __toESM(require("vscode"));
 function formatSkillContent(baseContent, target) {
   if (target.customHeader) {
-    const baseStr = Buffer.from(baseContent).toString("utf-8");
+    let baseStr = Buffer.from(baseContent).toString("utf-8");
+    baseStr = baseStr.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n\r?\n?/, "");
     return Buffer.from(target.customHeader + baseStr, "utf-8");
   }
   return baseContent;
@@ -2376,7 +2377,7 @@ async function writeSkillToTarget(context, workspaceRoot, target) {
   const skillSourceUri = vscode13.Uri.joinPath(
     context.extensionUri,
     "skills",
-    "manage-scenes",
+    "scene-breakpoints",
     "SKILL.md"
   );
   let content;
@@ -2410,6 +2411,9 @@ async function installSkillCommand(context) {
   }
   const targets = await pickSkillTargets(workspaceRoot);
   if (!targets || targets.length === 0) {
+    vscode13.window.showInformationMessage(
+      vscode13.l10n.t("No target AI environments selected. Installation cancelled.")
+    );
     return;
   }
   for (const target of targets) {
@@ -2482,11 +2486,11 @@ function getSupportedSkillTargets() {
     // 1. Cursor IDE 专属 MDC 规则体系
     {
       label: "Cursor",
-      description: ".cursor/rules/manage-scenes.mdc",
+      description: ".cursor/rules/scene-breakpoints.mdc",
       dir: ".cursor/rules",
-      file: "manage-scenes.mdc",
+      file: "scene-breakpoints.mdc",
       customHeader: `---
-description: Manage and declare breakpoint scenes for debugging
+description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows and code reading
 globs: **
 ---
 
@@ -2495,52 +2499,52 @@ globs: **
     // 2. Windsurf (Codeium) 级联规则体系
     {
       label: "Windsurf",
-      description: ".windsurf/rules/manage-scenes.md",
+      description: ".windsurf/rules/scene-breakpoints.md",
       dir: ".windsurf/rules",
-      file: "manage-scenes.md"
+      file: "scene-breakpoints.md"
     },
     // 3. Cline (Claude Dev) 自主 Agent 规则体系
     {
       label: "Cline",
-      description: ".clinerules/manage-scenes.md",
+      description: ".clinerules/scene-breakpoints.md",
       dir: ".clinerules",
-      file: "manage-scenes.md"
+      file: "scene-breakpoints.md"
     },
     // 4. Roo Code (Roo Cline) 规则体系
     {
       label: "Roo Code",
-      description: ".roorules/manage-scenes.md",
+      description: ".roorules/scene-breakpoints.md",
       dir: ".roorules",
-      file: "manage-scenes.md"
+      file: "scene-breakpoints.md"
     },
     // 5. Continue.dev 开源 Agent 提示词体系
     {
       label: "Continue",
-      description: ".continue/prompts/manage-scenes.prompt",
+      description: ".continue/prompts/scene-breakpoints.prompt",
       dir: ".continue/prompts",
-      file: "manage-scenes.prompt"
+      file: "scene-breakpoints.prompt"
     },
     // 6. VS Code / GitHub Copilot 官方 Skills 体系
     // TODO(v1.0.4): VS Code Copilot Skill 路径待官方稳定后验证，当前为推测路径
     {
       label: "VS Code / GitHub Copilot",
-      description: ".github/skills/manage-scenes/SKILL.md",
-      dir: ".github/skills/manage-scenes",
+      description: ".github/skills/scene-breakpoints/SKILL.md",
+      dir: ".github/skills/scene-breakpoints",
       file: "SKILL.md"
     },
     // 7. Trae IDE 技能体系
     // TODO(v1.0.4): Trae 的 Skill 格式规范待官方文档明确，当前直接复用标准 SKILL.md
     {
       label: "Trae IDE",
-      description: ".trae/skills/manage-scenes/SKILL.md",
-      dir: ".trae/skills/manage-scenes",
+      description: ".trae/skills/scene-breakpoints/SKILL.md",
+      dir: ".trae/skills/scene-breakpoints",
       file: "SKILL.md"
     },
     // 8. Antigravity 工作区 Skill 体系
     {
       label: "Antigravity",
-      description: ".agents/skills/manage-scenes/SKILL.md",
-      dir: ".agents/skills/manage-scenes",
+      description: ".agents/skills/scene-breakpoints/SKILL.md",
+      dir: ".agents/skills/scene-breakpoints",
       file: "SKILL.md"
     }
   ];
@@ -3073,7 +3077,7 @@ function activate(context) {
             uri: vscode18.Uri.joinPath(
               context.extensionUri,
               "skills",
-              "manage-scenes",
+              "scene-breakpoints",
               "SKILL.md"
             )
           }

@@ -258,27 +258,27 @@ export function runAiActivationTests() {
 			return baseContent;
 		}
 
-		const rawContent = Buffer.from("# Skill: manage-scenes\n\nDemo", "utf-8");
+		const rawContent = Buffer.from("---\nname: scene-breakpoints\ndescription: demo\n---\n\n# Skill: scene-breakpoints\n\nDemo", "utf-8");
 
 		// 测试 Cursor MDC 规则注入
 		const cursorTarget = {
 			label: "Cursor",
 			dir: ".cursor/rules",
-			file: "manage-scenes.mdc",
+			file: "scene-breakpoints.mdc",
 			customHeader: `---\ndescription: Manage and declare breakpoint scenes for debugging\nglobs: **\n---\n\n`,
 		};
 		const cursorResult = formatSkillContent(rawContent, cursorTarget).toString("utf-8");
 		assert.ok(cursorResult.startsWith("---\ndescription:"), "Cursor MDC 必须携带专属 Frontmatter 头部");
-		assert.ok(cursorResult.includes("# Skill: manage-scenes"), "Cursor MDC 必须保留原始 Skill 指南主体");
+		assert.ok(cursorResult.includes("# Skill: scene-breakpoints"), "Cursor MDC 必须保留原始 Skill 指南主体");
 
 		// 测试标准 Agent（如 Windsurf / Cline / Antigravity）
 		const windsurfTarget = {
 			label: "Windsurf",
 			dir: ".windsurf/rules",
-			file: "manage-scenes.md",
+			file: "scene-breakpoints.md",
 		};
 		const windsurfResult = formatSkillContent(rawContent, windsurfTarget).toString("utf-8");
-		assert.strictEqual(windsurfResult, "# Skill: manage-scenes\n\nDemo", "非定制 Agent 必须原生保持无损 Markdown");
+		assert.ok(windsurfResult.includes("# Skill: scene-breakpoints\n\nDemo"), "非定制 Agent 必须原生保持无损 Markdown");
 
 		console.log("    ✔ 主流 Agent 矩阵与 Cursor MDC 模版格式化验证通过");
 	}

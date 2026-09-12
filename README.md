@@ -33,7 +33,7 @@ Every developer debugging in VS Code runs into these frustrations:
 ## ✨ What Can It Do For You?
 
 <p align="center">
-  <img src="./docs/images/treeview-interactive.gif" alt="Scene Breakpoints Interactive Demo" width="100%" />
+  <img src="./docs/images/sb.gif" alt="Scene Breakpoints Interactive Demo" width="100%" />
 </p>
 
 - 🗺️ **Document Execution Flows into Living Code Maps**
@@ -133,9 +133,35 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
 
 ---
 
-## 📖 Documentation
+## 🤖 AI Agent Integration & One-Click Skill Deployment
 
-- 📘 [Complete User Guide & FAQ](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md)
+Scene Breakpoints is designed from the ground up to be **AI-Native**, allowing seamless orchestration with modern AI coding assistants without needing complex external MCP servers:
+
+### 1. MCP-Free Declarative Breakpoint Activation
+- AI agents simply edit the root `"activeScenes": ["target-flow"]` field in `.vscode/debug-scenes.json`. The extension's internal FileWatcher detects the change, atomically updates DAP breakpoints, and refreshes the status bar instantly.
+- Developers maintain full control via the `sceneBreakpoints.allowAiFileActivation` setting.
+
+### 2. One-Click Skill Matrix for 8 Major VS Code AI Agents
+Press `Ctrl+Shift+P` and run **`Scene Breakpoints: Install Agent Skill`** to deploy the `scene-breakpoints` skill directly into your workspace:
+- **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
+- **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
+- **Windsurf**: `.windsurf/rules/scene-breakpoints.md`
+- **Cline (Claude Dev)**: `.clinerules/scene-breakpoints.md`
+- **Roo Code**: `.roorules/scene-breakpoints.md`
+- **Continue.dev**: `.continue/prompts/scene-breakpoints.prompt`
+- **GitHub Copilot**: `.github/skills/scene-breakpoints/SKILL.md`
+- **Trae IDE**: `.trae/skills/scene-breakpoints/SKILL.md`
+
+Once installed, simply instruct your AI: *"Help me analyze why login failed and set up a breakpoint scene"*. The agent will read the code, assemble breakpoints, and activate the scene automatically!
+
+### 3. Full-Spectrum AI Diagnostics
+Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect activation authorization, review active scenes, check cross-platform skill deployment status, and perform one-click repairs.
+
+---
+
+## 📖 More Documentation
+
+- 📕 [Comprehensive User Guide & FAQ](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md)
 - 📝 [Changelog (CHANGELOG.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG.md)
 
 ---
