@@ -327,7 +327,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "node build.mjs",
-    "build:test": "npx esbuild test-e2e/index.ts test-e2e/suite/*.test.ts --bundle --outdir=out-test --format=cjs --platform=node --external:vscode --external:mocha",
+    "build:test": "node -e \"fs.rmSync('out-test', {recursive:true, force:true})\" && npx esbuild test-e2e/index.ts test-e2e/suite/*.test.ts --bundle --outdir=out-test --format=cjs --platform=node --external:vscode --external:mocha",
     "test": "node test/run-all.mjs",
     "test:unit": "node test/run-all.mjs",
     "test:e2e": "npm run build && npm run build:test && node test-e2e/runTest.mjs",

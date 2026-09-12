@@ -102,7 +102,7 @@ export function loadScenesConfig(workspaceRoot: string): ScenesConfig {
 
 		const cleanScenes: Record<string, any[]> = {};
 		for (const [k, v] of Object.entries(candidateScenes)) {
-			if (k !== "$schema" && k !== "bindings" && Array.isArray(v)) {
+			if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
 				cleanScenes[k] = (v as any[]).filter((it) => it && typeof it === "object");
 			}
 		}
@@ -120,10 +120,15 @@ export function loadScenesConfig(workspaceRoot: string): ScenesConfig {
 			}
 		}
 
+		const result: ScenesConfig = { scenes: cleanScenes };
 		if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-			return { bindings: cleanBindings, scenes: cleanScenes };
+			result.bindings = cleanBindings;
 		}
-		return { scenes: cleanScenes };
+		const rawActiveScenes = parsed.activeScenes ?? candidateScenes.activeScenes;
+		if (rawActiveScenes !== undefined) {
+			result.activeScenes = rawActiveScenes;
+		}
+		return result;
 	} catch (e: any) {
 		vscode.window.showErrorMessage(vscode.l10n.t("Failed to read debug-scenes.json: {0}", e.message));
 	}
