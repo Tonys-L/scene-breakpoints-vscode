@@ -1,7 +1,7 @@
 import assert from "node:assert";
 
 /**
- * SyncCoordinator 逻辑镜像（与 src/syncCoordinator.ts 100% 严格对齐）
+ * SaveLoopGuard 逻辑镜像（与 src/infra/storage/saveLoopGuard.ts 100% 严格对齐）
  */
 class SyncCoordinatorMock {
 	constructor() {

@@ -157,4 +157,6 @@
 | 2026-09-13 | 深度剥离 policy 层的 VS Code 宿主依赖（0 依赖），将命令交互（controllers）与事件监听（listeners）全量下沉至 infra/vscode/，提纯 policy 为纯用例编排层 | Tony.L | KDD-POLICY-PURIFY-002 |
 | 2026-09-13 | 规范化架构为 DDD 经典体系：建立 domain（领域层）、application（应用用例层）、infra（基础设施层）；统一 SSOT 语义（磁盘为权威 SSOT，状态机为活动投影）；引入用例串行队列 useCaseQueue 杜绝并发交错 | Tony.L | KDD-DDD-STANDARDIZE-003 |
 | 2026-09-13 | 高内聚聚合应用服务与命令体系：聚合 sceneService.ts（内置单写者串行队列）、正名并聚拢 infra/vscode/commands（4大高内聚模块）与 listeners（debugLifecycle/configFileWatcher 等），彻底消除历史过渡别名包袱与空壳文件 | Tony.L | KDD-COHESION-REFACTOR-004 |
+| 2026-09-13 | 单元测试架构对齐重构：建立 test/unit/{domain,application,infra} 与 test/integration 分层；新增 scene_service 测试套件（6大核心维度）；消除历史废弃路径注释并根治内部调度重入死锁隐患 | Tony.L | KDD-TEST-RESTRUCTURE-005 |
+
 

@@ -51,28 +51,7 @@
 
 ---
 
-### 2. 基础设施层 (Infra Layer) — `src/infra/`
-- **定位**：可替换、具体技术与外部系统实现。
-- **职责**：用具体技术实现领域层定义的端口（Ports），对接 VS Code 宿主 API、本地磁盘文件系统与 UI 呈现。基础设施层可替换（如换成 JetBrains 或 SQLite，领域层与应用层代码零改动）。
-- **文件结构**：
-  ```text
-  src/infra/
-  ├── vscode/                     # VS Code 宿主具体技术实现
-  │   ├── controllers/            # [Driving Adapters] 入站命令交互适配器 (applyScene, addBreakpoint, clearAll 等)
-  │   ├── listeners/              # [Event Listeners] 宿主事件监听器 (configFileWatcher, breakpointSync, debugLaunch 等)
-  │   ├── vscodeBreakpointBridge.ts # 实现 IBreakpointBridge (封装 vscode.debug.breakpoints)
-  │   ├── sceneTreeProvider.ts      # 实现 vscode.TreeDataProvider (侧边栏树视图渲染与跟随)
-  │   ├── sceneCodeLensProvider.ts  # 实现 vscode.CodeLensProvider (debug-scenes.json 透镜)
-  │   ├── templateContentProvider.ts# 实现 vscode.TextDocumentContentProvider (Skill 虚拟文档)
-  │   └── statusBarView.ts          # 底部状态栏控件渲染
-  └── storage/                    # 存储基础设施实现
-      ├── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的权威持久化 SSOT 读写)
-      └── saveLoopGuard.ts        # 内部写盘时间窗与指纹防回环守卫
-  ```
-
----
-
-### 3. 应用用例层 (Application Layer) — `src/application/`
+### 2. 应用服务层 (Application Layer) — `src/application/`
 - **定位**：面向用户用例、回答“业务流程怎么做”。
 - **职责**：高内聚业务服务（Application Service），编排业务流程，调度领域模型与端口契约，**内置单写者串行队列保护（消除并发交错竞态），0 处 VS Code 宿主依赖**。
 - **文件结构**：
@@ -85,14 +64,15 @@
 
 ---
 
-### 4. 基础设施层 (Infra Layer) — `src/infra/`
+### 3. 基础设施层 (Infra Layer) — `src/infra/`
 - **定位**：技术适配、回答“具体如何完成”。
+- **职责**：用具体技术实现领域层定义的端口（Ports），对接 VS Code 宿主 API、本地磁盘文件系统与 UI 呈现。基础设施层可替换（如换成 JetBrains 或 SQLite，领域层与应用层代码零改动）。
 - **文件结构**：
   ```text
   src/infra/
   ├── storage/                   # 持久化存储适配
-  │   ├── jsonFileSceneRepository.ts
-  │   └── saveLoopGuard.ts
+  │   ├── jsonFileSceneRepository.ts# 实现 ISceneRepository (基于 Node.js fs 的权威持久化 SSOT 读写)
+  │   └── saveLoopGuard.ts        # 内部写盘时间窗与指纹防回环守卫
   └── vscode/                    # VS Code 宿主适配器
       ├── commands/              # 命令交互中枢 (4 大高内聚命令模块)
       │   ├── sceneCommands.ts       # 场景生命周期命令 (applyScene, clearAll, addBreakpoint, exportScene, showMenu)
@@ -107,11 +87,32 @@
       │   ├── treeInteractionListener.ts    # 树视图折叠展开与勾选
       │   ├── chatSkillListener.ts          # VS Code 1.90+ Chat API 技能
       │   └── index.ts
-      ├── vscodeBreakpointBridge.ts
-      ├── sceneTreeProvider.ts
-      ├── statusBarView.ts
-      ├── sceneCodeLensProvider.ts
-      └── templateContentProvider.ts
+      ├── vscodeBreakpointBridge.ts # 实现 IBreakpointBridge (封装 vscode.debug.breakpoints)
+      ├── sceneTreeProvider.ts      # 实现 vscode.TreeDataProvider (侧边栏树视图渲染与跟随)
+      ├── statusBarView.ts          # 底部状态栏控件渲染
+      ├── sceneCodeLensProvider.ts  # 实现 vscode.CodeLensProvider (debug-scenes.json 透镜)
+      └── templateContentProvider.ts# 实现 vscode.TextDocumentContentProvider (Skill 虚拟文档)
+  ```
+
+---
+
+### 4. 装配中枢 (Composition Root) — `src/extension.ts`
+- **定位**：唯一的顶层胶水。
+- **职责**：专职负责实例化技术层组件 ➔ 注入核心层/策略层 ➔ 挂载 VS Code 生命周期监听，**0 业务计算与策略细节**。
+
+---
+
+### 5. 单元与集成测试分层 (Test Architecture) — `test/`
+- **定位**：与三层架构心智模型 100% 镜像对齐，秒级自包含极速反馈。
+- **文件结构**：
+  ```text
+  test/
+  ├── unit/                                # 单元测试分层
+  │   ├── domain/                          # 1. 纯领域模型与算法 (healing, config_operations, state_projection, activation_resolver, skill_lifecycle)
+  │   ├── application/                     # 2. 应用服务与串行互斥 (scene_service)
+  │   └── infra/                           # 3. 基础设施与 VS Code 适配 (commands_registry, storage_guard_and_sync, storage_atomic_queue, treeview_provider, bridge_and_codelens)
+  ├── integration/                         # 集成与一致性测试 (roundtrip_and_edge, i18n)
+  └── run-all.mjs                          # 统一测试引导调度器 (13 大套件)
   ```
 
 ---

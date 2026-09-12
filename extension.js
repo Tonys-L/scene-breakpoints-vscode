@@ -1880,232 +1880,237 @@ var SerialQueue = class {
   }
 };
 var queue = new SerialQueue();
-async function activateScene(params) {
-  return queue.run(async () => {
-    const {
-      workspaceRoot,
-      targetScenes: rawTargetScenes,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      loopGuard = saveLoopGuard
-    } = params;
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    const sceneNames = Object.keys(config.scenes || {});
-    const validTargetScenes = [];
-    const missingScenes = [];
-    for (const target of rawTargetScenes) {
-      const matched = sceneNames.find((s) => s.toLowerCase() === target.toLowerCase());
-      if (matched) {
-        validTargetScenes.push(matched);
-      } else {
-        missingScenes.push(target);
-      }
+async function doActivateScene(params) {
+  const {
+    workspaceRoot,
+    targetScenes: rawTargetScenes,
+    sceneRepository = jsonFileSceneRepository,
+    breakpointBridge = vscodeBreakpointBridge,
+    loopGuard = saveLoopGuard
+  } = params;
+  const config = sceneRepository.loadScenesConfig(workspaceRoot);
+  const sceneNames = Object.keys(config.scenes || {});
+  const validTargetScenes = [];
+  const missingScenes = [];
+  for (const target of rawTargetScenes) {
+    const matched = sceneNames.find((s) => s.toLowerCase() === target.toLowerCase());
+    if (matched) {
+      validTargetScenes.push(matched);
+    } else {
+      missingScenes.push(target);
     }
-    if (validTargetScenes.length === 0) {
-      return {
-        success: false,
-        validTargetScenes: [],
-        missingScenes,
-        loadedCount: 0,
-        healedCount: 0,
-        unmatchedCount: 0
-      };
-    }
-    const bpsToLoad = mergeScenesBreakpoints(config, validTargetScenes);
-    const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
-    const currentDiskActives = config.activeScenes;
-    const isSameActive = Array.isArray(currentDiskActives) && currentDiskActives.length === validTargetScenes.length && currentDiskActives.every((s, i) => s === validTargetScenes[i]);
-    if (!isSameActive) {
-      config.activeScenes = validTargetScenes;
-      loopGuard.markInternalSaving();
-      sceneRepository.saveScenesConfig(workspaceRoot, config);
-    }
-    const applyResult = await breakpointBridge.applySceneBreakpoints(
-      workspaceRoot,
-      primarySceneLabel,
-      bpsToLoad
-    );
-    const { loadedCount, healedCount } = applyResult;
-    const healedBreakpoints = applyResult.healedBreakpoints;
-    const unmatchedCount = applyResult.unmatchedBreakpoints?.length || 0;
-    sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
-    if (healedCount > 0 && healedBreakpoints) {
-      let hasPersisted = false;
-      if (validTargetScenes.length === 1) {
-        config.scenes[validTargetScenes[0]] = healedBreakpoints;
-        hasPersisted = true;
-      } else {
-        for (const sceneName of validTargetScenes) {
-          const sceneList = config.scenes[sceneName];
-          if (!Array.isArray(sceneList)) continue;
-          for (const item of sceneList) {
-            if (item.type === "function") continue;
-            const srcItem = item;
-            const matched = healedBreakpoints.find(
-              (h) => h.type !== "function" && h.file === srcItem.file && h.contextSnippet?.current === srcItem.contextSnippet?.current
-            );
-            if (matched && srcItem.line !== matched.line) {
-              srcItem.line = matched.line;
-              hasPersisted = true;
-            }
+  }
+  if (validTargetScenes.length === 0) {
+    return {
+      success: false,
+      validTargetScenes: [],
+      missingScenes,
+      loadedCount: 0,
+      healedCount: 0,
+      unmatchedCount: 0
+    };
+  }
+  const bpsToLoad = mergeScenesBreakpoints(config, validTargetScenes);
+  const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
+  const currentDiskActives = config.activeScenes;
+  const isSameActive = Array.isArray(currentDiskActives) && currentDiskActives.length === validTargetScenes.length && currentDiskActives.every((s, i) => s === validTargetScenes[i]);
+  if (!isSameActive) {
+    config.activeScenes = validTargetScenes;
+    loopGuard.markInternalSaving();
+    sceneRepository.saveScenesConfig(workspaceRoot, config);
+  }
+  const applyResult = await breakpointBridge.applySceneBreakpoints(
+    workspaceRoot,
+    primarySceneLabel,
+    bpsToLoad
+  );
+  const { loadedCount, healedCount } = applyResult;
+  const healedBreakpoints = applyResult.healedBreakpoints;
+  const unmatchedCount = applyResult.unmatchedBreakpoints?.length || 0;
+  sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
+  if (healedCount > 0 && healedBreakpoints) {
+    let hasPersisted = false;
+    if (validTargetScenes.length === 1) {
+      config.scenes[validTargetScenes[0]] = healedBreakpoints;
+      hasPersisted = true;
+    } else {
+      for (const sceneName of validTargetScenes) {
+        const sceneList = config.scenes[sceneName];
+        if (!Array.isArray(sceneList)) continue;
+        for (const item of sceneList) {
+          if (item.type === "function") continue;
+          const srcItem = item;
+          const matched = healedBreakpoints.find(
+            (h) => h.type !== "function" && h.file === srcItem.file && h.contextSnippet?.current === srcItem.contextSnippet?.current
+          );
+          if (matched && srcItem.line !== matched.line) {
+            srcItem.line = matched.line;
+            hasPersisted = true;
           }
         }
       }
-      if (hasPersisted) {
-        loopGuard.markInternalSaving();
-        sceneRepository.saveScenesConfig(workspaceRoot, config);
-      }
     }
-    return {
-      success: true,
-      validTargetScenes,
-      missingScenes,
-      loadedCount,
-      healedCount,
-      unmatchedCount
-    };
-  });
+    if (hasPersisted) {
+      loopGuard.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, config);
+    }
+  }
+  return {
+    success: true,
+    validTargetScenes,
+    missingScenes,
+    loadedCount,
+    healedCount,
+    unmatchedCount
+  };
+}
+async function activateScene(params) {
+  return queue.run(() => doActivateScene(params));
+}
+async function doAddBreakpoint(params) {
+  const {
+    workspaceRoot,
+    targetScene,
+    breakpoint,
+    sceneRepository = jsonFileSceneRepository,
+    breakpointBridge = vscodeBreakpointBridge,
+    loopGuard = saveLoopGuard
+  } = params;
+  const config = sceneRepository.loadScenesConfig(workspaceRoot);
+  if (!config.scenes) {
+    config.scenes = {};
+  }
+  upsertBreakpointToScene(config, targetScene, breakpoint);
+  loopGuard.markInternalSaving();
+  sceneRepository.saveScenesConfig(workspaceRoot, config);
+  let isImmediatelyApplied = false;
+  if (sceneStateManager.isSceneActive(targetScene)) {
+    await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
+    sceneStateManager.setBaselineBreakpointCount(sceneStateManager.getBaselineBreakpointCount() + 1);
+    isImmediatelyApplied = true;
+  }
+  return {
+    success: true,
+    isImmediatelyApplied
+  };
 }
 async function addBreakpoint(params) {
-  return queue.run(async () => {
-    const {
-      workspaceRoot,
-      targetScene,
-      breakpoint,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      loopGuard = saveLoopGuard
-    } = params;
+  return queue.run(() => doAddBreakpoint(params));
+}
+async function doClearAll(params = {}) {
+  const {
+    workspaceRoot,
+    sceneRepository = jsonFileSceneRepository,
+    breakpointBridge = vscodeBreakpointBridge,
+    loopGuard = saveLoopGuard
+  } = params;
+  if (workspaceRoot) {
     const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    if (!config.scenes) {
-      config.scenes = {};
+    if (config.activeScenes && config.activeScenes.length > 0) {
+      config.activeScenes = [];
+      loopGuard.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, config);
     }
-    upsertBreakpointToScene(config, targetScene, breakpoint);
-    loopGuard.markInternalSaving();
-    sceneRepository.saveScenesConfig(workspaceRoot, config);
-    let isImmediatelyApplied = false;
-    if (sceneStateManager.isSceneActive(targetScene)) {
-      await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
-      sceneStateManager.setBaselineBreakpointCount(sceneStateManager.getBaselineBreakpointCount() + 1);
-      isImmediatelyApplied = true;
-    }
-    return {
-      success: true,
-      isImmediatelyApplied
-    };
-  });
+  }
+  await breakpointBridge.clearAllBreakpoints();
+  sceneStateManager.setActiveScene(void 0);
 }
 async function clearAll(params = {}) {
-  return queue.run(async () => {
-    const {
-      workspaceRoot,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      loopGuard = saveLoopGuard
-    } = params;
-    if (workspaceRoot) {
-      const config = sceneRepository.loadScenesConfig(workspaceRoot);
-      if (config.activeScenes && config.activeScenes.length > 0) {
-        config.activeScenes = [];
-        loopGuard.markInternalSaving();
-        sceneRepository.saveScenesConfig(workspaceRoot, config);
-      }
+  return queue.run(() => doClearAll(params));
+}
+async function doExportScene(params) {
+  const {
+    workspaceRoot,
+    targetScene,
+    mode,
+    sceneRepository = jsonFileSceneRepository,
+    breakpointBridge = vscodeBreakpointBridge,
+    loopGuard = saveLoopGuard
+  } = params;
+  const exportedBps = breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
+  if (exportedBps.length === 0) {
+    return { success: false, count: 0 };
+  }
+  const config = sceneRepository.loadScenesConfig(workspaceRoot);
+  if (!config.scenes) {
+    config.scenes = {};
+  }
+  if (mode === "overwrite" || !config.scenes[targetScene]) {
+    config.scenes[targetScene] = exportedBps;
+  } else {
+    for (const bp of exportedBps) {
+      upsertBreakpointToScene(config, targetScene, bp);
     }
-    await breakpointBridge.clearAllBreakpoints();
-    sceneStateManager.setActiveScene(void 0);
-  });
+  }
+  loopGuard.markInternalSaving();
+  sceneRepository.saveScenesConfig(workspaceRoot, config);
+  return {
+    success: true,
+    count: exportedBps.length
+  };
 }
 async function exportScene(params) {
-  return queue.run(async () => {
-    const {
-      workspaceRoot,
-      targetScene,
-      mode,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      loopGuard = saveLoopGuard
-    } = params;
-    const exportedBps = breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
-    if (exportedBps.length === 0) {
-      return { success: false, count: 0 };
-    }
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    if (!config.scenes) {
-      config.scenes = {};
-    }
-    if (mode === "overwrite" || !config.scenes[targetScene]) {
-      config.scenes[targetScene] = exportedBps;
-    } else {
-      for (const bp of exportedBps) {
-        upsertBreakpointToScene(config, targetScene, bp);
-      }
-    }
-    loopGuard.markInternalSaving();
-    sceneRepository.saveScenesConfig(workspaceRoot, config);
-    return {
-      success: true,
-      count: exportedBps.length
-    };
+  return queue.run(() => doExportScene(params));
+}
+async function doHandleExternalChange(params) {
+  const {
+    workspaceRoot,
+    allowAiActivation,
+    isDebuggingActive,
+    sceneRepository = jsonFileSceneRepository,
+    breakpointBridge = vscodeBreakpointBridge,
+    onPendingMessage
+  } = params;
+  const config = sceneRepository.loadScenesConfig(workspaceRoot);
+  const currentActives = sceneStateManager.getActiveScenes();
+  const diff = resolveActiveScenesDiff({
+    allowAiActivation,
+    currentActiveScenes: currentActives,
+    rawActiveScenes: config.activeScenes,
+    scenesDict: config.scenes
   });
+  if (diff.shouldApply) {
+    if (diff.action === "apply") {
+      await doActivateScene({
+        workspaceRoot,
+        targetScenes: diff.targetScenes,
+        sceneRepository,
+        breakpointBridge
+      });
+      return { action: "applied", targetScenes: diff.targetScenes };
+    } else if (diff.action === "clear") {
+      await doClearAll({
+        workspaceRoot,
+        sceneRepository,
+        breakpointBridge
+      });
+      return { action: "cleared" };
+    }
+  } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
+    const merged = mergeScenesBreakpoints(config, currentActives);
+    const newTopologyHash = computeBreakpointsTopologyHash(merged);
+    if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
+      return { action: "noop" };
+    }
+    if (isDebuggingActive) {
+      sceneStateManager.setPendingTopologyUpdate(true);
+      if (onPendingMessage) {
+        onPendingMessage();
+      }
+      return { action: "pending" };
+    }
+    await breakpointBridge.applySceneBreakpoints(
+      workspaceRoot,
+      currentActives.join("+"),
+      merged
+    );
+    sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
+    return { action: "applied", targetScenes: currentActives };
+  }
+  return { action: "noop" };
 }
 async function handleExternalChange(params) {
-  return queue.run(async () => {
-    const {
-      workspaceRoot,
-      allowAiActivation,
-      isDebuggingActive,
-      sceneRepository = jsonFileSceneRepository,
-      breakpointBridge = vscodeBreakpointBridge,
-      onPendingMessage
-    } = params;
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    const currentActives = sceneStateManager.getActiveScenes();
-    const diff = resolveActiveScenesDiff({
-      allowAiActivation,
-      currentActiveScenes: currentActives,
-      rawActiveScenes: config.activeScenes,
-      scenesDict: config.scenes
-    });
-    if (diff.shouldApply) {
-      if (diff.action === "apply") {
-        await activateScene({
-          workspaceRoot,
-          targetScenes: diff.targetScenes,
-          sceneRepository,
-          breakpointBridge
-        });
-        return { action: "applied", targetScenes: diff.targetScenes };
-      } else if (diff.action === "clear") {
-        await clearAll({
-          workspaceRoot,
-          sceneRepository,
-          breakpointBridge
-        });
-        return { action: "cleared" };
-      }
-    } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
-      const merged = mergeScenesBreakpoints(config, currentActives);
-      const newTopologyHash = computeBreakpointsTopologyHash(merged);
-      if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
-        return { action: "noop" };
-      }
-      if (isDebuggingActive) {
-        sceneStateManager.setPendingTopologyUpdate(true);
-        if (onPendingMessage) {
-          onPendingMessage();
-        }
-        return { action: "pending" };
-      }
-      await breakpointBridge.applySceneBreakpoints(
-        workspaceRoot,
-        currentActives.join("+"),
-        merged
-      );
-      sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
-      return { action: "applied", targetScenes: currentActives };
-    }
-    return { action: "noop" };
-  });
+  return queue.run(() => doHandleExternalChange(params));
 }
 
 // src/infra/vscode/commands/clipboardCommands.ts

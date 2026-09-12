@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import * as path from "node:path";
-import { upsertBreakpointToScene } from "./config.test.mjs";
-import { resolveHealedLineInMemory } from "./healing.test.mjs";
+import { upsertBreakpointToScene } from "../domain/config_operations.test.mjs";
+import { resolveHealedLineInMemory } from "../domain/healing.test.mjs";
 
 function escapeRegex(str) {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

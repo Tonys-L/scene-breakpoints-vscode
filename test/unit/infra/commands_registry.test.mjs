@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "../../..");
 
 /**
  * 模拟 VS Code ExtensionContext
@@ -49,7 +49,7 @@ class MockCommandRegistry {
 }
 
 /**
- * 核心命令注册中枢逻辑镜像（与 src/commands/index.ts 与 treeCommands.ts 严格对齐）
+ * 核心命令注册中枢逻辑镜像（与 src/infra/vscode/commands/index.ts 与 treeCommands.ts 严格对齐）
  */
 function registerAllCommandsMock(vscodeMock, context, deps) {
 	const coreCommands = [

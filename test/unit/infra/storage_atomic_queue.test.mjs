@@ -1,7 +1,7 @@
 import assert from "node:assert";
 
 /**
- * 模拟并发写盘互斥队列 (与 src/config/configStorage.ts:L133-168 100% 严格对齐)
+ * 模拟并发写盘互斥队列 (与 src/infra/storage/jsonFileSceneRepository.ts 100% 严格对齐)
  */
 class MockAtomicConfigStorage {
 	constructor() {
@@ -38,7 +38,7 @@ class MockAtomicConfigStorage {
 }
 
 /**
- * 模拟即刻点亮单个断点注入编辑器 (与 src/breakpointAdapter.ts:applySingleBreakpointToEditor 对齐)
+ * 模拟即刻点亮单个断点注入编辑器 (与 src/infra/vscode/vscodeBreakpointBridge.ts:applySingleBreakpointToEditor 对齐)
  */
 function applySingleBreakpointToEditorMock(workspaceRoot, bp, editorBreakpoints) {
 	let createdBp;
