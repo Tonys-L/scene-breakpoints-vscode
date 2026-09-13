@@ -732,7 +732,7 @@ description: Antigravity Skill Custom
     const ext = vscode.extensions.getExtension("tony-l.scene-breakpoints-vscode")!;
     const mockContext = {
       extensionUri: ext.extensionUri,
-      extension: { packageJSON: { version: "1.0.4" } },
+      extension: { packageJSON: { version: "1.0.5" } },
       workspaceState: {
         get: (k: string) => (k === "lastNotifiedSkillVersion" ? "1.0.3" : undefined),
         update: async () => {},

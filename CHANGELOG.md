@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.5] - 2026-09-13
+
+### Improvements & Optimization
+- **Ultra-Slim VSIX Package (98% Size Reduction)**:
+  - Reduced VSIX package size from 5.4MB down to **118KB** by referencing high-definition demo animations (GIFs) and screenshots via official GitHub Raw CDN URLs.
+  - Strictly cleaned up internal package contents via `.vscodeignore`, excluding development artifacts, IDE local cache (`.trae/`), and non-runtime scripts for lightning-fast downloads and instant installations.
+- **CI/CD & Release Automation**:
+  - Automatically extracts and formats bilingual release notes directly from `CHANGELOG.md` and `CHANGELOG_zh.md` upon tag push.
+  - Upgraded release workflow runners to Node.js 22.x for full native Type Stripping support.
+
+---
+
 ## [1.0.4] - 2026-09-13
 
 ### Added
