@@ -25,7 +25,7 @@ Every developer debugging in VS Code runs into these frustrations:
 4. **Impossible to share or sync across computers**: Native breakpoints vanish when you switch laptops, and sharing a debug setup with teammates means manually typing out file paths and line numbers.
 5. **AI understands your code, but can't set breakpoints for you directly**: When asking an AI assistant to analyze a bug or trace a flow, it can suggest key functions in chat, but you still have to manually find the files and click line numbers one by one.
 
-**Scene Breakpoints** is your **breakpoint organizer & execution tour guide**: group breakpoints by feature with descriptive notes, switch them in seconds, share them via Git, and let AI agents create and activate them seamlessly.
+**Scene Breakpoints** is your **breakpoint organizer & execution tour guide**: group breakpoints by feature with descriptive notes, switch them in seconds, and share them via Git. It also supports **one-click AI Agent scenario generation and activation**—simply tell your AI in natural language, and let it orchestrate breakpoints directly in your editor.
 
 ---
 
