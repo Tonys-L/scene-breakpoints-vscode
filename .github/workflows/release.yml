@@ -64,12 +64,17 @@ jobs:
           echo "Found VSIX: $VSIX_FILE"
           echo "file=$VSIX_FILE" >> $GITHUB_OUTPUT
 
+      - name: Extract Release Notes from CHANGELOG
+        run: node scripts/extract-changelog.mjs
+
       - name: Create GitHub Release and upload VSIX
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.vsix.outputs.file }}
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
