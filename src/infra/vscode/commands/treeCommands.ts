@@ -25,6 +25,7 @@ import { applySceneCommand } from "./sceneCommands";
 export function registerTreeCommands(
 	context: vscode.ExtensionContext,
 	treeDataProvider: SceneTreeDataProvider,
+	treeView?: vscode.TreeView<any>,
 ): void {
 	// 1. 刷新树视图
 	const refreshViewCmd = vscode.commands.registerCommand("sceneBreakpoints.refreshView", () => {
@@ -311,21 +312,59 @@ export function registerTreeCommands(
 		},
 	);
 
+	const resolveTargetNode = (node?: BreakpointNode): BreakpointNode | undefined => {
+		if (node instanceof BreakpointNode && typeof node.index === "number") return node;
+		const selected = treeView?.selection?.[0];
+		if (selected instanceof BreakpointNode && typeof selected.index === "number") return selected;
+		return undefined;
+	};
+
+	const executeMove = async (
+		rawNode: BreakpointNode | undefined,
+		direction: "up" | "down" | "top" | "bottom",
+	) => {
+		const node = resolveTargetNode(rawNode);
+		if (!node || typeof node.index !== "number" || !node.sceneName) return;
+		const workspaceRoot = getWorkspaceRoot(true);
+		if (!workspaceRoot) return;
+
+		const config = loadScenesConfig(workspaceRoot);
+		const moved = moveBreakpointInScene(config, node.sceneName, node.index, direction);
+		if (moved) {
+			syncCoordinator.markInternalSaving();
+			saveScenesConfig(workspaceRoot, config);
+			treeDataProvider.refresh();
+
+			if (treeView) {
+				const list = config.scenes[node.sceneName] || [];
+				let targetIndex = node.index;
+				if (direction === "top") targetIndex = 0;
+				else if (direction === "bottom") targetIndex = list.length - 1;
+				else if (direction === "up") targetIndex = Math.max(0, node.index - 1);
+				else if (direction === "down") targetIndex = Math.min(list.length - 1, node.index + 1);
+
+				setTimeout(async () => {
+					try {
+						const children = await treeDataProvider.getChildren(new SceneNode(node.sceneName, 0, false, false));
+						const updatedNode = children.find(
+							(c): c is BreakpointNode => c instanceof BreakpointNode && c.index === targetIndex,
+						);
+						if (updatedNode) {
+							await treeView.reveal(updatedNode, { select: true, focus: true });
+						}
+					} catch {
+						// 忽略 reveal 失败
+					}
+				}, 50);
+			}
+		}
+	};
+
 	// 13. 上移断点次序
 	const moveBpUpCmd = vscode.commands.registerCommand(
 		"sceneBreakpoints.moveBreakpointUp",
 		async (node?: BreakpointNode) => {
-			if (!node || typeof node.index !== "number" || !node.sceneName) return;
-			const workspaceRoot = getWorkspaceRoot(true);
-			if (!workspaceRoot) return;
-
-			const config = loadScenesConfig(workspaceRoot);
-			const moved = moveBreakpointInScene(config, node.sceneName, node.index, "up");
-			if (moved) {
-				syncCoordinator.markInternalSaving();
-				saveScenesConfig(workspaceRoot, config);
-				treeDataProvider.refresh();
-			}
+			await executeMove(node, "up");
 		},
 	);
 
@@ -333,17 +372,23 @@ export function registerTreeCommands(
 	const moveBpDownCmd = vscode.commands.registerCommand(
 		"sceneBreakpoints.moveBreakpointDown",
 		async (node?: BreakpointNode) => {
-			if (!node || typeof node.index !== "number" || !node.sceneName) return;
-			const workspaceRoot = getWorkspaceRoot(true);
-			if (!workspaceRoot) return;
+			await executeMove(node, "down");
+		},
+	);
 
-			const config = loadScenesConfig(workspaceRoot);
-			const moved = moveBreakpointInScene(config, node.sceneName, node.index, "down");
-			if (moved) {
-				syncCoordinator.markInternalSaving();
-				saveScenesConfig(workspaceRoot, config);
-				treeDataProvider.refresh();
-			}
+	// 15. 置顶断点
+	const moveBpToTopCmd = vscode.commands.registerCommand(
+		"sceneBreakpoints.moveBreakpointToTop",
+		async (node?: BreakpointNode) => {
+			await executeMove(node, "top");
+		},
+	);
+
+	// 16. 置底断点
+	const moveBpToBottomCmd = vscode.commands.registerCommand(
+		"sceneBreakpoints.moveBreakpointToBottom",
+		async (node?: BreakpointNode) => {
+			await executeMove(node, "bottom");
 		},
 	);
 
@@ -362,5 +407,7 @@ export function registerTreeCommands(
 		revealInConfigFileCmd,
 		moveBpUpCmd,
 		moveBpDownCmd,
+		moveBpToTopCmd,
+		moveBpToBottomCmd,
 	);
 }

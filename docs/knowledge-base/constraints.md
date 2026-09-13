@@ -152,6 +152,7 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 - 禁止魔法数字（滑动窗口大小 30、得分阈值等关键常量必须具备自解释性）。
 - **禁止在要求高饱和度/状态保真的 TreeView 节点中使用 `ThemeIcon`**：VS Code 的 `.monaco-list-row.selected.focused .codicon` 会强制将字体图标冲刷为继承前景色（死灰色），必须采用矢量 SVG（`vscode.Uri.file`）以确保选中高亮时色彩 100% 真实不被冲刷。
 - **禁止在断点配置中使用 `type: "conditional"`**：VS Code DAP 契约与本项目严格使用名词缩写 `"condition"` 执行分支匹配。若大模型受惯性输出 `"conditional"`，会导致条件表达式被底层静默丢失、退化为普通行断点。
+- **禁止在领域层或生命周期检测中硬编码散落版本号（版本 SSOT 铁律）**：扩展自身与内置 Skill 的版本号必须以 `package.json` 的 `version` 为单一事实来源（SSOT），严禁在多个不同模块中硬编码散落的版本常量，防止发版升级时遗漏同步导致新版本升级探测与本地定制改动巡检被 `workspaceState` 缓存静默短路拦截。
 
 ---
 
@@ -168,7 +169,10 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 
 ### 测试约束
 - 核心算法层（自愈引擎）、数据管理层（配置解析/Git冲突/Upsert/启动推导/反向同步）与状态机层（SSOT/脏状态）必须具备独立的自动化单元测试；
-- 每次算法与领域状态逻辑修改后，必须运行 `npm test`（`node test/run-all.mjs`）确保所有测试套件 100% 通过；
+- **禁止测试代码使用私有镜像副本（杜绝假绿铁律）**：所有单元测试必须真实直接导入生产源码模块，严禁在测试文件内手工复制/粘贴生产函数或数据结构副本。生产代码修改后测试必须能够即时感知并直接验证，彻底杜绝生产代码失效而测试代码因私有副本继续报绿的“假绿”欺骗陷阱；
+- **1:1 镜像对齐规范（Mirroring Pattern）**：单元测试严格与生产代码模块一一对应（如 `sceneCodeLensProvider.ts` 对应 `codelens_provider.test.mjs`），严禁在测试文件名中使用 `_and_` 拼凑测试多个不同职责的生产模块，消灭名实不符与拼盘测试坏味道；
+- **原生 Subpath Imports 导入规范**：测试代码统一采用 Node.js 原生子路径别名（`#src/*` 与 `#test/*`），严禁使用跨层多级 `../../../` 相对路径地狱；
+- 每次算法与领域状态逻辑修改后，必须运行 `npm test`（`node test/run-all.mjs`）确保全量 18 大测试套件 100% 通过；
 - 测试用例必须覆盖缩进倍率解耦、跨函数作用域隔离、软相似度上下文门禁防误判、以及异常语法容错；
 - **真实宿主端到端 (E2E) 测试约束**：核心用户交互（扩展激活、命令调用、DAP 真实断点注入与清空、侧边栏 TreeView、状态栏联动、CodeLens）必须具备由 `@vscode/test-electron` 驱动的真实隔离沙箱 E2E 测试，运行 `npm run test:e2e` 保证真实运行环境 0 运行时未定义错误；
 - **E2E 用例与文档双向同步铁律**：后续任何新增业务能力、修改现有功能、调整 UI 或重构交互命令时，必须同步在 `docs/knowledge-base/e2e-scenarios.md` 中更新测试场景规范，并同步在 `test-e2e/suite/` 编写对应自动化测试用例。未同步用例与文档的代码严禁合并发布。
@@ -214,5 +218,11 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 | 2026-09-13 | 高内聚聚合应用服务与命令体系：聚合 sceneService.ts（内置单写者串行队列）、正名并聚拢 infra/vscode/commands（4大高内聚模块）与 listeners（debugLifecycle/configFileWatcher 等），彻底消除历史过渡别名包袱与空壳文件 | Tony.L | KDD-COHESION-REFACTOR-004 |
 | 2026-09-13 | 单元测试架构对齐重构：建立 test/unit/{domain,application,infra} 与 test/integration 分层；新增 scene_service 测试套件（6大核心维度）；消除历史废弃路径注释并根治内部调度重入死锁隐患 | Tony.L | KDD-TEST-RESTRUCTURE-005 |
 | 2026-09-13 | 完整沉淀 DDD 三层分层目录树拓扑与测试镜像映射规范至架构约束 | Tony.L | #TASK-ARCH-PATH-SYNC-001 |
+| 2026-09-13 | 治理单元测试拼盘测试坏味道：消除 _and_ 与名实不符文件，实施 1:1 镜像对齐重构（7大专职模块）；强化领域操作空值/全空格防灾守卫；清零全工程纯类型导入隐患（15 大单测套件 240ms + 45 个沙箱 E2E 100% 绿灯） | Tony.L | #TASK-TEST-MIRROR-002 |
+| 2026-09-13 | 落地 Node.js 原生 Subpath Imports 规范（#src/* 与 #test/*）；补齐 payloadSerializer、templateContentProvider、listeners 3 大遗漏专职单测（全工程扩充至 18 大全维套件 260ms 100% 绿灯，实现生产模块 1:1 镜像覆盖闭环） | Tony.L | #TASK-IMPORT-ALIAS-003 |
+| 2026-09-13 | 修复实际调试多线程（WorkerThread）/多会话 DAP continued 误杀与后台 stackTrace 响应覆盖导致断点命中高亮闪退 Bug；建立 Session 独立闭包隔离（Session-Affinity Guard）与场景断点真实性存在守卫（Target Breakpoint Guard）；18 大单元测试套件全绿 + 重新打成 VSIX 包 | Tony.L | #TASK-DEBUG-PAUSE-GUARD-004 |
+| 2026-09-13 | 正式将“版本号 SSOT 绑定与发版探测（杜绝散落硬编码导致 workspaceState 缓存拦截）”与“单测禁止私有镜像副本（杜绝假绿铁律）”沉淀写入项目硬约束库；落地 CustomModified 本地改动提示与一键 View Diff 虚拟对比；重新打包发布 v1.0.4 | Tony.L | #TASK-SKILL-SSOT-GUARD-005 |
+
+
 
 

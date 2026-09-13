@@ -3,175 +3,20 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-// 纯函数与核心算法（与 src/healingAdapter.ts 及 src/configManager.ts 保持 100% 契约一致）
-export function cleanLine(text) {
-	if (typeof text !== "string") return "";
-	const normalized = text.trim().replace(/\s+/g, " ");
-	return normalized.length > 140 ? normalized.substring(0, 140) : normalized;
-}
-
-export function countIndent(text) {
-	if (typeof text !== "string") return 0;
-	const match = text.replace(/\t/g, "  ").match(/^(\s*)/);
-	return match ? match[1].length : 0;
-}
-
-const SCOPE_MAX_LOOKUP_LINES = 60;
-const SCOPE_PATTERNS = [
-	/^\s*(?:async\s+)?def\s+([a-zA-Z0-9_$]+)/,
-	/^\s*(?:export\s+)?(?:async\s+)?function(?:\s+([a-zA-Z0-9_$]+)|\s*\()/i,
-	/^\s*func\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/,
-	/^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_$]+)/,
-	/^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
-	/^\s*(?:export\s+)?(?:class|struct|interface|type)\s+([a-zA-Z0-9_$]+)/,
-];
-
-export function extractScopeAnchor(lines, lineZeroBased) {
-	const maxLookup = Math.max(0, lineZeroBased - SCOPE_MAX_LOOKUP_LINES);
-	for (let i = lineZeroBased; i >= maxLookup; i--) {
-		const rawLine = lines[i];
-		if (!rawLine || !rawLine.trim()) continue;
-
-		for (const pattern of SCOPE_PATTERNS) {
-			const match = rawLine.match(pattern);
-			if (match) {
-				const identifier = match[1] || match[2] || match[3];
-				if (identifier && identifier.trim()) {
-					return identifier.trim();
-				}
-			}
-		}
-	}
-	return undefined;
-}
-
-export function extractContextSnippet(doc, lineZeroBased) {
-	const currentLineText = doc.lineAt(lineZeroBased).text;
-	const current = cleanLine(currentLineText);
-	const indent = countIndent(currentLineText);
-
-	let prev;
-	let next;
-
-	if (lineZeroBased > 0) {
-		const prevText = cleanLine(doc.lineAt(lineZeroBased - 1).text);
-		if (prevText.trim().length > 0) prev = prevText;
-	}
-
-	if (lineZeroBased < doc.lineCount - 1) {
-		const nextText = cleanLine(doc.lineAt(lineZeroBased + 1).text);
-		if (nextText.trim().length > 0) next = nextText;
-	}
-
-	const sampleLines = [];
-	const startIdx = Math.max(0, lineZeroBased - 60);
-	for (let i = startIdx; i <= lineZeroBased; i++) {
-		sampleLines.push(doc.lineAt(i).text);
-	}
-	const scopeAnchor = extractScopeAnchor(sampleLines, sampleLines.length - 1);
-
-	return { prev, current, next, scopeAnchor, indent };
-}
-
-export function calculateSimilarity(strA, strB) {
-	if (strA === strB) return 1.0;
-	const trimA = strA.trim();
-	const trimB = strB.trim();
-	if (!trimA || !trimB) return 0.0;
-	if (trimA === trimB) return 0.95;
-
-	const wordsA = trimA.match(/[a-zA-Z0-9_$]+/g) || [];
-	const wordsB = trimB.match(/[a-zA-Z0-9_$]+/g) || [];
-	if (wordsA.length > 0 && wordsB.length > 0) {
-		const setA = new Set(wordsA);
-		let matchedWords = 0;
-		for (const w of wordsB) {
-			if (setA.has(w)) matchedWords++;
-		}
-		const wordSim = matchedWords / Math.max(wordsA.length, wordsB.length);
-
-		const charSetA = new Set(trimA.split(""));
-		let commonChars = 0;
-		for (const ch of trimB) {
-			if (charSetA.has(ch)) commonChars++;
-		}
-		const charSim = commonChars / Math.max(trimA.length, trimB.length);
-		return wordSim * 0.7 + charSim * 0.3;
-	}
-
-	return 0.0;
-}
-
-export function stripJsonComments(jsonStr) {
-	if (typeof jsonStr !== "string") return "{}";
-	const stripped = jsonStr
-		.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, stringLiteral) => {
-			return stringLiteral ? stringLiteral : "";
-		})
-		.replace(/,\s*([\]}])/g, "$1")
-		.trim();
-	return stripped.length > 0 ? stripped : "{}";
-}
-
-export function upsertBreakpointToScene(config, sceneName, newEntry) {
-	if (!config.scenes) {
-		config.scenes = {};
-	}
-	const list = config.scenes[sceneName] || [];
-
-	if (newEntry.type === "function") {
-		const existIdx = list.findIndex(
-			(b) => b.type === "function" && b.functionName === newEntry.functionName,
-		);
-		if (existIdx >= 0) {
-			list[existIdx] = newEntry;
-		} else {
-			list.push(newEntry);
-		}
-	} else {
-		const existIdx = list.findIndex(
-			(b) => b.type !== "function" && b.file === newEntry.file && b.line === newEntry.line,
-		);
-		if (existIdx >= 0) {
-			list[existIdx] = newEntry;
-		} else {
-			list.push(newEntry);
-		}
-	}
-
-	config.scenes[sceneName] = list;
-}
-
-export function saveScenesConfig(workspaceRoot, config) {
-	const configPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
-	const vscodeDir = path.dirname(configPath);
-	if (!fs.existsSync(vscodeDir)) {
-		fs.mkdirSync(vscodeDir, { recursive: true });
-	}
-	fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-}
-
-export function loadScenesConfig(workspaceRoot) {
-	const configPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
-	if (fs.existsSync(configPath)) {
-		const raw = fs.readFileSync(configPath, "utf-8");
-		const sanitized = stripJsonComments(raw);
-		const parsed = JSON.parse(sanitized);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			const candidateScenes = (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes))
-				? parsed.scenes
-				: parsed;
-			const cleanScenes = {};
-			for (const [k, v] of Object.entries(candidateScenes)) {
-				if (k !== "$schema" && Array.isArray(v)) {
-					cleanScenes[k] = v.filter((it) => it && typeof it === "object");
-				}
-			}
-			return { scenes: cleanScenes };
-		}
-	}
-	return { scenes: {} };
-}
+import {
+	cleanLine,
+	countIndent,
+	extractScopeAnchor,
+	extractContextSnippet,
+	calculateSimilarity,
+	resolveHealedLineFromLines as resolveHealedLineInMemory,
+} from "../../src/domain/healingEngine.ts";
+import { upsertBreakpointToScene } from "../../src/domain/sceneOperations.ts";
+import {
+	stripJsonComments,
+	loadScenesConfig,
+	saveScenesConfig,
+} from "../../src/infra/storage/jsonFileSceneRepository.ts";
 
 export function runRoundtripAndEdgeTests() {
 	console.log("🚀 Running Roundtrip & Edge Cases Test Suite...\n");

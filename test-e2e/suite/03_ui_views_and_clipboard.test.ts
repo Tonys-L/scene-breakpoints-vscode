@@ -200,12 +200,12 @@ suite("Suite 03: 状态栏、CodeLens 与剪贴板导入导出", () => {
     }
   });
 
-  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 23 大命令注册与总线就绪校验", async () => {
+  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 25 大命令注册与总线就绪校验", async () => {
     // 1. 读取 package.json 中声明的 contributes.commands
     const pkgPath = path.resolve(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
     const contributesCommands: Array<{ command: string; title: string }> = pkg.contributes?.commands || [];
-    assert.strictEqual(contributesCommands.length, 23, "package.json 应完整声明 23 个命令");
+    assert.strictEqual(contributesCommands.length, 25, "package.json 应完整声明 25 个命令");
 
     // 2. 从 VS Code 内部命令总线拉取所有已注册的内部与扩展命令
     const allRegisteredCommands = await vscode.commands.getCommands(true);
@@ -229,7 +229,7 @@ suite("Suite 03: 状态栏、CodeLens 与剪贴板导入导出", () => {
     }
   });
 
-  test("TC-KEY-01: 快捷键 (Keybindings) 映射契约与 editorTextFocus 焦点触发验证", async () => {
+  test("TC-KEY-01: 快捷键 (Keybindings) 映射契约与 editorTextFocus/TreeView 焦点触发验证", async () => {
     // 1. 读取 package.json 中声明的 keybindings
     const pkgPath = path.resolve(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
@@ -247,6 +247,16 @@ suite("Suite 03: 状态栏、CodeLens 与剪贴板导入导出", () => {
     assert.ok(showMenuKeybinding, "快捷键列表必须包含 showMenu 绑定");
     assert.strictEqual(showMenuKeybinding.key.toLowerCase(), "ctrl+alt+s", "Windows/Linux 快捷键应为 ctrl+alt+s");
     assert.strictEqual(showMenuKeybinding.mac?.toLowerCase(), "cmd+alt+s", "macOS 快捷键应为 cmd+alt+s");
+
+    const moveUpKeybinding = keybindings.find((k) => k.command === "sceneBreakpoints.moveBreakpointUp");
+    assert.ok(moveUpKeybinding, "快捷键列表必须包含 moveBreakpointUp 绑定");
+    assert.strictEqual(moveUpKeybinding.key.toLowerCase(), "alt+up", "移动快捷键应为 alt+up");
+    assert.strictEqual(moveUpKeybinding.when, "focusedView == 'sceneBreakpointsView'");
+
+    const moveDownKeybinding = keybindings.find((k) => k.command === "sceneBreakpoints.moveBreakpointDown");
+    assert.ok(moveDownKeybinding, "快捷键列表必须包含 moveBreakpointDown 绑定");
+    assert.strictEqual(moveDownKeybinding.key.toLowerCase(), "alt+down", "移动快捷键应为 alt+down");
+    assert.strictEqual(moveDownKeybinding.when, "focusedView == 'sceneBreakpointsView'");
 
     // 3. 模拟激活场景与文本编辑器（获取 editorTextFocus 上下文）
     await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["login-flow"]);

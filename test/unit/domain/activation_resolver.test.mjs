@@ -1,100 +1,10 @@
 import assert from "node:assert";
-
-/**
- * 容错清洗并装箱目标激活场景配置
- */
-export function extractTargetActiveScenes(rawActive) {
-	if (Array.isArray(rawActive)) {
-		const cleaned = rawActive
-			.filter((item) => typeof item === "string")
-			.map((item) => item.trim())
-			.filter((item) => item.length > 0);
-		return Array.from(new Set(cleaned));
-	}
-	if (typeof rawActive === "string") {
-		const trimmed = rawActive.trim();
-		return trimmed.length > 0 ? [trimmed] : [];
-	}
-	return [];
-}
-
-/**
- * 幽灵场景防御审计 (Ghost Scene Guard / INV-007)
- */
-export function filterGhostScenes(candidates, scenesDict) {
-	if (!Array.isArray(candidates) || candidates.length === 0) {
-		return [];
-	}
-	if (!scenesDict || typeof scenesDict !== "object" || Array.isArray(scenesDict)) {
-		return [];
-	}
-	const declaredKeys = Object.keys(scenesDict);
-	const result = [];
-	for (const candidate of candidates) {
-		const matched = declaredKeys.find((k) => k.toLowerCase() === candidate.toLowerCase());
-		if (matched && !result.includes(matched)) {
-			result.push(matched);
-		}
-	}
-	return result;
-}
-
-/**
- * 计算断点核心拓扑指纹 Hash
- */
-export function computeBreakpointsTopologyHash(breakpoints) {
-	if (!Array.isArray(breakpoints) || breakpoints.length === 0) {
-		return "";
-	}
-	const tokens = breakpoints.map((bp) => {
-		const isEnabled = bp.enabled ?? true;
-		if (bp.type === "function") {
-			return `fn:${bp.functionName || ""}:${bp.condition || ""}:${bp.hitCondition || ""}:${isEnabled}`;
-		}
-		const normFile = (bp.file || "").replace(/\\/g, "/").toLowerCase();
-		return `src:${normFile}:${bp.line}:${bp.type}:${bp.condition || ""}:${bp.hitCondition || ""}:${bp.logMessage || ""}:${isEnabled}`;
-	});
-	return tokens.sort().join("|");
-}
-
-/**
- * 比对外部写入的 activeScenes 与当前激活场景，计算调度动作 (纯领域逻辑)
- */
-export function resolveActiveScenesDiff(params) {
-	const { allowAiActivation, currentActiveScenes, rawActiveScenes, scenesDict } = params;
-
-	// 1. 权限守卫：未开启授权时坚决不调度
-	if (!allowAiActivation) {
-		return { shouldApply: false, action: "noop", targetScenes: [] };
-	}
-
-	// 2. 清洗装箱并过滤幽灵场景
-	const extracted = extractTargetActiveScenes(rawActiveScenes);
-	const targetScenes = filterGhostScenes(extracted, scenesDict);
-
-	// 3. 幂等拦截检查：比对当前激活集合与目标集合是否完全一致
-	const currentSorted = [...(currentActiveScenes || [])].sort();
-	const targetSorted = [...targetScenes].sort();
-
-	const isIdentical =
-		currentSorted.length === targetSorted.length &&
-		currentSorted.every((s, i) => s === targetSorted[i]);
-
-	if (isIdentical) {
-		return { shouldApply: false, action: "noop", targetScenes };
-	}
-
-	// 4. 判定动作类型
-	if (targetScenes.length > 0) {
-		return { shouldApply: true, action: "apply", targetScenes };
-	}
-
-	if (currentActiveScenes && currentActiveScenes.length > 0) {
-		return { shouldApply: true, action: "clear", targetScenes: [] };
-	}
-
-	return { shouldApply: false, action: "noop", targetScenes: [] };
-}
+import {
+	computeBreakpointsTopologyHash,
+	extractTargetActiveScenes,
+	filterGhostScenes,
+	resolveActiveScenesDiff,
+} from "../../../src/domain/activationResolver.ts";
 
 /**
  * 声明式场景激活全维测试套件

@@ -38,8 +38,11 @@ export function resolveLaunchBoundScenes(
 		if (matchedKey) {
 			const target = config.bindings[matchedKey];
 			if (typeof target === "string" && target.trim()) {
-				const realName = matchSceneName(target);
-				return realName ? [realName] : [];
+				const rawScenes = target.split(",").map((s) => s.trim()).filter(Boolean);
+				const matchedScenes = rawScenes
+					.map(matchSceneName)
+					.filter((s): s is string => typeof s === "string");
+				return matchedScenes;
 			}
 			if (Array.isArray(target)) {
 				const matchedScenes = target

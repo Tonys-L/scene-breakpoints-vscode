@@ -1,355 +1,39 @@
 import assert from "node:assert";
+import {
+	upsertBreakpointToScene as upsertBreakpointToSceneDomain,
+	mergeScenesBreakpoints,
+	setAllBreakpointsEnabledInScene,
+	duplicateSceneInConfig,
+	syncEditorBreakpointChangesToConfig,
+	removeBreakpointFromConfig,
+	toggleBreakpointEnabledInConfig,
+} from "../../../src/domain/sceneOperations.ts";
+import { resolveLaunchBoundScenes } from "../../../src/domain/launchResolver.ts";
+import {
+	stripJsonComments,
+	hasGitConflictMarkers,
+	sanitizeScenesConfig,
+} from "../../../src/infra/storage/jsonFileSceneRepository.ts";
+import {
+	serializeScenePayload,
+	parseScenePayload,
+	stripMarkdownCodeBlocks,
+} from "../../../src/application/payloadSerializer.ts";
+import { SaveLoopGuard } from "../../../src/infra/storage/saveLoopGuard.ts";
 
-export function stripJsonComments(jsonStr) {
-	if (typeof jsonStr !== "string") return "{}";
-	const stripped = jsonStr
-		.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, stringLiteral) => {
-			return stringLiteral ? stringLiteral : "";
-		})
-		.replace(/,\s*([\]}])/g, "$1")
-		.trim();
-	return stripped.length > 0 ? stripped : "{}";
-}
-
-export function hasGitConflictMarkers(text) {
-	if (typeof text !== "string") return false;
-	return /^[<]{7}\s|^[=]{7}$|^[>]{7}\s/m.test(text);
-}
-
-export function sanitizeScenesConfig(parsed) {
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return { scenes: {} };
-	}
-	const candidateScenes = (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes))
-		? parsed.scenes
-		: parsed;
-
-	const cleanScenes = {};
-	for (const [k, v] of Object.entries(candidateScenes)) {
-		if (k !== "$schema" && k !== "bindings" && Array.isArray(v)) {
-			// 清洗过滤 null、undefined 和非对象脏项
-			cleanScenes[k] = v.filter((it) => it && typeof it === "object");
-		}
-	}
-
-	let cleanBindings;
-	const rawBindings = parsed.bindings || candidateScenes.bindings;
-	if (rawBindings && typeof rawBindings === "object" && !Array.isArray(rawBindings)) {
-		cleanBindings = {};
-		for (const [bk, bv] of Object.entries(rawBindings)) {
-			if (typeof bv === "string" && bv.trim()) {
-				cleanBindings[bk] = bv.trim();
-			} else if (Array.isArray(bv)) {
-				cleanBindings[bk] = bv.map((it) => String(it).trim()).filter(Boolean);
-			}
-		}
-	}
-
-	if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-		return { bindings: cleanBindings, scenes: cleanScenes };
-	}
-	return { scenes: cleanScenes };
-}
-
-let lastSavedContent = "";
+const _testGuard = new SaveLoopGuard();
 export function setLastSavedContent(content) {
-	lastSavedContent = content;
+	_testGuard.setLastSavedContent(content);
 }
 export function isContentMatchingLastSaved(content) {
-	if (!lastSavedContent || !content) return false;
-	try {
-		return JSON.stringify(JSON.parse(content)) === JSON.stringify(JSON.parse(lastSavedContent));
-	} catch {
-		return content.trim() === lastSavedContent.trim();
-	}
+	return _testGuard.isContentMatchingLastSaved(content);
 }
 
-export function resolveLaunchBoundScenes(config, launchName, envScene) {
-	const sceneNames = Object.keys(config.scenes || {});
-	const matchSceneName = (candidate) => {
-		const trimmed = (candidate || "").trim();
-		if (!trimmed) return undefined;
-		const lower = trimmed.toLowerCase();
-		return sceneNames.find((name) => name.toLowerCase() === lower);
-	};
-
-	if (envScene && typeof envScene === "string" && envScene.trim()) {
-		const rawScenes = envScene.split(",").map((s) => s.trim()).filter(Boolean);
-		const matchedScenes = rawScenes
-			.map(matchSceneName)
-			.filter((s) => typeof s === "string");
-		return matchedScenes;
-	}
-
-	const normalizedLaunchName = (launchName || "").trim();
-	if (!normalizedLaunchName) return [];
-
-	if (config.bindings && typeof config.bindings === "object") {
-		const bindingKeys = Object.keys(config.bindings);
-		const matchedKey = bindingKeys.find((k) => k.toLowerCase() === normalizedLaunchName.toLowerCase());
-		if (matchedKey) {
-			const matchedBinding = config.bindings[matchedKey];
-			let rawList = [];
-			if (typeof matchedBinding === "string" && matchedBinding.trim()) {
-				rawList = matchedBinding.split(",").map((s) => s.trim()).filter(Boolean);
-			} else if (Array.isArray(matchedBinding)) {
-				rawList = matchedBinding.map((s) => String(s).trim()).filter(Boolean);
-			}
-			const matchedScenes = rawList
-				.map(matchSceneName)
-				.filter((s) => typeof s === "string");
-			return matchedScenes;
-		}
-	}
-
-	const exactMatch = matchSceneName(normalizedLaunchName);
-	if (exactMatch) {
-		return [exactMatch];
-	}
-
-	return [];
-}
-
-export function setAllBreakpointsEnabledInScene(config, sceneName, targetEnabled) {
-	const list = config.scenes[sceneName];
-	if (!list || list.length === 0) return false;
-	let changed = false;
-	for (const item of list) {
-		if ((item.enabled ?? true) !== targetEnabled) {
-			item.enabled = targetEnabled;
-			changed = true;
-		}
-	}
-	return changed;
-}
-
-export function duplicateSceneInConfig(config, sourceSceneName, targetSceneName) {
-	const srcList = config.scenes[sourceSceneName];
-	if (!srcList || config.scenes[targetSceneName]) {
-		return false;
-	}
-	config.scenes[targetSceneName] = JSON.parse(JSON.stringify(srcList));
-	return true;
-}
-
-export function syncEditorBreakpointChangesToConfig(
-	config,
-	activeScenes,
-	changedBreakpoints,
-	workspaceRoot,
-) {
-	if (!config.scenes || !activeScenes || activeScenes.length === 0 || !changedBreakpoints || changedBreakpoints.length === 0) {
-		return false;
-	}
-
-	let hasUpdated = false;
-
-	for (const changed of changedBreakpoints) {
-		if (changed.functionName) {
-			for (const scene of activeScenes) {
-				const list = config.scenes[scene] || [];
-				for (const bp of list) {
-					if (bp.type === "function" && bp.functionName === changed.functionName) {
-						const currentEnabled = bp.enabled ?? true;
-						if (currentEnabled !== changed.enabled) {
-							bp.enabled = changed.enabled;
-							hasUpdated = true;
-						}
-					}
-				}
-			}
-		} else if (changed.file && typeof changed.line === "number") {
-			const changedFileNorm = changed.file.replace(/\\/g, "/").toLowerCase();
-			const changedLine = changed.line;
-
-			for (const scene of activeScenes) {
-				const list = config.scenes[scene] || [];
-				for (const bp of list) {
-					if (bp.type !== "function" && bp.file) {
-						const bpFileNorm = bp.file.replace(/\\/g, "/").toLowerCase();
-						if (bpFileNorm === changedFileNorm && bp.line === changedLine) {
-							const currentEnabled = bp.enabled ?? true;
-							if (currentEnabled !== changed.enabled) {
-								bp.enabled = changed.enabled;
-								hasUpdated = true;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return hasUpdated;
-}
-
+/** 包装层：使 list 维度的旧单测无缝接入生产真实 upsertBreakpointToScene(config, sceneName, bp) 契约 */
 export function upsertBreakpointToScene(existingBps, newBp) {
-	const result = [];
-	let replaced = false;
-
-	for (const item of existingBps) {
-		if (item.type === "function" && newBp.type === "function") {
-			if (item.functionName === newBp.functionName) {
-				result.push(newBp);
-				replaced = true;
-				continue;
-			}
-		} else if (item.type !== "function" && newBp.type !== "function") {
-			if (item.file === newBp.file && item.line === newBp.line) {
-				result.push(newBp);
-				replaced = true;
-				continue;
-			}
-		}
-		result.push(item);
-	}
-
-	if (!replaced) {
-		result.push(newBp);
-	}
-	return result;
-}
-
-export function mergeScenesBreakpoints(config, sceneNames) {
-	let merged = [];
-	for (const name of sceneNames) {
-		const list = config.scenes[name] || [];
-		for (const bp of list) {
-			merged = upsertBreakpointToScene(merged, bp);
-		}
-	}
-	return merged;
-}
-
-export function serializeScenePayload(sceneName, breakpoints) {
-
-	const payload = {
-		$schema: "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
-		version: "1.0",
-		sceneName: String(sceneName).trim(),
-		exportedAt: new Date().toISOString(),
-		breakpoints: (breakpoints || []).map((bp) => {
-			if (bp.type !== "function") {
-				return {
-					...bp,
-					file: bp.file ? bp.file.replace(/\\/g, "/") : "",
-				};
-			}
-			return bp;
-		}),
-	};
-	return JSON.stringify(payload, null, 2);
-}
-
-export function stripMarkdownCodeBlocks(text) {
-	const trimmed = text.trim();
-	const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
-	if (blockMatch) {
-		return blockMatch[1].trim();
-	}
-	return trimmed;
-}
-
-export function parseScenePayload(rawText, defaultSceneName) {
-	if (!rawText || typeof rawText !== "string" || !rawText.trim()) {
-		return { success: false, error: "Empty content" };
-	}
-	if (rawText.length > 1024 * 1024) {
-		return { success: false, error: "Content exceeds maximum size limit (1MB)" };
-	}
-
-	let parsed;
-	try {
-		const unmarshalled = stripMarkdownCodeBlocks(rawText);
-		const sanitized = stripJsonComments(unmarshalled);
-		parsed = JSON.parse(sanitized);
-	} catch (e) {
-		return { success: false, error: "Invalid JSON format" };
-	}
-
-	if (!parsed || typeof parsed !== "object") {
-		return { success: false, error: "Payload must be a JSON object or array" };
-	}
-
-	let targetSceneName = (defaultSceneName || "imported-scene").trim();
-	let candidateBreakpoints = [];
-
-	if (Array.isArray(parsed)) {
-		candidateBreakpoints = parsed;
-	} else if (parsed.sceneName && Array.isArray(parsed.breakpoints)) {
-		targetSceneName = String(parsed.sceneName).trim() || targetSceneName;
-		candidateBreakpoints = parsed.breakpoints;
-	} else if (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes)) {
-		const keys = Object.keys(parsed.scenes);
-		if (keys.length > 0) {
-			targetSceneName = keys[0];
-			candidateBreakpoints = Array.isArray(parsed.scenes[targetSceneName]) ? parsed.scenes[targetSceneName] : [];
-		}
-	} else {
-		const keys = Object.keys(parsed).filter((k) => k !== "$schema" && k !== "version" && k !== "exportedAt");
-		if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
-			targetSceneName = keys[0];
-			candidateBreakpoints = parsed[keys[0]];
-		}
-	}
-
-	if (!Array.isArray(candidateBreakpoints)) {
-		return { success: false, error: "No valid breakpoints array found in payload" };
-	}
-
-	const validBreakpoints = [];
-	for (const item of candidateBreakpoints) {
-		if (!item || typeof item !== "object") continue;
-
-		if (item.type === "function") {
-			if (typeof item.functionName === "string" && item.functionName.trim()) {
-				validBreakpoints.push({
-					type: "function",
-					functionName: item.functionName.trim(),
-					enabled: item.enabled !== false,
-					desc: typeof item.desc === "string" ? item.desc : undefined,
-					condition: typeof item.condition === "string" ? item.condition : undefined,
-					hitCondition: typeof item.hitCondition === "string" ? item.hitCondition : undefined,
-				});
-			}
-		} else if (["line", "condition", "hitCount", "logpoint"].includes(item.type)) {
-			if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
-				const normalizedFile = item.file.trim().replace(/\\/g, "/");
-				const validBp = {
-					type: item.type,
-					file: normalizedFile,
-					line: Math.floor(item.line),
-					enabled: item.enabled !== false,
-					desc: typeof item.desc === "string" ? item.desc : undefined,
-					condition: typeof item.condition === "string" ? item.condition : undefined,
-					hitCondition: typeof item.hitCondition === "string" ? item.hitCondition : undefined,
-					logMessage: typeof item.logMessage === "string" ? item.logMessage : undefined,
-				};
-
-				if (item.contextSnippet && typeof item.contextSnippet === "object") {
-					validBp.contextSnippet = {
-						current: String(item.contextSnippet.current || ""),
-						prev: item.contextSnippet.prev ? String(item.contextSnippet.prev) : undefined,
-						next: item.contextSnippet.next ? String(item.contextSnippet.next) : undefined,
-						scopeAnchor: item.contextSnippet.scopeAnchor ? String(item.contextSnippet.scopeAnchor) : undefined,
-						indent: typeof item.contextSnippet.indent === "number" ? item.contextSnippet.indent : undefined,
-					};
-				}
-
-				validBreakpoints.push(validBp);
-			}
-		}
-	}
-
-	if (validBreakpoints.length === 0) {
-		return { success: false, error: "No valid breakpoints found in the content" };
-	}
-
-	return {
-		success: true,
-		sceneName: targetSceneName,
-		breakpoints: validBreakpoints,
-	};
+	const config = { scenes: { __test__: [...existingBps] } };
+	upsertBreakpointToSceneDomain(config, "__test__", newBp);
+	return config.scenes.__test__;
 }
 
 export function runConfigTests() {
@@ -591,11 +275,11 @@ export function runConfigTests() {
 			},
 		};
 
-		// 聚合 [auth, order]
+		// 聚合 [auth, order] (根据 INV-011 先到先得 First-Declared-Wins 去重)
 		const mergedAuthOrder = mergeScenesBreakpoints(mockConfig, ["auth", "order"]);
-		assert.strictEqual(mergedAuthOrder.length, 3, "相同文件+行号必须安全覆盖去重，总数应为 3");
-		const overwritten = mergedAuthOrder.find((b) => b.file === "src/auth.ts" && b.line === 10);
-		assert.strictEqual(overwritten.desc, "订单场景定制认证覆盖", "后激活的 order 场景断点必须覆盖先前的 auth 断点");
+		assert.strictEqual(mergedAuthOrder.length, 3, "相同文件+行号必须去重，总数应为 3");
+		const firstDeclared = mergedAuthOrder.find((b) => b.file === "src/auth.ts" && b.line === 10);
+		assert.strictEqual(firstDeclared.desc, "基础认证", "根据 INV-011 先到先得规则，先声明的 auth 场景断点优先保留");
 
 		// 聚合全部 3 个场景
 		const mergedAll = mergeScenesBreakpoints(mockConfig, ["auth", "order", "common"]);
@@ -751,9 +435,32 @@ export function runConfigTests() {
 		// 目标场景已存在时冲突拦截
 		const conflict = duplicateSceneInConfig(mockConfig, "auth", "auth-copy");
 		assert.strictEqual(conflict, false, "目标场景名已存在时严禁覆盖");
+
+		// 非法全空格目标场景名拦截
+		assert.strictEqual(duplicateSceneInConfig(mockConfig, "auth", "   "), false, "全空格目标名必须被安全拦截");
+		assert.strictEqual(duplicateSceneInConfig(mockConfig, "auth", ""), false, "空目标名必须被安全拦截");
+		assert.strictEqual(duplicateSceneInConfig({}, "auth", "auth-2"), false, "配置无 scenes 字典时必须安全返回 false");
 	}
 
-	console.log("  ✅ [Config] 配置解析与防灾全维边界套件（16 大核心边界，包含场景批量控制与克隆）全部通过！");
+	// 17. 领域操作全维空指针与边界防御性测试 (Defensive Edge Guards)
+	{
+		// 1. upsertBreakpointToScene 针对空对象、空场景名、全空格场景名的防御
+		const emptyConfig = { scenes: {} };
+		upsertBreakpointToSceneDomain(emptyConfig, "", { type: "line", file: "a.ts", line: 1 });
+		assert.strictEqual(Object.keys(emptyConfig.scenes).length, 0, "空场景名不应写入配置");
+
+		upsertBreakpointToSceneDomain(emptyConfig, "   ", { type: "line", file: "a.ts", line: 1 });
+		assert.strictEqual(Object.keys(emptyConfig.scenes).length, 0, "全空格场景名不应写入配置");
+
+		upsertBreakpointToSceneDomain(emptyConfig, "valid", null);
+		assert.strictEqual(Object.keys(emptyConfig.scenes).length, 0, "空断点实体不应写入配置");
+
+		// 2. removeBreakpointFromConfig 与 toggleBreakpointEnabledInConfig 针对残缺配置的防御 (0 抛崩)
+		assert.strictEqual(removeBreakpointFromConfig({}, "any", 0), false, "无 scenes 属性时安全返回 false");
+		assert.strictEqual(toggleBreakpointEnabledInConfig({}, "any", 0), false, "无 scenes 属性时安全返回 false");
+	}
+
+	console.log("  ✅ [Config] 配置解析与防灾全维边界套件（17 大核心边界，包含场景批量控制与克隆）全部通过！");
 }
 
 

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { syncBreakpointEnabledToEditor } from "../vscodeBreakpointBridge";
 import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { sceneStateManager } from "../../../domain/sceneStateManager";
-import { BreakpointNode, SceneNode, SceneTreeDataProvider, SceneTreeItem } from "../sceneTreeProvider";
+import { BreakpointNode, SceneNode, SceneTreeDataProvider, type SceneTreeItem } from "../sceneTreeProvider";
 import { saveLoopGuard } from "../../storage/saveLoopGuard";
 import type { SceneBreakpoint } from "../../../domain/types";
 

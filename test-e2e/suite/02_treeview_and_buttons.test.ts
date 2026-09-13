@@ -384,6 +384,30 @@ suite("Suite 02: 调试侧边栏 TreeView 视口与全按钮交互", () => {
     bpNodes = await api.treeDataProvider.getChildren(sortNode);
     assert.strictEqual(bpNodes[0].breakpoint.line, 10, "下移复位后第 1 项应为 line 10");
     assert.strictEqual(bpNodes[1].breakpoint.line, 20, "下移复位后第 2 项应为 line 20");
+
+    // 3. 置顶命令验证 (moveBreakpointToTop: 将末项直接置顶)
+    await vscode.commands.executeCommand("sceneBreakpoints.moveBreakpointToTop", bpNodes[1]);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    bpNodes = await api.treeDataProvider.getChildren(sortNode);
+    assert.strictEqual(bpNodes[0].breakpoint.line, 20, "置顶后第 1 项应直接跳升为 line 20");
+
+    // 4. 置底命令验证 (moveBreakpointToBottom: 将首项直接置底)
+    await vscode.commands.executeCommand("sceneBreakpoints.moveBreakpointToBottom", bpNodes[0]);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    // 5. 原生拖拽控制器 (TreeDragAndDropController) 接口测试
+    const dataTransfer = new vscode.DataTransfer();
+    api.treeDataProvider.handleDrag([bpNodes[1]], dataTransfer, new vscode.CancellationTokenSource().token);
+    assert.ok(dataTransfer.get("application/vnd.code.tree.sceneBreakpointsView"), "handleDrag 必须正确填充 MIME 数据");
+
+    // 模拟拖拽放到第 0 项位置 (源 index 1 -> 目标 index 0)
+    await api.treeDataProvider.handleDrop(bpNodes[0], dataTransfer, new vscode.CancellationTokenSource().token);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    bpNodes = await api.treeDataProvider.getChildren(sortNode);
+    assert.strictEqual(bpNodes[0].breakpoint.line, 20, "拖拽放置后第 1 项应为 line 20");
+    assert.strictEqual(bpNodes[1].breakpoint.line, 10, "拖拽放置后第 2 项应为 line 10");
   });
 
   test("TC-TREE-18: 调试运行时断点命中高亮、[PAUSED] 标签与 TreeView 视口联动", async () => {

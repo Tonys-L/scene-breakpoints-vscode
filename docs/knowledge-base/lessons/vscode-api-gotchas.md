@@ -142,3 +142,20 @@
 **解决方案**: 领域层统一使用原生纯 TS 数据结构（`lines: string[]`）或最小充分鸭子接口（`{ lineAt(i): { text }, lineCount }`）。基础设施层负责把宿主文档对象自然匹配传参，单元测试可直接传入简单的原生数组，实现领域层 100% 宿主解耦与单测极致轻量。
 **影响文件**: `src/domain/healingEngine.ts`, `test/unit/domain/healing.test.mjs`
 **日期**: 2026-09-13
+
+### 1.17 多线程 Worker DAP continued 误杀与后台 stackTrace 响应覆盖导致断点命中高亮闪退陷阱
+
+**问题**: 用户在实际调试命中断点后，TreeView 视图中的场景断点节点高亮与 `[PAUSED]` 标签瞬间闪烁一下又立刻恢复原样（或者有的入口断点正常、有的业务流断点闪退），无法稳定维持断点暂停指示状态。
+**原因**:
+1. **DAP 多线程 / 多会话 stackTrace 响应冲刷**：VS Code 在断点命中时，会向所有存活线程（包括后台 `RUNNING` 状态的 WorkerThread、loader 辅助会话）轮询堆栈。由于原全局 Tracker 拦截所有 `stackTrace` 响应并未校验会话暂停状态，Worker 线程紧随其后返回的堆栈（非断点代码）在几十毫秒内无脑覆写了 `_pausedLocation`，瞬间抹杀了主线程断点的高亮；
+2. **非场景断点位置盲目冲刷已有高亮**：原 `revealPausedLocation` 缺乏场景断点存在性校验，外部库代码、Worker 代码或非断点光标只要传入，就会直接覆写 `_pausedLocation`，将已经命中的场景断点高亮冲刷为普通状态；
+3. **DAP 多线程 Continued 致命误杀**：后台 Worker 线程的 `event: "continued"` 或多 Session 之间共享全局 `pausedThreadId` 导致跨会话误杀；
+4. **VS Code 焦点移动与树聚焦震荡**：`treeView.reveal` 导致 `onDidChangeActiveStackItem` 短暂派发 `item = undefined` 时误触发清空。
+**解决方案**:
+1. **Session 级独立闭包隔离（Session-Affinity Guard）**：每个 `createDebugAdapterTracker(session)` 独立持有内部私有 `sessionPausedThreadId`，仅当该会话明确处于 `stopped` 暂停状态时才转发 `stackTrace`，彻底阻断运行中（RUNNING）的后台 Worker 线程的堆栈响应；
+2. **场景断点真实性存在守卫（Target Breakpoint Guard）**：`revealPausedLocation` 在设置 `_pausedLocation` 前强校验 `(file, line)` 必须属于当前已激活场景中的断点。任何外界（非断点堆栈、Worker 代码、外部库代码）传入的非断点位置绝对不覆写 `_pausedLocation`，彻底免疫冲刷；
+3. **精准过滤 continued 事件与剔除 undefined 误杀**：仅当全线程恢复或命中线程恢复时才清空高亮，会话存活期间焦点震荡不执行清空。
+**影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/infra/vscode/sceneTreeProvider.ts`, `test/unit/infra/listeners_registry.test.mjs`
+**日期**: 2026-09-13
+
+

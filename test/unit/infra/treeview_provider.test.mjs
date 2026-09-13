@@ -1,45 +1,27 @@
 import assert from "node:assert/strict";
-
-// 纯领域操作函数（与 src/configManager.ts 保持 100% 一致）
-export function deleteSceneFromConfig(config, sceneName) {
-	if (!config.scenes || !config.scenes[sceneName]) return false;
-	delete config.scenes[sceneName];
-	return true;
-}
-
-export function renameSceneInConfig(config, oldName, newName) {
-	if (!config.scenes || !config.scenes[oldName] || !newName || !newName.trim()) return false;
-	const trimmedNew = newName.trim();
-	if (trimmedNew === oldName) return true;
-
-	const existingBps = config.scenes[oldName];
-	delete config.scenes[oldName];
-	config.scenes[trimmedNew] = existingBps;
-	return true;
-}
-
-export function removeBreakpointFromConfig(config, sceneName, index) {
-	if (!config.scenes || !config.scenes[sceneName]) return false;
-	const list = config.scenes[sceneName];
-	if (index < 0 || index >= list.length) return false;
-	list.splice(index, 1);
-	return true;
-}
-
-export function toggleBreakpointEnabledInConfig(config, sceneName, index) {
-	if (!config.scenes || !config.scenes[sceneName]) return false;
-	const list = config.scenes[sceneName];
-	if (index < 0 || index >= list.length) return false;
-	const bp = list[index];
-	bp.enabled = !(bp.enabled ?? true);
-	return true;
-}
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { __resetMockVscodeState } from "vscode";
+import {
+	deleteSceneFromConfig,
+	findBreakpointLineInJson,
+	moveBreakpointInScene,
+	reorderBreakpointInScene,
+	renameSceneInConfig,
+	removeBreakpointFromConfig,
+	toggleBreakpointEnabledInConfig,
+} from "../../../src/domain/sceneOperations.ts";
+import {
+	BreakpointNode,
+	SceneNode,
+} from "../../../src/infra/vscode/sceneTreeProvider.ts";
+import { sceneStateManager } from "../../../src/domain/sceneStateManager.ts";
 
 export function runTreeViewTests() {
-	console.log("  ▶ [TreeView] 运行调试面板树视图与节点领域模型测试套件...");
+	console.log("  ▶ [TreeView] 运行调试面板树视图与节点领域模型测试套件（直连生产源码）...");
 
 	// ============================================================================
-	// Case 1: 场景重命名与断点数据无损保持
+	// Case 1: 场景重命名与断点数据无损保持（直连 renameSceneInConfig 生产源码）
 	// ============================================================================
 	{
 		const config = {
@@ -66,7 +48,7 @@ export function runTreeViewTests() {
 	}
 
 	// ============================================================================
-	// Case 2: 场景删除与边界保护
+	// Case 2: 场景删除与边界保护（直连 deleteSceneFromConfig 生产源码）
 	// ============================================================================
 	{
 		const config = {
@@ -87,7 +69,7 @@ export function runTreeViewTests() {
 	}
 
 	// ============================================================================
-	// Case 3: 单个断点移除与越界安全
+	// Case 3: 单个断点移除与越界安全（直连 removeBreakpointFromConfig 生产源码）
 	// ============================================================================
 	{
 		const config = {
@@ -115,7 +97,7 @@ export function runTreeViewTests() {
 	}
 
 	// ============================================================================
-	// Case 4: 断点启用/禁用状态切换 (Toggle Enabled Flag)
+	// Case 4: 断点启用/禁用状态切换（直连 toggleBreakpointEnabledInConfig 生产源码）
 	// ============================================================================
 	{
 		const config = {
@@ -144,184 +126,117 @@ export function runTreeViewTests() {
 	}
 
 	// ============================================================================
-	// Case 5: 树节点视觉模型推导准确性 (Label / Description / Icon / Collapsible)
+	// Case 5: 树节点视觉模型推导准确性（直连 SceneNode 生产类）
 	// ============================================================================
 	{
 		// 场景 A: 激活且未修改场景
-		const activeCleanDesc = "2 breakpoint(s)  •  (Active)";
-		assert.ok(activeCleanDesc.includes("(Active)"));
+		const nodeClean = new SceneNode("auth-flow", 2, true, false);
+		assert.ok(nodeClean.description.includes("(Active)"), "激活场景 description 必须包含 (Active)");
+		assert.strictEqual(nodeClean.contextValue, "activeSceneItem");
 
 		// 场景 B: 激活且脏状态场景
-		const activeDirtyDesc = "2 breakpoint(s)  •  (Active - Unsaved*)";
-		assert.ok(activeDirtyDesc.includes("(Active - Unsaved*)"));
+		const nodeDirty = new SceneNode("auth-flow", 2, true, true);
+		assert.ok(nodeDirty.description.includes("(Active - Unsaved*)"), "脏状态场景 description 必须包含 (Active - Unsaved*)");
+		assert.strictEqual(nodeDirty.contextValue, "activeSceneItem");
 
-		// 场景 C: 断点显示文本与描述推导
-		const lineBp = { type: "line", file: "src/utils/math.ts", line: 55, desc: "Calc tax" };
-		const descLine = lineBp.desc;
-		assert.strictEqual(descLine, "Calc tax");
-
-		const condBp = { type: "condition", file: "auth.ts", line: 12, condition: "x > 0" };
-		const descCond = condBp.desc || `? ${condBp.condition}`;
-		assert.strictEqual(descCond, "? x > 0");
-
-		const funcBp = { type: "function", functionName: "dispatchAction" };
-		const labelFunc = `ƒ ${funcBp.functionName}()`;
-		assert.strictEqual(labelFunc, "ƒ dispatchAction()");
-
-		// 场景 D: 原生 1:1 矢量 SVG 视觉模型推导（彻底免疫焦点变灰，对齐原生图标与微型复选框排版）
-		function deriveSvgIcon(type, isFunc, enabled) {
-			let iconBase = "bp-line";
-			if (isFunc) {
-				iconBase = "bp-func";
-			} else {
-				switch (type) {
-					case "condition":
-						iconBase = "bp-cond";
-						break;
-					case "hitCount":
-						iconBase = "bp-hit";
-						break;
-					case "logpoint":
-						iconBase = "bp-log";
-						break;
-					case "line":
-					default:
-						iconBase = "bp-line";
-						break;
-				}
-			}
-			return `${iconBase}-${enabled ? "enabled" : "disabled"}.svg`;
-		}
-
-		assert.strictEqual(deriveSvgIcon("line", false, true), "bp-line-enabled.svg");
-		assert.strictEqual(deriveSvgIcon("line", false, false), "bp-line-disabled.svg");
-		assert.strictEqual(deriveSvgIcon("condition", false, true), "bp-cond-enabled.svg");
-		assert.strictEqual(deriveSvgIcon("logpoint", false, true), "bp-log-enabled.svg");
-		assert.strictEqual(deriveSvgIcon("hitCount", false, false), "bp-hit-disabled.svg");
-		assert.strictEqual(deriveSvgIcon("function", true, true), "bp-func-enabled.svg");
-		assert.strictEqual(deriveSvgIcon("function", true, false), "bp-func-disabled.svg");
+		// 场景 C: 未激活场景
+		const nodeInactive = new SceneNode("order-flow", 5, false, false);
+		assert.strictEqual(nodeInactive.contextValue, "sceneItem");
+		assert.strictEqual(nodeInactive.id, "scene:order-flow");
 
 		console.log("    ✔ 树节点标签与原生矢量 SVG 视觉模型推导测试通过");
 	}
 
 	// ============================================================================
-	// Case 6: BreakpointNode 构造函数与类继承模型安全性 (防止 super() 前访问 this 导致崩溃)
+	// Case 6: BreakpointNode 构造函数与类继承模型安全性（直连 BreakpointNode 生产类）
 	// ============================================================================
 	{
-		class MockTreeItem {
-			constructor(label, collapsibleState) {
-				this.label = label;
-				this.collapsibleState = collapsibleState;
-			}
-		}
+		__resetMockVscodeState();
+		sceneStateManager.setActiveScenes([], 0);
 
-		class SafeBreakpointNode extends MockTreeItem {
-			constructor(sceneName, index, bp, workspaceRoot, extensionPath, isPaused = false) {
-				const isFunc = bp.type === "function";
-				const label = isFunc ? `ƒ ${bp.functionName}()` : `${bp.file}:${bp.line}`;
-				super(label, 0);
-
-				const bpIdentifier = isFunc ? bp.functionName : `${bp.file}:${bp.line}`;
-				this.id = `bp:${sceneName}:${index}:${bpIdentifier}`;
-				const isEnabled = bp.enabled ?? true;
-				this.checkboxState = isEnabled ? 1 : 0;
-				if (isPaused) {
-					this.description = "▶ [PAUSED]";
-					this.iconFileName = "bp-paused.svg";
-				} else {
-					this.iconFileName = `${isFunc ? "bp-func" : "bp-line"}-${isEnabled ? "enabled" : "disabled"}.svg`;
-				}
-				this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
-			}
-		}
-
-		const node1 = new SafeBreakpointNode("s1", 0, { type: "line", file: "test.ts", line: 10, enabled: true }, "/ws", "/ext");
-		assert.strictEqual(node1.label, "test.ts:10");
-		assert.strictEqual(node1.id, "bp:s1:0:test.ts:10");
-		assert.strictEqual(node1.checkboxState, 1);
-		assert.strictEqual(node1.iconFileName, "bp-line-enabled.svg");
+		// 普通行断点
+		const lineBp = { type: "line", file: "src/user.ts", line: 10, enabled: true, desc: "User check" };
+		const node1 = new BreakpointNode("s1", 0, lineBp, "/ws", "/ext");
+		assert.strictEqual(node1.label, "user.ts:10");
+		assert.strictEqual(node1.id, "bp:s1:0:src/user.ts:10");
+		assert.strictEqual(node1.checkboxState, vscode.TreeItemCheckboxState.Checked);
+		assert.ok(node1.iconPath.fsPath.endsWith("bp-line-enabled.svg"));
 		assert.strictEqual(node1.contextValue, "breakpointItemEnabled");
+		assert.strictEqual(node1.description, "User check");
 
-		const node2 = new SafeBreakpointNode("s1", 1, { type: "function", functionName: "init", enabled: false }, "/ws", "/ext");
+		// 禁用的函数断点
+		const funcBp = { type: "function", functionName: "init", enabled: false };
+		const node2 = new BreakpointNode("s1", 1, funcBp, "/ws", "/ext");
 		assert.strictEqual(node2.label, "ƒ init()");
 		assert.strictEqual(node2.id, "bp:s1:1:init");
-		assert.strictEqual(node2.checkboxState, 0);
-		assert.strictEqual(node2.iconFileName, "bp-func-disabled.svg");
+		assert.strictEqual(node2.checkboxState, vscode.TreeItemCheckboxState.Unchecked);
+		assert.ok(node2.iconPath.fsPath.endsWith("bp-func-disabled.svg"));
 		assert.strictEqual(node2.contextValue, "breakpointItemDisabled");
 
-		// 验证运行时命中暂停态 (isPaused: true)
-		const nodePaused = new SafeBreakpointNode("s1", 2, { type: "line", file: "main.ts", line: 42, enabled: true }, "/ws", "/ext", true);
-		assert.strictEqual(nodePaused.description, "▶ [PAUSED]", "命中暂停断点 description 必须带有 [PAUSED] 标识");
-		assert.strictEqual(nodePaused.iconFileName, "bp-paused.svg", "命中暂停断点图标必须切换为专属高亮 bp-paused.svg");
+		// 运行时命中暂停态 (isPaused: true)
+		const pausedBp = { type: "line", file: "src/main.ts", line: 42, enabled: true };
+		const nodePaused = new BreakpointNode(
+			"s1",
+			2,
+			pausedBp,
+			"/ws",
+			"/ext",
+			{ file: "/ws/src/main.ts", line: 42 },
+		);
+		assert.strictEqual(nodePaused.isPausedAtBreakpoint(), true);
+		assert.ok(nodePaused.description.includes("[PAUSED]"), "命中暂停断点 description 必须带有 [PAUSED] 标识");
+		assert.ok(nodePaused.iconPath.fsPath.endsWith("bp-paused.svg"), "命中暂停断点图标必须切换为专属高亮 bp-paused.svg");
 
 		console.log("    ✔ BreakpointNode 构造与继承模型安全性验证通过 (包含 isPaused 运行时高亮)");
 	}
 
 	// ============================================================================
-	// Case 7: 未匹配脱靶断点 (Unmatched) 的前置标签与专属矢量 SVG 警告图标
+	// Case 7: 未匹配脱靶断点 (Unmatched) 的前置标签与专属矢量 SVG 警告图标（直连 BreakpointNode）
 	// ============================================================================
 	{
-		function formatUnmatchedDescription(desc, isUnmatched) {
-			let extra = desc;
-			if (isUnmatched) {
-				const tag = "[Unmatched]";
-				extra = extra ? `${tag}  •  ${extra}` : tag;
-			}
-			return extra;
-		}
+		__resetMockVscodeState();
+		sceneStateManager.setActiveScenes(["s1"], 1);
+		sceneStateManager.setUnmatchedBreakpoints(["src/lost.ts:50"]);
 
-		// 验证无 desc 时直接为 [Unmatched]
-		assert.strictEqual(formatUnmatchedDescription(undefined, true), "[Unmatched]");
-		// 验证有 desc 时前置 [Unmatched]  •  desc，即使侧边栏变窄，开头的未匹配标签也不会被截断
-		assert.strictEqual(
-			formatUnmatchedDescription("sdafasd", true),
-			"[Unmatched]  •  sdafasd",
-		);
-		// 验证未脱靶时不带 [Unmatched]
-		assert.strictEqual(formatUnmatchedDescription("normal bp", false), "normal bp");
+		// 激活场景下的脱靶启用态断点
+		const unmatchedBp = { type: "line", file: "src/lost.ts", line: 50, enabled: true, desc: "Lost logic" };
+		const nodeUnmatched = new BreakpointNode("s1", 0, unmatchedBp, "/ws", "/ext");
 
-		function deriveUnmatchedSvgIcon(isFunc, enabled, isUnmatched) {
-			if (isUnmatched && !isFunc) {
-				return enabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
-			}
-			return `${isFunc ? "bp-func" : "bp-line"}-${enabled ? "enabled" : "disabled"}.svg`;
-		}
+		assert.ok(
+			nodeUnmatched.description.startsWith("[Unmatched]"),
+			"脱靶断点 description 必须前置 [Unmatched] 标签",
+		);
+		assert.ok(
+			nodeUnmatched.iconPath.fsPath.endsWith("bp-unmatched-enabled.svg"),
+			"脱靶断点启用态必须呈现专属琥珀黄警告矢量图标 bp-unmatched-enabled.svg",
+		);
 
-		assert.strictEqual(
-			deriveUnmatchedSvgIcon(false, true, true),
-			"bp-unmatched-enabled.svg",
-			"脱靶断点启用态必须呈现专属琥珀黄警告矢量图标",
+		// 脱靶禁用态断点
+		const unmatchedDisabledBp = { type: "line", file: "src/lost.ts", line: 50, enabled: false };
+		const nodeUnmatchedDis = new BreakpointNode("s1", 1, unmatchedDisabledBp, "/ws", "/ext");
+		assert.ok(
+			nodeUnmatchedDis.iconPath.fsPath.endsWith("bp-unmatched-disabled.svg"),
+			"脱靶断点禁用态必须呈现专属灰色警告矢量图标 bp-unmatched-disabled.svg",
 		);
-		assert.strictEqual(
-			deriveUnmatchedSvgIcon(false, false, true),
-			"bp-unmatched-disabled.svg",
-			"脱靶断点禁用态必须呈现灰色警告矢量图标",
+
+		// 未脱靶正常断点
+		const normalBp = { type: "line", file: "src/normal.ts", line: 20, enabled: true };
+		const nodeNormal = new BreakpointNode("s1", 2, normalBp, "/ws", "/ext");
+		assert.ok(
+			nodeNormal.iconPath.fsPath.endsWith("bp-line-enabled.svg"),
+			"正常断点继续保持经典红点 bp-line-enabled.svg",
 		);
-		assert.strictEqual(
-			deriveUnmatchedSvgIcon(false, true, false),
-			"bp-line-enabled.svg",
-			"正常断点继续保持经典红点",
-		);
+
+		// 清理状态
+		sceneStateManager.setUnmatchedBreakpoints([]);
 
 		console.log("    ✔ 未匹配脱靶断点前置标签与专属矢量 SVG 警告图标推导测试通过");
 	}
 
 	// ============================================================================
-	// Case 8: 断点排序微调 (moveBreakpointInScene 上移/下移及边界保护)
+	// Case 8: 断点排序微调（直连 moveBreakpointInScene 生产源码）
 	// ============================================================================
 	{
-		function moveBreakpointInScene(config, sceneName, index, direction) {
-			const list = config.scenes?.[sceneName];
-			if (!list || !Array.isArray(list)) return false;
-			const targetIndex = direction === "up" ? index - 1 : index + 1;
-			if (index < 0 || index >= list.length || targetIndex < 0 || targetIndex >= list.length) {
-				return false;
-			}
-			const [item] = list.splice(index, 1);
-			list.splice(targetIndex, 0, item);
-			return true;
-		}
-
 		const config = {
 			scenes: {
 				"sort-test": [
@@ -341,53 +256,34 @@ export function runTreeViewTests() {
 		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 1, "up"), true);
 		assert.strictEqual(config.scenes["sort-test"][0].file, "a.ts");
 
-		// 3. 边界越界保护 (首项不能再上移，末项不能再下移)
+		// 3. 置顶 (top)
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 2, "top"), true);
+		assert.strictEqual(config.scenes["sort-test"][0].file, "c.ts");
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 0, "top"), false); // 已经是第 0 个
+
+		// 4. 置底 (bottom)
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 0, "bottom"), true);
+		assert.strictEqual(config.scenes["sort-test"][2].file, "c.ts");
+		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 2, "bottom"), false); // 已经是末尾
+
+		// 5. 拖拽重排 (reorderBreakpointInScene)
+		assert.strictEqual(reorderBreakpointInScene(config, "sort-test", 2, 0), true);
+		assert.strictEqual(config.scenes["sort-test"][0].file, "c.ts");
+		assert.strictEqual(reorderBreakpointInScene(config, "sort-test", 0, 0), false);
+		assert.strictEqual(reorderBreakpointInScene(config, "sort-test", -1, 1), false);
+
+		// 6. 边界越界保护 (首项不能再上移，末项不能再下移)
 		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 0, "up"), false);
 		assert.strictEqual(moveBreakpointInScene(config, "sort-test", 2, "down"), false);
 		assert.strictEqual(moveBreakpointInScene(config, "non-exist", 0, "up"), false);
 
-		console.log("    ✔ 断点排序微调与边界越界保护测试通过");
+		console.log("    ✔ 断点排序微调、置顶/置底、拖拽重排与边界越界保护测试通过");
 	}
 
 	// ============================================================================
-	// Case 9: 在 debug-scenes.json 中快速精准行号定位检索
+	// Case 9: 在 debug-scenes.json 中快速精准行号定位检索（直连 findBreakpointLineInJson 生产源码）
 	// ============================================================================
 	{
-		function findBreakpointLineInJson(jsonContent, sceneName, bp) {
-			const lines = jsonContent.split(/\r?\n/);
-			let inTargetScene = false;
-			let sceneLine = 1;
-			let bracketDepth = 0;
-
-			for (let i = 0; i < lines.length; i++) {
-				const lineText = lines[i];
-				if (!inTargetScene) {
-					if (lineText.includes(`"${sceneName}"`)) {
-						inTargetScene = true;
-						sceneLine = i + 1;
-						bracketDepth = (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
-					}
-					continue;
-				}
-
-				bracketDepth += (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
-				if (bracketDepth < 0 || (bracketDepth === 0 && lineText.includes("]"))) {
-					break;
-				}
-
-				if (bp.type === "function") {
-					if (bp.functionName && lineText.includes(`"${bp.functionName}"`)) {
-						return i + 1;
-					}
-				} else {
-					if (lineText.includes(`"${bp.file}"`) || (lineText.includes(`"line"`) && lineText.includes(String(bp.line)))) {
-						return i + 1;
-					}
-				}
-			}
-			return sceneLine;
-		}
-
 		const sampleJson = `{
   "activeScenes": ["flow-a"],
   "scenes": {
@@ -417,43 +313,35 @@ export function runTreeViewTests() {
 	}
 
 	// ============================================================================
-	// Case 10: 调试运行时暂停命中匹配与路径标准化比对
+	// Case 10: 调试运行时暂停命中匹配与路径标准化比对（直连 BreakpointNode.isPausedAtBreakpoint 生产源码）
 	// ============================================================================
 	{
-		function isSamePath(p1, p2) {
-			return p1.replace(/\\/g, "/").toLowerCase() === p2.replace(/\\/g, "/").toLowerCase();
-		}
-
-		function isPausedAtBreakpoint(bp, pausedLocation, workspaceRoot) {
-			if (!pausedLocation || bp.type === "function") return false;
-			if (bp.line !== pausedLocation.line) return false;
-			const full = bp.file.startsWith("/") || bp.file.includes(":") ? bp.file : `${workspaceRoot}/${bp.file}`;
-			return isSamePath(full, pausedLocation.file);
-		}
-
 		const bp = { type: "line", file: "src/utils.ts", line: 88 };
-		assert.strictEqual(
-			isPausedAtBreakpoint(bp, { file: "d:/project/src/utils.ts", line: 88 }, "d:/project"),
-			true,
-			"Windows 反斜杠与小写应正常匹配",
-		);
-		assert.strictEqual(
-			isPausedAtBreakpoint(bp, { file: "D:\\Project\\src\\utils.ts", line: 88 }, "d:\\project"),
-			true,
-			"不同大小写与路径斜杠混用应标准化匹配",
-		);
-		assert.strictEqual(
-			isPausedAtBreakpoint(bp, { file: "D:\\Project\\src\\utils.ts", line: 89 }, "d:\\project"),
-			false,
-			"行号不符应判定未暂停于此",
-		);
+
+		const nodeWindows = new BreakpointNode("s1", 0, bp, "d:/project", "/ext", {
+			file: "d:/project/src/utils.ts",
+			line: 88,
+		});
+		assert.strictEqual(nodeWindows.isPausedAtBreakpoint(), true, "Windows 规范路径应正常匹配");
+
+		const nodeMixedSlash = new BreakpointNode("s1", 0, bp, "d:\\project", "/ext", {
+			file: "D:\\Project\\src\\utils.ts",
+			line: 88,
+		});
+		assert.strictEqual(nodeMixedSlash.isPausedAtBreakpoint(), true, "不同大小写与路径斜杠混用应标准化匹配");
+
+		const nodeDiffLine = new BreakpointNode("s1", 0, bp, "d:\\project", "/ext", {
+			file: "D:\\Project\\src\\utils.ts",
+			line: 89,
+		});
+		assert.strictEqual(nodeDiffLine.isPausedAtBreakpoint(), false, "行号不符应判定未暂停于此");
 
 		console.log("    ✔ 调试运行时暂停命中匹配与路径标准化比对测试通过");
 	}
 
-	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（10 大核心场景）全部通过！");
+	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（直连生产源码）全部通过！");
 }
 
-if (process.argv[1] && process.argv[1].endsWith("treeview.test.mjs")) {
+if (process.argv[1] && process.argv[1].endsWith("treeview_provider.test.mjs")) {
 	runTreeViewTests();
 }

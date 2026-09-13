@@ -13,6 +13,7 @@
   "Scene [{0}] activated! Set {1} target breakpoint(s) and cleaned others.": "Scene [{0}] activated! Set {1} target breakpoint(s) and cleaned others.",
   "Scene [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).": "Scene [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
   "Cleared all breakpoints": "Cleared all breakpoints",
+  "Tip: Drag to reorder, or use Alt+↑ / Alt+↓ to move": "Tip: Drag to reorder, or use Alt+↑ / Alt+↓ to move",
   "▶ Apply Scene ({0} bps)": "▶ Apply Scene ({0} bps)",
   "✔ Active ({0} bps)": "✔ Active ({0} bps)",
   "Click to activate this scene and clean other breakpoints": "Click to activate this scene and clean other breakpoints",
@@ -48,6 +49,7 @@
   "No scenes configured yet": "No scenes configured yet",
   "Add breakpoints or export active ones to create a scene": "Add breakpoints or export active ones to create a scene",
   "Quick Actions": "Quick Actions",
+  "Scenes": "Scenes",
   "Export Active Breakpoints as Scene...": "Export Active Breakpoints as Scene...",
   "Save current editor breakpoints into debug-scenes.json": "Save current editor breakpoints into debug-scenes.json",
   "Clear All Breakpoints": "Clear All Breakpoints",
@@ -161,6 +163,9 @@
   "Successfully updated {0} Skill(s) to v{1}.": "Successfully updated {0} Skill(s) to v{1}.",
   "[PAUSED]": "[PAUSED]",
   "Currently Paused Here": "Currently Paused Here",
-  "File does not exist": "File does not exist"
+  "File does not exist": "File does not exist",
+  "View Diff": "View Diff",
+  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1})."
 }
+
 

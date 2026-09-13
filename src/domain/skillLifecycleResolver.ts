@@ -1,9 +1,9 @@
 import * as crypto from "node:crypto";
 
 /**
- * 插件当前内置的最新 Skill 规则版本号
+ * 插件当前内置的最新 Skill 规则版本号 (默认与 package.json 对齐)
  */
-export const LATEST_SKILL_VERSION = "1.0.3";
+export const LATEST_SKILL_VERSION = "1.0.4";
 
 /**
  * 官方历史核心正文指纹映射表 (Hash 作为 Key，O(1) 极速秒查版本)
@@ -57,10 +57,12 @@ export interface SkillLifecycleResult {
  *
  * @param localContent 本地工作区文件实际文本
  * @param latestTemplateContent 插件当前内置的最新官方模板文本
+ * @param latestVersion 可选，动态传入的插件最新版本号（默认使用 LATEST_SKILL_VERSION）
  */
 export function resolveSkillLifecycleState(
 	localContent: string,
 	latestTemplateContent: string,
+	latestVersion: string = LATEST_SKILL_VERSION,
 ): SkillLifecycleResult {
 	const localHash = computeSkillFingerprint(localContent);
 	const latestHash = computeSkillFingerprint(latestTemplateContent);
@@ -69,7 +71,7 @@ export function resolveSkillLifecycleState(
 	if (localHash === latestHash) {
 		return {
 			status: "UpToDate",
-			detectedVersion: LATEST_SKILL_VERSION,
+			detectedVersion: latestVersion,
 			localHash,
 			latestHash,
 		};

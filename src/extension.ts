@@ -32,10 +32,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const treeView = vscode.window.createTreeView("sceneBreakpointsView", {
 		treeDataProvider,
 		showCollapseAll: true,
+		dragAndDropController: treeDataProvider,
 	});
 
 	// 3. 表驱动集中注册所有用户命令与树交互动作
-	registerAllCommands(context, { treeDataProvider });
+	registerAllCommands(context, { treeDataProvider, treeView });
 
 	// 4. 挂载各领域协同业务服务 (Services) 与技术层提供者
 	context.subscriptions.push(
@@ -77,6 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 		treeDataProvider,
 		treeView,
 		getStatusBarItem,
+		checkAndPromptSkillUpdates,
 	};
 }
 

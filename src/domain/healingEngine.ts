@@ -368,8 +368,8 @@ export function resolveHealedLineFromLines(
 	lines: string[],
 	item: SourceSceneBreakpoint,
 ): HealResult {
-	if (!item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
-		return { healedLine: item.line, isHealed: false, status: "matched" };
+	if (!item || !item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
+		return { healedLine: item?.line ?? 1, isHealed: false, status: "matched" };
 	}
 	if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
 		return { healedLine: item.line, isHealed: false, status: "matched" };

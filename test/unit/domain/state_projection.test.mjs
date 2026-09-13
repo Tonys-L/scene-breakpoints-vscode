@@ -1,77 +1,12 @@
 import assert from "node:assert";
-
-class MockSceneStateManager {
-	constructor() {
-		this.currentActiveScenes = [];
-		this.isDirty = false;
-		this.isApplying = false;
-		this.baselineBreakpointCount = 0;
-		this.events = [];
-	}
-
-	getActiveScenes() {
-		return [...this.currentActiveScenes];
-	}
-
-	isSceneActive(name) {
-		return this.currentActiveScenes.includes(name);
-	}
-
-	getIsDirty() {
-		return this.isDirty;
-	}
-
-	setActiveScenes(sceneNames, initialBpCount = 0) {
-		this.currentActiveScenes = Array.from(new Set(sceneNames.map((s) => s.trim()).filter(Boolean))).sort();
-		this.baselineBreakpointCount = initialBpCount;
-		this.isDirty = false;
-		this.events.push({
-			type: "change",
-			activeScenes: this.currentActiveScenes,
-			isDirty: this.isDirty,
-		});
-	}
-
-	setActiveScene(sceneName, initialBpCount = 0) {
-		this.setActiveScenes(sceneName ? [sceneName] : [], initialBpCount);
-	}
-
-	toggleScene(sceneName) {
-		const target = (sceneName || "").trim();
-		if (!target) return this.getActiveScenes();
-		if (this.currentActiveScenes.includes(target)) {
-			return this.currentActiveScenes.filter((s) => s !== target);
-		}
-		return [...this.currentActiveScenes, target];
-	}
-
-	setDirty(dirty) {
-		if (this.isDirty !== dirty && this.currentActiveScenes.length > 0) {
-			this.isDirty = dirty;
-			this.events.push({
-				type: "dirtyChange",
-				activeScenes: this.currentActiveScenes,
-				isDirty: this.isDirty,
-			});
-		}
-	}
-
-	checkDirtyWithCount(currentCount) {
-		if (this.currentActiveScenes.length === 0 || this.isApplying) return;
-		const dirty = currentCount !== this.baselineBreakpointCount;
-		this.setDirty(dirty);
-	}
-
-	setApplyingState(applying) {
-		this.isApplying = applying;
-	}
-}
+import { SceneStateManager } from "../../../src/domain/sceneStateManager.ts";
+import { formatScenesLabel } from "../../../src/infra/vscode/statusBarView.ts";
 
 export function runStateTests() {
-	console.log("  ▶ [State] 运行状态机 SSOT 与脏状态全维边界测试套件 (包含多场景集合)...");
+	console.log("  ▶ [State] 运行状态机 SSOT 与脏状态全维边界测试套件 (包含多场景集合·真实源码)...");
 
 	// 1. 初始状态为 None 且 Clean
-	const sm = new MockSceneStateManager();
+	const sm = new SceneStateManager();
 	assert.deepStrictEqual(sm.getActiveScenes(), []);
 	assert.strictEqual(sm.getIsDirty(), false);
 
@@ -119,26 +54,9 @@ export function runStateTests() {
 	// 10. 用户清空所有断点，完全复位为 None
 	sm.setActiveScenes([], 0);
 	assert.deepStrictEqual(sm.getActiveScenes(), []);
-	// 11. 状态栏标签自适应拼接格式化测试 (formatScenesLabel)
+
+	// 11. 状态栏标签自适应拼接格式化测试 (formatScenesLabel·真实源码)
 	{
-		function formatScenesLabel(scenes) {
-			if (scenes.length === 0) return "(None)";
-			if (scenes.length === 1) return `[${scenes[0]}]`;
-
-			const fullLabel = `[${scenes.join(" + ")}]`;
-			if (fullLabel.length <= 28) {
-				return fullLabel;
-			}
-
-			if (scenes.length > 2) {
-				const prefixTwo = `[${scenes[0]} + ${scenes[1]}, +${scenes.length - 2}]`;
-				if (prefixTwo.length <= 28) {
-					return prefixTwo;
-				}
-			}
-
-			return `[${scenes[0]}, +${scenes.length - 1}]`;
-		}
 
 		// (1) 空场景
 		assert.strictEqual(formatScenesLabel([]), "(None)");

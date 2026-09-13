@@ -8,6 +8,28 @@
 |------|------|----------|
 | `README.md` | 索引 + 写作规范 | 修复 Bug / 新增功能前 |
 | `vscode-api-gotchas.md` | VS Code 原生 API 与打包踩坑 | 涉及 UI 弹窗、元数据、断点监听修改时 |
+| `test-real-import.md` | 测试基础设施与真实源码导入 | 编写/修改单元测试与 E2E 测试前 |
+
+---
+
+## 检索指引
+
+查询经验教训时：
+1. 先分析当前任务涉及的业务分类；
+2. 在下方索引中匹配“业务分类”列；
+3. 阅读匹配的教训文件。
+
+# 经验教训库 (Lessons Learned)
+
+> **TL;DR**: 记录开发中的踩坑经验与解决方案，避免重复犯错。⚠️ 每条教训必须关联到业务分类
+
+## 文件索引
+
+| 文件 | 内容 | 何时阅读 |
+|------|------|----------|
+| `README.md` | 索引 + 写作规范 | 修复 Bug / 新增功能前 |
+| `vscode-api-gotchas.md` | VS Code 原生 API 与打包踩坑 | 涉及 UI 弹窗、元数据、断点监听修改时 |
+| `test-real-import.md` | 测试基础设施与真实源码导入 | 编写/修改单元测试与 E2E 测试前 |
 
 ---
 
@@ -24,7 +46,8 @@
 
 | 文件 | 业务分类 | 条目数 | 最近更新 |
 |------|----------|--------|----------|
-| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 16 | 2026-09-13 |
+| `vscode-api-gotchas.md` | 宿主交互与打包规范 | 17 | 2026-09-13 |
+| `test-real-import.md` | 测试基础设施与真实导入 | 2 | 2026-09-13 |
 
 ---
 
@@ -56,5 +79,6 @@
 | 2026-09-12 | 录入 1.12 控制流关键字拦截与 1.13 非空拓扑伴随行自愈增强 | Tony.L | KDD-HEALING-TOPO-001 |
 | 2026-09-12 | 录入 1.14 模块调用 Node.js 内置库（如 path）漏写显式导入在 esbuild 下静默打包但运行时 ReferenceError | Tony.L | KDD-PATH-IMPORT-FIX-001 |
 | 2026-09-13 | 录入 1.15 领域层误引 VS Code 宿主 API 破坏分层并在 esbuild 打包运行时抛 ReferenceError | Tony.L | #TASK-E2E-FIX-001 |
-| 2026-09-13 | 录入 1.16 领域层严禁接收或声明宿主特定数据类型，统一使用纯 TS 结构与鸭子对象 | Tony.L | #TASK-DOMAIN-PURITY-001 |
-
+| 2026-09-13 | 录入 1.16 领域层严禁接收或声明宿主特定数据类型（如 vscode.TextDocument） | Tony.L | #TASK-TEST-MIRROR-002 |
+| 2026-09-13 | 录入 1.17 多线程 Worker DAP continued 事件与焦点震荡导致断点命中高亮闪退误杀陷阱 | Tony.L | #TASK-DEBUG-PAUSE-GUARD-004 |
+| 2026-09-13 | 新建 `test-real-import.md`：录入 1.1 镜像副本测试假绿陷阱与 1.2 E2E 无法合成 changed 事件的等价模拟方案 | Tony.L | #TASK-TEST-RECTIFY-001 |

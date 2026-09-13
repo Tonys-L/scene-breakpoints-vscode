@@ -82,7 +82,7 @@
 | **TC-TREE-14** | **断点行内按钮：单个开关切换** | 执行 `sceneBreakpoints.toggleBreakpointItem` | 该断点 `enabled` 取反，图标在启用态与禁用态 SVG 间切换 | KDD-SYNC-001 |
 | **TC-TREE-15** | **断点行内按钮：移除单断点** | 执行 `sceneBreakpoints.removeBreakpointItem` | 从场景数组中剔除该点，DAP 同步拔除对应红点 | KDD-TREEVIEW-001 |
 | **TC-TREE-16** | **断点行内按钮：定位到配置文件** | 执行 `sceneBreakpoints.revealInConfigFile` | 自动打开 `.vscode/debug-scenes.json` 且光标精准落在该断点行号 | KDD-TREEVIEW-001 |
-| **TC-TREE-17** | **断点排序微调：上移与下移** | 执行 `sceneBreakpoints.moveBreakpointUp` / `moveBreakpointDown` | 断点在树节点与磁盘数组中顺序完成互换，顺序复位精准保真 | KDD-ARCH-002 |
+| **TC-TREE-17** | **断点多维排序微调：上移/下移/置顶/置底与拖拽重排** | 执行 `moveBreakpointUp` / `moveBreakpointDown` / `moveBreakpointToTop` / `moveBreakpointToBottom` 及 `TreeDragAndDropController` | 断点在树节点与磁盘数组中顺序完成互换、一键置顶/置底，且原生拖拽拖放与焦点跟随保真 | KDD-ARCH-002 |
 | **TC-TREE-18** | **调试运行时断点命中高亮跟随** | 命中调试断点调用 `revealPausedLocation` | 节点展示 `[PAUSED]` 标签，图标切换为 `bp-paused.svg`，复位后恢复常规态 | KDD-UI-003 |
 
 ---
@@ -137,6 +137,8 @@
 | **TC-AI-04** | **反向同步防回环死循环 (Echo Loop Guard)** | 编辑器原生断点面板切换断点启用/禁用状态 | 触发 `onDidChangeBreakpoints` 反向回写配置，时间戳锁拦截后续 `fileWatcher`，杜绝死循环 | INV-008 |
 | **TC-SKILL-01** | **Skill 纯净历史版本一键自动平滑升级** | 工作区存在官方纯净历史版本 Skill（如真实 v1.0.3 基线），在上游插件发布更新时触发诊断与升级 | 状态机精准识别为 `CleanOutdated`，自动平滑替换为最新官方模板正文，无任何脏代码残留 | INV-013 |
 | **TC-SKILL-02** | **Skill 用户定制版安全检测、.bak 备份与 Diff 审查** | 工作区 Skill 存在开发者本地专属修改时触发诊断 | 状态机精准识别为 `CustomModified`，强制在同目录生成时间戳 `.bak` 备份文件，支持调起 `vscode.diff` 并排比对或一键备份并覆写 | INV-013 |
+| **TC-SKILL-03** | **扩展版本升级巡检与本地修改/可用更新气泡提示闭环** | 模拟旧版本升级到当前版本，工作区存在已修改的 Skill 文件，触发扩展启动巡检 `checkAndPromptSkillUpdates` | 拦截断言 `showInformationMessage` 弹出带有可用更新/本地改动提示，提供 `[查看差异 (Diff)]` 与 `[打开诊断面板]` 按钮，并验证点击 `[查看差异 (Diff)]` 能成功调用 `vscode.diff` 调起原生并排比对 | INV-013<br>版本SSOT铁律 |
+| **TC-SKILL-04** | **跨平台 (Antigravity/Cursor) Frontmatter 剥离指纹一致性与已安装平台智能置顶** | 在工作区同时部署 Antigravity（本地自定义修改）与 Cursor（纯净未修改），调用诊断命令 | Cursor 虽有 MDC 胶水头但核心正文未变，指纹比对精准判定为 `UpToDate`；Antigravity 精准判定为 `CustomModified`；诊断面板中已安装的两个平台必须自动置顶在未安装平台上方 | INV-013 |
 
 ---
 
@@ -194,6 +196,8 @@
 | 2026-09-12 | 命令面板与快捷键补齐：实装 TC-CMD-01（命令面板全量 20 大命令注册与总线就绪校验）与 TC-KEY-01（快捷键绑定契约与 editorTextFocus 焦点触发验证），自动化 E2E 套件达到 37 个用例 100% 绿灯通过 | Tony.L | #TASK-E2E-CMD-KEY |
 | 2026-09-13 | 修复 E2E 8 项断言与运行时异常：补齐 baseline 计数器、对齐 collectCurrentBreakpoints 异步契约、解耦 healingEngine 的 VS Code 依赖并补齐脱靶告警弹窗分支，37 个 E2E 用例 100% 绿灯通过 | Tony.L | #TASK-E2E-FIX-001 |
 | 2026-09-13 | 补齐新功能 E2E 全量测试：实装 TC-TREE-09（重命名）、TC-TREE-16（配置文件定位）、TC-TREE-17（排序微调）、TC-TREE-18（运行时断点命中高亮）以及 TC-SKILL-01/02（Skill 纯净升级与备份/Diff 生命周期），真实宿主自动化套件达到 43 个用例 100% 绿灯 | Tony.L | #TASK-E2E-NEW-FEAT |
+| 2026-09-13 | 扩充 Skill 指纹对比与生命周期规范：新增 TC-SKILL-03（扩展升级巡检与本地修改气泡提示闭环）与 TC-SKILL-04（跨平台 Frontmatter 剥离一致性与智能置顶） | Tony.L | #TASK-SKILL-E2E-EXPAND-006 |
+
 
 
 

@@ -89,6 +89,8 @@ Every developer debugging in VS Code runs into these frustrations:
 | :--- | :--- | :--- |
 | `Ctrl + Alt + S` | `Cmd + Alt + S` | Open Scene Control Menu / Switch & Multi-select scenes (or click Status Bar) |
 | `Ctrl + Alt + B` | `Cmd + Alt + B` | Add current line to scene with a description |
+| `Alt + ↑` | `Alt + ↑` | Move breakpoint up in tree view (supports continuous hold, or drag-and-drop) |
+| `Alt + ↓` | `Alt + ↓` | Move breakpoint down in tree view (supports continuous hold, or drag-and-drop) |
 
 ---
 

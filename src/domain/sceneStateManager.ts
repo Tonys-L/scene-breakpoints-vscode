@@ -32,7 +32,7 @@ export interface SceneState {
 	isDirty: boolean;
 }
 
-class SceneStateManager {
+export class SceneStateManager {
 	private currentActiveScenes: string[] = [];
 	private isDirty = false;
 	private isApplying = false;

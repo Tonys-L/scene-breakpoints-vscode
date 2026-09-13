@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import {
 	LATEST_SKILL_VERSION,
 	resolveSkillLifecycleState,
-	SkillStatus,
+	type SkillStatus,
 } from "../../../domain/skillLifecycleResolver";
 import { getWorkspaceRoot, loadScenesConfig } from "../../storage/jsonFileSceneRepository";
 import { templateContentProvider } from "../templateContentProvider";
@@ -13,6 +13,7 @@ import { sceneStateManager } from "../../../domain/sceneStateManager";
 export interface SkillTargetItem extends vscode.QuickPickItem {
 	dir: string;
 	file: string;
+	hostKeywords?: string[];
 	customHeader?: string;
 }
 
@@ -118,6 +119,7 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 	const config = vscode.workspace.getConfiguration("sceneBreakpoints");
 	const allowAiActivation = config.get<boolean>("allowAiFileActivation", false);
 	const activeScenes = sceneStateManager.getActiveScenes();
+	const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;
 
 	// 读取官方最新模板
 	const skillSourceUri = vscode.Uri.joinPath(
@@ -167,7 +169,37 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 		kind: vscode.QuickPickItemKind.Separator,
 	});
 
-	for (const target of targetItems) {
+	// 优化交互体验：
+	// 1. 已安装/存在修改的平台优先置顶展示
+	// 2. 检测当前 IDE 宿主名称 (vscode.env.appName)，若命中平台关键词 (如 trae, cursor, antigravity) 则置顶
+	// 3. 基础顺序已将主流平台 (Antigravity, Trae, Cursor 等) 提前，首屏立即可见
+	const hostAppName = (vscode.env.appName || "").toLowerCase();
+	const isTargetHost = (target: SkillTargetItem): boolean => {
+		if (target.hostKeywords && target.hostKeywords.some((k) => hostAppName.includes(k))) {
+			return true;
+		}
+		const baseName = target.label.split(/[\s/]/)[0].toLowerCase();
+		if (baseName && hostAppName.includes(baseName)) {
+			return true;
+		}
+		return false;
+	};
+
+	const sortedTargetItems = [...targetItems].sort((a, b) => {
+		const existsA = fs.existsSync(path.join(workspaceRoot, a.dir, a.file));
+		const existsB = fs.existsSync(path.join(workspaceRoot, b.dir, b.file));
+		if (existsA && !existsB) return -1;
+		if (!existsA && existsB) return 1;
+
+		const matchHostA = isTargetHost(a);
+		const matchHostB = isTargetHost(b);
+		if (matchHostA && !matchHostB) return -1;
+		if (!matchHostA && matchHostB) return 1;
+
+		return 0;
+	});
+
+	for (const target of sortedTargetItems) {
 		const fullPath = path.join(workspaceRoot, target.dir, target.file);
 		const exists = fs.existsSync(fullPath);
 
@@ -175,7 +207,7 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 			diagnostics.push({
 				label: `$(add) ${target.label} (${vscode.l10n.t("Not Installed - Click to Install")})`,
 				description: target.description,
-				detail: vscode.l10n.t("Click to deploy v{0} Skill", LATEST_SKILL_VERSION),
+				detail: vscode.l10n.t("Click to deploy v{0} Skill", currentVersion),
 				action: async () => {
 					const success = await writeSkillToTarget(context, workspaceRoot, target);
 					if (success) {
@@ -190,11 +222,11 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 
 		// 本地已安装：执行三态指纹判定
 		const localContent = fs.readFileSync(fullPath, "utf-8");
-		const lifecycle = resolveSkillLifecycleState(localContent, rawOfficialTemplate);
+		const lifecycle = resolveSkillLifecycleState(localContent, rawOfficialTemplate, currentVersion);
 
 		if (lifecycle.status === "UpToDate") {
 			diagnostics.push({
-				label: `$(pass) ${target.label} (${vscode.l10n.t("Up to Date: v{0}", LATEST_SKILL_VERSION)})`,
+				label: `$(pass) ${target.label} (${vscode.l10n.t("Up to Date: v{0}", currentVersion)})`,
 				description: target.description,
 				detail: vscode.l10n.t("Installed: {0}", fullPath),
 				action: async () => {
@@ -215,14 +247,14 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 			});
 		} else if (lifecycle.status === "CleanOutdated") {
 			diagnostics.push({
-				label: `$(sync) ${target.label} (${vscode.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", LATEST_SKILL_VERSION)})`,
+				label: `$(sync) ${target.label} (${vscode.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", currentVersion)})`,
 				description: target.description,
 				detail: vscode.l10n.t("Official template outdated. Click to update smoothly."),
 				action: async () => {
 					const success = await writeSkillToTarget(context, workspaceRoot, target);
 					if (success) {
 						vscode.window.showInformationMessage(
-							vscode.l10n.t("Skill successfully updated to v{0} ({1})", LATEST_SKILL_VERSION, target.label),
+							vscode.l10n.t("Skill successfully updated to v{0} ({1})", currentVersion, target.label),
 						);
 					}
 				},
@@ -295,14 +327,15 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 }
 
 /**
- * 扩展启动或版本升级时的轻量巡检：发现过期纯净版本时给出非阻塞提示
+ * 扩展启动或版本升级时的轻量巡检：发现过期纯净版本或用户本地定制改动时给出非阻塞提示
  */
 export async function checkAndPromptSkillUpdates(
 	context: vscode.ExtensionContext,
 	workspaceRoot: string,
 ): Promise<void> {
+	const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;
 	const lastNotifiedVer = context.workspaceState.get<string>("lastNotifiedSkillVersion");
-	if (lastNotifiedVer === LATEST_SKILL_VERSION) {
+	if (lastNotifiedVer === currentVersion) {
 		return;
 	}
 
@@ -328,7 +361,7 @@ export async function checkAndPromptSkillUpdates(
 		if (fs.existsSync(fullPath)) {
 			try {
 				const localContent = fs.readFileSync(fullPath, "utf-8");
-				const res = resolveSkillLifecycleState(localContent, rawOfficialTemplate);
+				const res = resolveSkillLifecycleState(localContent, rawOfficialTemplate, currentVersion);
 				if (res.status === "CleanOutdated" || res.status === "CustomModified") {
 					outdatedTargets.push({ target, status: res.status, fullPath });
 				}
@@ -343,34 +376,61 @@ export async function checkAndPromptSkillUpdates(
 	}
 
 	// 记录已检查标记，防止同一版本重复打扰
-	await context.workspaceState.update("lastNotifiedSkillVersion", LATEST_SKILL_VERSION);
+	await context.workspaceState.update("lastNotifiedSkillVersion", currentVersion);
 
 	const cleanOutdatedList = outdatedTargets.filter((t) => t.status === "CleanOutdated");
+	const customModifiedList = outdatedTargets.filter((t) => t.status === "CustomModified");
+
+	const actions: string[] = [];
 	const updateAction = cleanOutdatedList.length > 0 ? vscode.l10n.t("Update Clean Skills") : undefined;
+	const diffAction = customModifiedList.length === 1 ? vscode.l10n.t("View Diff") : undefined;
 	const diagnoseAction = vscode.l10n.t("Open Diagnostics");
 	const dismissAction = vscode.l10n.t("Later");
 
-	const actions = [diagnoseAction];
 	if (updateAction) {
-		actions.unshift(updateAction);
+		actions.push(updateAction);
 	}
+	if (diffAction) {
+		actions.push(diffAction);
+	}
+	actions.push(diagnoseAction);
 	actions.push(dismissAction);
 
-	const selected = await vscode.window.showInformationMessage(
-		vscode.l10n.t(
+	const promptMsg = customModifiedList.length > 0
+		? vscode.l10n.t(
+			"Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).",
+			outdatedTargets.length,
+			currentVersion,
+		)
+		: vscode.l10n.t(
 			"Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).",
 			outdatedTargets.length,
-			LATEST_SKILL_VERSION,
-		),
-		...actions,
-	);
+			currentVersion,
+		);
+
+	const selected = await vscode.window.showInformationMessage(promptMsg, ...actions);
 
 	if (selected === updateAction) {
 		for (const { target } of cleanOutdatedList) {
 			await writeSkillToTarget(context, workspaceRoot, target);
 		}
 		vscode.window.showInformationMessage(
-			vscode.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, LATEST_SKILL_VERSION),
+			vscode.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, currentVersion),
+		);
+	} else if (selected === diffAction && customModifiedList.length === 1) {
+		const { target, fullPath } = customModifiedList[0];
+		const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
+		const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
+		templateContentProvider.setTemplateContent(target.file, expectedStr);
+
+		const localUri = vscode.Uri.file(fullPath);
+		const virtualUri = vscode.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
+
+		await vscode.commands.executeCommand(
+			"vscode.diff",
+			localUri,
+			virtualUri,
+			`${target.label} (${vscode.l10n.t("Local vs Official v{0}", currentVersion)})`,
 		);
 	} else if (selected === diagnoseAction) {
 		await diagnoseAiIntegrationCommand(context);
@@ -379,62 +439,70 @@ export async function checkAndPromptSkillUpdates(
 
 function getSupportedSkillTargets(): SkillTargetItem[] {
 	return [
-		// 1. Cursor IDE 专属 MDC 规则体系
-		{
-			label: "Cursor",
-			description: ".cursor/rules/scene-breakpoints.mdc",
-			dir: ".cursor/rules",
-			file: "scene-breakpoints.mdc",
-			customHeader: `---\ndescription: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows and code reading\nglobs: **\n---\n\n`,
-		},
-		// 2. Windsurf (Codeium) 级联规则体系
-		{
-			label: "Windsurf",
-			description: ".windsurf/rules/scene-breakpoints.md",
-			dir: ".windsurf/rules",
-			file: "scene-breakpoints.md",
-		},
-		// 3. Cline (Claude Dev) 自主 Agent 规则体系
-		{
-			label: "Cline",
-			description: ".clinerules/scene-breakpoints.md",
-			dir: ".clinerules",
-			file: "scene-breakpoints.md",
-		},
-		// 4. Roo Code (Roo Cline) 规则体系
-		{
-			label: "Roo Code",
-			description: ".roorules/scene-breakpoints.md",
-			dir: ".roorules",
-			file: "scene-breakpoints.md",
-		},
-		// 5. Continue.dev 开源 Agent 提示词体系
-		{
-			label: "Continue",
-			description: ".continue/prompts/scene-breakpoints.prompt",
-			dir: ".continue/prompts",
-			file: "scene-breakpoints.prompt",
-		},
-		// 6. VS Code / GitHub Copilot 官方 Skills 体系
-		{
-			label: "VS Code / GitHub Copilot",
-			description: ".github/skills/scene-breakpoints/SKILL.md",
-			dir: ".github/skills/scene-breakpoints",
-			file: "SKILL.md",
-		},
-		// 7. Trae IDE 技能体系
-		{
-			label: "Trae IDE",
-			description: ".trae/skills/scene-breakpoints/SKILL.md",
-			dir: ".trae/skills/scene-breakpoints",
-			file: "SKILL.md",
-		},
-		// 8. Antigravity 工作区 Skill 体系
+		// 1. Antigravity 工作区 Skill 体系 (默认置顶，保证首屏直达)
 		{
 			label: "Antigravity",
 			description: ".agents/skills/scene-breakpoints/SKILL.md",
 			dir: ".agents/skills/scene-breakpoints",
 			file: "SKILL.md",
+			hostKeywords: ["antigravity"],
+		},
+		// 2. Trae IDE 技能体系
+		{
+			label: "Trae IDE",
+			description: ".trae/skills/scene-breakpoints/SKILL.md",
+			dir: ".trae/skills/scene-breakpoints",
+			file: "SKILL.md",
+			hostKeywords: ["trae"],
+		},
+		// 3. Cursor IDE 专属 MDC 规则体系
+		{
+			label: "Cursor",
+			description: ".cursor/rules/scene-breakpoints.mdc",
+			dir: ".cursor/rules",
+			file: "scene-breakpoints.mdc",
+			hostKeywords: ["cursor"],
+			customHeader: `---\ndescription: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.json for debugging workflows and code reading\nglobs: **\n---\n\n`,
+		},
+		// 4. VS Code / GitHub Copilot 官方 Skills 体系
+		{
+			label: "VS Code / GitHub Copilot",
+			description: ".github/skills/scene-breakpoints/SKILL.md",
+			dir: ".github/skills/scene-breakpoints",
+			file: "SKILL.md",
+			hostKeywords: ["visual studio code", "vscode", "code"],
+		},
+		// 5. Windsurf (Codeium) 级联规则体系
+		{
+			label: "Windsurf",
+			description: ".windsurf/rules/scene-breakpoints.md",
+			dir: ".windsurf/rules",
+			file: "scene-breakpoints.md",
+			hostKeywords: ["windsurf", "codeium"],
+		},
+		// 6. Cline (Claude Dev) 自主 Agent 规则体系
+		{
+			label: "Cline",
+			description: ".clinerules/scene-breakpoints.md",
+			dir: ".clinerules",
+			file: "scene-breakpoints.md",
+			hostKeywords: ["cline"],
+		},
+		// 7. Roo Code (Roo Cline) 规则体系
+		{
+			label: "Roo Code",
+			description: ".roorules/scene-breakpoints.md",
+			dir: ".roorules",
+			file: "scene-breakpoints.md",
+			hostKeywords: ["roo"],
+		},
+		// 8. Continue.dev 开源 Agent 提示词体系
+		{
+			label: "Continue",
+			description: ".continue/prompts/scene-breakpoints.prompt",
+			dir: ".continue/prompts",
+			file: "scene-breakpoints.prompt",
+			hostKeywords: ["continue"],
 		},
 	];
 }

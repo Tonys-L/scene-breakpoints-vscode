@@ -445,6 +445,41 @@ export async function showMenuCommand(): Promise<void> {
 
 	const items: MenuQuickPickItem[] = [];
 
+	// 1. 快捷管理动作置顶：保证无论工程有多少场景，常用管理指令永远首屏可见，无需滚动
+	items.push(
+		{
+			label: `$(clear-all) ${vscode.l10n.t("Clear All Breakpoints")}`,
+			description: vscode.l10n.t("Clear all breakpoints from current workspace"),
+			action: "clear",
+		},
+		{
+			label: `$(checklist) ${vscode.l10n.t("Multi-Select Scenes to Activate...")}`,
+			description: vscode.l10n.t("Check multiple scenes to layer breakpoints together"),
+			action: "multiSelect",
+		},
+		{
+			label: `$(cloud-upload) ${vscode.l10n.t("Export Active Breakpoints as Scene...")}`,
+			description: vscode.l10n.t("Save current editor breakpoints into debug-scenes.json"),
+			action: "export",
+		},
+		{
+			label: `$(cloud-download) ${vscode.l10n.t("Import Scene from Clipboard...")}`,
+			description: vscode.l10n.t("Parse and import scene breakpoints from clipboard"),
+			action: "importClipboard",
+		},
+		{
+			label: `$(file-code) ${vscode.l10n.t("Open debug-scenes.json")}`,
+			description: vscode.l10n.t("Edit configuration file directly"),
+			action: "openConfig",
+		},
+	);
+
+	// 2. 场景列表分区
+	items.push({
+		label: vscode.l10n.t("Scenes"),
+		kind: vscode.QuickPickItemKind.Separator,
+	});
+
 	if (sceneNames.length > 0) {
 		for (const name of sceneNames) {
 			const bps = config.scenes[name] || [];
@@ -471,41 +506,6 @@ export async function showMenuCommand(): Promise<void> {
 			description: vscode.l10n.t("Add breakpoints or export active ones to create a scene"),
 		});
 	}
-
-	// 分隔线
-	items.push({
-		label: vscode.l10n.t("Quick Actions"),
-		kind: vscode.QuickPickItemKind.Separator,
-	});
-
-	// 快捷动作
-	items.push(
-		{
-			label: `$(checklist) ${vscode.l10n.t("Multi-Select Scenes to Activate...")}`,
-			description: vscode.l10n.t("Check multiple scenes to layer breakpoints together"),
-			action: "multiSelect",
-		},
-		{
-			label: `$(cloud-upload) ${vscode.l10n.t("Export Active Breakpoints as Scene...")}`,
-			description: vscode.l10n.t("Save current editor breakpoints into debug-scenes.json"),
-			action: "export",
-		},
-		{
-			label: `$(cloud-download) ${vscode.l10n.t("Import Scene from Clipboard...")}`,
-			description: vscode.l10n.t("Parse and import scene breakpoints from clipboard"),
-			action: "importClipboard",
-		},
-		{
-			label: `$(clear-all) ${vscode.l10n.t("Clear All Breakpoints")}`,
-			description: vscode.l10n.t("Clear all breakpoints from current workspace"),
-			action: "clear",
-		},
-		{
-			label: `$(file-code) ${vscode.l10n.t("Open debug-scenes.json")}`,
-			description: vscode.l10n.t("Edit configuration file directly"),
-			action: "openConfig",
-		},
-	);
 
 	const quickPick = vscode.window.createQuickPick<MenuQuickPickItem>();
 	quickPick.items = items;

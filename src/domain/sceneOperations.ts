@@ -14,10 +14,14 @@ export function upsertBreakpointToScene(
 	sceneName: string,
 	newEntry: SceneBreakpoint,
 ): void {
+	if (!config || !newEntry || typeof sceneName !== "string" || !sceneName.trim()) {
+		return;
+	}
+	const targetScene = sceneName.trim();
 	if (!config.scenes) {
 		config.scenes = {};
 	}
-	const list = config.scenes[sceneName] || [];
+	const list = config.scenes[targetScene] || [];
 
 	if (newEntry.type === "function") {
 		const funcEntry = newEntry as FunctionSceneBreakpoint;
@@ -44,7 +48,7 @@ export function upsertBreakpointToScene(
 		}
 	}
 
-	config.scenes[sceneName] = list;
+	config.scenes[targetScene] = list;
 }
 
 export function removeBreakpointFromConfig(
@@ -52,8 +56,8 @@ export function removeBreakpointFromConfig(
 	sceneName: string,
 	index: number,
 ): boolean {
-	const list = config.scenes[sceneName];
-	if (!list || index < 0 || index >= list.length) {
+	const list = config?.scenes?.[sceneName];
+	if (!Array.isArray(list) || index < 0 || index >= list.length) {
 		return false;
 	}
 	list.splice(index, 1);
@@ -65,18 +69,19 @@ export function renameSceneInConfig(
 	oldName: string,
 	newName: string,
 ): boolean {
-	if (!config.scenes[oldName] || config.scenes[newName]) {
+	const trimmedNew = typeof newName === "string" ? newName.trim() : "";
+	if (!trimmedNew || !config.scenes || !config.scenes[oldName] || config.scenes[trimmedNew]) {
 		return false;
 	}
-	config.scenes[newName] = config.scenes[oldName];
+	config.scenes[trimmedNew] = config.scenes[oldName];
 	delete config.scenes[oldName];
 
 	if (config.bindings) {
 		for (const [bk, bv] of Object.entries(config.bindings)) {
 			if (typeof bv === "string" && bv === oldName) {
-				config.bindings[bk] = newName;
+				config.bindings[bk] = trimmedNew;
 			} else if (Array.isArray(bv)) {
-				config.bindings[bk] = bv.map((it) => (it === oldName ? newName : it));
+				config.bindings[bk] = bv.map((it) => (it === oldName ? trimmedNew : it));
 			}
 		}
 	}
@@ -87,7 +92,7 @@ export function deleteSceneFromConfig(
 	config: ScenesConfig,
 	sceneName: string,
 ): boolean {
-	if (!config.scenes[sceneName]) {
+	if (!config?.scenes || typeof sceneName !== "string" || !config.scenes[sceneName]) {
 		return false;
 	}
 	delete config.scenes[sceneName];
@@ -114,11 +119,12 @@ export function toggleBreakpointEnabledInConfig(
 	sceneName: string,
 	index: number,
 ): boolean {
-	const list = config.scenes[sceneName];
-	if (!list || index < 0 || index >= list.length) {
+	const list = config?.scenes?.[sceneName];
+	if (!Array.isArray(list) || index < 0 || index >= list.length) {
 		return false;
 	}
 	const item = list[index];
+	if (!item) return false;
 	item.enabled = !(item.enabled ?? true);
 	return true;
 }
@@ -131,11 +137,11 @@ export function setAllBreakpointsEnabledInScene(
 	sceneName: string,
 	targetEnabled: boolean,
 ): boolean {
-	const list = config.scenes[sceneName];
-	if (!list || list.length === 0) return false;
+	const list = config?.scenes?.[sceneName];
+	if (!Array.isArray(list) || list.length === 0) return false;
 	let changed = false;
 	for (const item of list) {
-		if ((item.enabled ?? true) !== targetEnabled) {
+		if (item && (item.enabled ?? true) !== targetEnabled) {
 			item.enabled = targetEnabled;
 			changed = true;
 		}
@@ -151,12 +157,16 @@ export function duplicateSceneInConfig(
 	sourceSceneName: string,
 	targetSceneName: string,
 ): boolean {
+	const trimmedTarget = typeof targetSceneName === "string" ? targetSceneName.trim() : "";
+	if (!config?.scenes || !trimmedTarget) {
+		return false;
+	}
 	const srcList = config.scenes[sourceSceneName];
-	if (!srcList || config.scenes[targetSceneName]) {
+	if (!Array.isArray(srcList) || config.scenes[trimmedTarget]) {
 		return false;
 	}
 	// 深拷贝场景内所有断点实体
-	config.scenes[targetSceneName] = JSON.parse(JSON.stringify(srcList));
+	config.scenes[trimmedTarget] = JSON.parse(JSON.stringify(srcList));
 	return true;
 }
 
@@ -267,17 +277,31 @@ export function mergeScenesBreakpoints(
 }
 
 /**
- * 在指定场景中调整断点的排列次序（上移/下移）
+ * 在指定场景中调整断点的排列次序（上移/下移/置顶/置底）
  */
 export function moveBreakpointInScene(
 	config: ScenesConfig,
 	sceneName: string,
 	index: number,
-	direction: "up" | "down",
+	direction: "up" | "down" | "top" | "bottom",
 ): boolean {
 	const list = config.scenes?.[sceneName];
 	if (!Array.isArray(list) || index < 0 || index >= list.length) {
 		return false;
+	}
+
+	if (direction === "top") {
+		if (index === 0) return false;
+		const [item] = list.splice(index, 1);
+		list.unshift(item);
+		return true;
+	}
+
+	if (direction === "bottom") {
+		if (index === list.length - 1) return false;
+		const [item] = list.splice(index, 1);
+		list.push(item);
+		return true;
 	}
 
 	const targetIndex = direction === "up" ? index - 1 : index + 1;
@@ -288,6 +312,26 @@ export function moveBreakpointInScene(
 	const temp = list[index];
 	list[index] = list[targetIndex];
 	list[targetIndex] = temp;
+	return true;
+}
+
+/**
+ * 在指定场景中将断点拖拽或重排到指定目标索引位置 (reorder)
+ */
+export function reorderBreakpointInScene(
+	config: ScenesConfig,
+	sceneName: string,
+	sourceIndex: number,
+	targetIndex: number,
+): boolean {
+	const list = config.scenes?.[sceneName];
+	if (!Array.isArray(list)) return false;
+	if (sourceIndex < 0 || sourceIndex >= list.length) return false;
+	if (targetIndex < 0 || targetIndex >= list.length) return false;
+	if (sourceIndex === targetIndex) return false;
+
+	const [item] = list.splice(sourceIndex, 1);
+	list.splice(targetIndex, 0, item);
 	return true;
 }
 

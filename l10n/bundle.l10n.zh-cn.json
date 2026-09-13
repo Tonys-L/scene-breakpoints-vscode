@@ -12,7 +12,8 @@
   "Select a debug scene to activate (will load scene breakpoints and clean others)": "请选择要激活的调试场景 (将自动加载该场景断点并清理其他断点)",
   "Scene [{0}] activated! Set {1} target breakpoint(s) and cleaned others.": "已激活场景 [{0}]！已设置 {1} 个目标断点，并清理其他无关断点。",
   "Scene [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).": "已激活场景 [{0}]！成功加载 {1} 个断点 (已自动自愈 {2} 处发生代码漂移的断点)。",
-  "Cleared all breakpoints": "已清除所有断点",
+  "Cleared all breakpoints": "已清空当前全部断点",
+  "Tip: Drag to reorder, or use Alt+↑ / Alt+↓ to move": "提示：按住鼠标可直接拖拽排序，或按 Alt+↑ / Alt+↓ 移动",
   "▶ Apply Scene ({0} bps)": "▶ 激活此场景断点 ({0} 个断点)",
   "✔ Active ({0} bps)": "✔ 已激活 ({0} 个断点)",
   "Click to activate this scene and clean other breakpoints": "点击立即激活此场景并清理其他杂散断点",
@@ -48,6 +49,7 @@
   "No scenes configured yet": "暂未配置任何场景",
   "Add breakpoints or export active ones to create a scene": "可通过添加断点或导出当前断点来创建新场景",
   "Quick Actions": "快捷操作",
+  "Scenes": "场景列表",
   "Export Active Breakpoints as Scene...": "将当前活跃断点导出为新场景...",
   "Save current editor breakpoints into debug-scenes.json": "将编辑器当前断点批量持久化到 debug-scenes.json",
   "Clear All Breakpoints": "清空所有断点",
@@ -161,6 +163,9 @@
   "Successfully updated {0} Skill(s) to v{1}.": "已成功将 {0} 个 Skill 规则平滑升级至 v{1}。",
   "[PAUSED]": "[当前暂停]",
   "Currently Paused Here": "当前暂停在此断点",
-  "File does not exist": "文件不存在"
+  "File does not exist": "文件不存在",
+  "View Diff": "查看差异 (Diff)",
+  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: 检测到工作区有 {0} 个 AI Skill 规则存在本地修改或可用更新 (v{1})。"
 }
+
 

@@ -20,6 +20,7 @@ import { SceneTreeDataProvider } from "../sceneTreeProvider";
 
 export interface CommandDependencies {
 	treeDataProvider?: SceneTreeDataProvider;
+	treeView?: vscode.TreeView<any>;
 }
 
 /**
@@ -49,7 +50,7 @@ export function registerAllCommands(
 	}
 
 	if (deps?.treeDataProvider) {
-		registerTreeCommands(context, deps.treeDataProvider);
+		registerTreeCommands(context, deps.treeDataProvider, deps.treeView);
 	}
 }
 

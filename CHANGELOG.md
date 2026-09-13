@@ -8,6 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.4] - 2026-09-13
+
+### Added
+- **Comprehensive Breakpoint Reordering & Drag-and-Drop System**:
+  - **Native Drag-and-Drop Reordering**: Full implementation of `TreeDragAndDropController`, allowing intuitive dragging and dropping of breakpoints within scenes in the sidebar tree view with automatic boundary guards.
+  - **Fluid Keyboard Navigation (`Alt+↑` / `Alt+↓`)**: Move breakpoints up and down instantly via `Alt+Up` / `Alt+Down` shortcuts when focused on the tree view, with automatic `reveal(node, { select: true, focus: true })` tracking for continuous key-hold movement.
+  - **One-Click Move to Top / Move to Bottom**: Added `sceneBreakpoints.moveBreakpointToTop` and `sceneBreakpoints.moveBreakpointToBottom` commands in the breakpoint context menu for instant edge-positioning.
+  - **Refined Action Titles & Rich Tooltip Hints**: Inline action buttons display concise keyboard shortcuts (`Move Breakpoint Up (Alt+↑)`), while the breakpoint hover tooltip is upgraded to `vscode.MarkdownString` with a subtle divider and drag/shortcut tip.
+- **Runtime Debug Hit Visualization (`[PAUSED]`)**:
+  - Automatically expands the active scene and highlights hit breakpoints with a prominent `▶ [PAUSED]` badge and dedicated vector SVG (`bp-paused.svg`), automatically reverting when execution resumes.
+
+### Improvements
+- **Instant Status Bar Availability (`onStartupFinished`)**:
+  - Configured `activationEvents: ["onStartupFinished"]` in `package.json`, ensuring the status bar item appears immediately upon editor startup without requiring prior manual command execution.
+- **Scene QuickPick Hierarchy Restructuring**:
+  - Moved management actions (`Clear All Breakpoints`, `Multi-Select Scenes...`, `Export...`, `Open Config`) to the top section of the QuickPick menu, preventing action occlusion regardless of how many scenes exist.
+- **Host IDE Adaptive Perception & Prioritization in AI Diagnostics**:
+  - Uses `vscode.env.appName` and keyword heuristics to automatically identify whether the extension is running in Antigravity, Trae, Cursor, or VS Code, dynamically pinning the matching host platform to the very top.
+  - Deployed and customized platforms are strictly prioritized to eliminate scrolling.
+
+### Architecture & Engineering
+- **KDD Governance Guardrails**:
+  - Enforced the Single Source of Truth (SSOT) iron rule for extension and skill versions.
+  - Enforced direct production imports in unit tests, completely eliminating private mock logic copies ("green lies").
+  - Expanded automated sandbox E2E tests to 47 suites, covering all 25 extension commands and full drag-and-drop controller execution.
+
+---
+
 ## [1.0.3] - 2026-09-12
 
 ### Added
