@@ -5,14 +5,14 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-仓库-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=版本发布&logo=github" alt="GitHub Release" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/GitHub-CI-success?logo=github" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-green.svg" alt="License" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md"><img src="https://img.shields.io/badge/文档-使用指南-orange" alt="用户指南" /></a>
   </p>
 
   <p><a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/README.md">English</a> | <b>简体中文</b></p>
 </div>
+
+> 🏷️ **核心特性**：`断点分组管理` · `场景化调试` · `AI Agent 协同` · `代码漂移自愈` · `团队共享导览`
 
 ---
 
@@ -21,7 +21,7 @@
 平时在 VS Code 里调试代码，大家经常会遇到这几个头疼事：
 1. **断点太多舍不得删，调试时到处乱停**：平时查各种问题留了几十个断点，查新 Bug 时走两步就误停一次，烦躁得不行；
 2. **复杂调用链理顺了，过两天就忘光**：好不容易理清一条横跨十几个文件的复杂业务链路，过两周又忘了关键步骤在哪，新人接手更是一头雾水；
-3. **Pull 一下代码或改了几行，断点全偏了**：代码行号一变，原来的断点全停在空行或注释上，彻底失效；
+3. **Pull 一下代码或改了几行，断点全偏了**：代码行号一变，原来的断点全停在空行或注释上，彻底失效；*（这是多人协作、Git 分支切换与代码重构中最常见的断点失效场景）*
 4. **想把断点分享给同事，换电脑断点全丢**：只能打字告诉同事“你在 xx 文件的 88 行打个断点”，换台电脑之前打的断点全没了；
 5. **AI 帮我梳理了业务流程，却没法直接把断点布置到编辑器**：让 AI 查 Bug 或理顺复杂逻辑，AI 找出了关键函数与条件分支，但只能文字回复“建议在 a.ts 第 20 行打断点”，开发者还得人工一个个文件去跳转并手动打断点。
 
@@ -73,7 +73,7 @@
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/context-menu-add.png" alt="右键菜单或快捷键 Ctrl+Alt+B 添加断点" width="75%" />
 </p>
 
-2. **切换场景**：点击 VS Code 底部状态栏（或按下快捷键 `Ctrl + Alt + S` / macOS: `Cmd + Alt + S`），选择场景一键激活；
+2. **切换场景**：点击 VS Code 底部状态栏（或按下快捷键 `Ctrl + Alt + S` / macOS: `Cmd + Alt + S`），选择场景一键激活。激活后，底部状态栏会立即显示当前场景名，侧边栏对应场景高亮展开，VS Code 断点列表与代码行断点红点同步即时挂载；
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/scene-quickpick.png" alt="场景快速切换与多选 QuickPick 弹窗" width="85%" />
@@ -89,8 +89,9 @@
 | :--- | :--- | :--- |
 | `Ctrl + Alt + S` | `Cmd + Alt + S` | 呼出场景控制菜单 / 快速切换与多选场景（亦可点击底部状态栏） |
 | `Ctrl + Alt + B` | `Cmd + Alt + B` | 将当前代码行保存到指定场景并输入备注 |
-| `Alt + ↑` | `Alt + ↑` | 侧边栏树视图中快速上移断点（支持长按连移，亦可鼠标拖拽） |
-| `Alt + ↓` | `Alt + ↓` | 侧边栏树视图中快速下移断点（支持长按连移，亦可鼠标拖拽） |
+| `Alt + ↑` / `Alt + ↓` | `Alt + ↑` / `Alt + ↓` | 侧边栏树视图中快速上移 / 下移断点（支持长按连续位移，亦可鼠标拖拽） |
+
+> 💡 **快捷键冲突提示**：Windows 下如果 `Ctrl + Alt + B` 等快捷键被输入法或显卡驱动热键占用，可在 VS Code 的“键盘快捷方式”（`Ctrl + K Ctrl + S`）中搜索 `sceneBreakpoints` 自定义绑定。
 
 ---
 
@@ -114,12 +115,6 @@
         "type": "line",
         "file": "src/auth.ts",
         "line": 45,
-        "desc": "Token 校验入口"
-      },
-      {
-        "type": "condition",
-        "file": "src/auth.ts",
-        "line": 89,
         "condition": "user.isVip === true",
         "desc": "仅在 VIP 用户登录时拦截"
       },
@@ -155,7 +150,14 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 安装后，向 AI 说一句：“*帮我分析登录失败的原因，并建立断点场景*”，AI 便会自动研读代码、组织断点并为你激活！
 
 ### 2. AI 集成状态全维诊断
-按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`**，可一目了然查看当前各平台 Skill 部署情况并提供一键修复。
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`**，可一目了然查看当前各平台 Skill 部署情况并提供一键修复：
+
+```text
+⚡ [AI 宿主检测] 检测到当前运行环境为 Antigravity (已自适应置顶)
+✅ [配置状态] allowAiFileActivation: 已开启 (支持 AI 声明式读写场景)
+✅ [已就绪 Skill] Antigravity, Cursor, Trae (最新规则基线)
+⚠️ [待部署平台] GitHub Copilot, Windsurf → 点击 [一键安装] 即可秒级补齐
+```
 
 ---
 

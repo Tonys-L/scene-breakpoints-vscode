@@ -5,14 +5,14 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/releases"><img src="https://img.shields.io/github/v/release/Tonys-L/scene-breakpoints-vscode?include_prereleases&label=Release&logo=github" alt="GitHub Release" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/GitHub-CI-success?logo=github" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide.md"><img src="https://img.shields.io/badge/Docs-User%20Guide-orange" alt="User Guide" /></a>
   </p>
 
   <p><b>English</b> | <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/README_zh.md">简体中文</a></p>
 </div>
+
+> 🏷️ **Highlights**: `Breakpoint Management` · `Scenario Debugging` · `AI Agent Collaboration` · `Self-Healing Anti-Drift` · `Living Code Tour`
 
 ---
 
@@ -21,7 +21,7 @@
 Every developer debugging in VS Code runs into these frustrations:
 1. **Too many leftover breakpoints interrupting your flow**: You have dozens of breakpoints scattered from previous debugging sessions. Starting a new task pauses execution every two seconds.
 2. **Complex call chains are easily forgotten**: You spend hours tracing a multi-file execution path, but forget key steps weeks later. Onboarding teammates face the same steep curve.
-3. **Pulling git or editing code breaks your breakpoints**: Whenever lines shift, your saved breakpoints end up on empty lines or comments.
+3. **Pulling git or editing code breaks your breakpoints**: Whenever lines shift, your saved breakpoints end up on empty lines or comments; *(the most common cause of breakpoint invalidation in collaborative Git workflows)*.
 4. **Impossible to share or sync across computers**: Native breakpoints vanish when you switch laptops, and sharing a debug setup with teammates means manually typing out file paths and line numbers.
 5. **AI understands your code, but can't set breakpoints for you directly**: When asking an AI assistant to analyze a bug or trace a flow, it can suggest key functions in chat, but you still have to manually find the files and click line numbers one by one.
 
@@ -73,7 +73,7 @@ Every developer debugging in VS Code runs into these frustrations:
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/context-menu-add.png" alt="Context menu or Ctrl+Alt+B to add scene breakpoint" width="75%" />
 </p>
 
-2. **Switch Scene**: Click the status bar item at the bottom (or press `Ctrl + Alt + S` / `Cmd + Alt + S` on macOS) to activate one or more scenes;
+2. **Switch Scene**: Click the status bar item at the bottom (or press `Ctrl + Alt + S` / `Cmd + Alt + S` on macOS) to activate one or more scenes. Upon activation, the status bar displays the active scene, the sidebar view highlights the scene, and editor breakpoint dots mount instantly;
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/scene-quickpick.png" alt="Scene Switch QuickPick dialog" width="85%" />
@@ -89,8 +89,9 @@ Every developer debugging in VS Code runs into these frustrations:
 | :--- | :--- | :--- |
 | `Ctrl + Alt + S` | `Cmd + Alt + S` | Open Scene Control Menu / Switch & Multi-select scenes (or click Status Bar) |
 | `Ctrl + Alt + B` | `Cmd + Alt + B` | Add current line to scene with a description |
-| `Alt + ↑` | `Alt + ↑` | Move breakpoint up in tree view (supports continuous hold, or drag-and-drop) |
-| `Alt + ↓` | `Alt + ↓` | Move breakpoint down in tree view (supports continuous hold, or drag-and-drop) |
+| `Alt + ↑` / `Alt + ↓` | `Alt + ↑` / `Alt + ↓` | Move breakpoint up / down in tree view (supports continuous hold or drag-and-drop) |
+
+> 💡 **Shortcut Conflict Tip**: On Windows, if `Ctrl + Alt + B` is captured by input methods or graphics card utilities, you can easily customize it under VS Code's **Keyboard Shortcuts** (`Ctrl + K Ctrl + S`) by searching for `sceneBreakpoints`.
 
 ---
 
@@ -114,21 +115,13 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
         "type": "line",
         "file": "src/auth.ts",
         "line": 45,
-        "desc": "Token verification entry"
+        "description": "Step 1: Auth Guard Entry"
       },
       {
-        "type": "condition",
-        "file": "src/auth.ts",
-        "line": 89,
-        "condition": "user.isVip === true",
-        "desc": "Intercept only for VIP users"
-      },
-      {
-        "type": "logpoint",
-        "file": "src/agent-loop.ts",
-        "line": 104,
-        "logMessage": "Current status: {state.status}",
-        "desc": "Non-intrusive runtime trace"
+        "type": "line",
+        "file": "src/user.ts",
+        "line": 88,
+        "description": "Step 2: Read user profile"
       }
     ]
   }
@@ -155,7 +148,14 @@ Press `Ctrl+Shift+P` and run **`Scene Breakpoints: Install Agent Skill`** to dep
 Once installed, simply instruct your AI: *"Help me analyze why login failed and set up a breakpoint scene"*. The agent will automatically inspect the code, assemble breakpoints, and activate the scene for you!
 
 ### 2. Full-Spectrum AI Diagnostics
-Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform skill deployment status and perform one-click repairs.
+Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform skill deployment status and perform one-click repairs:
+
+```text
+⚡ [Host Environment] Detected Antigravity as active IDE (automatically pinned)
+✅ [Configuration] allowAiFileActivation: Enabled (declarative scene read/write ready)
+✅ [Deployed Skills] Antigravity, Cursor, Trae (latest baseline)
+⚠️ [Pending Platforms] GitHub Copilot, Windsurf → Click [One-Click Install] to deploy instantly
+```
 
 ---
 
