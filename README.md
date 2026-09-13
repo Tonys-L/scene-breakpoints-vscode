@@ -32,7 +32,7 @@ Every developer debugging in VS Code runs into these frustrations:
 ## ✨ What Can It Do For You?
 
 <p align="center">
-  <img src="./docs/images/sb.gif" alt="Scene Breakpoints Interactive Demo" width="100%" />
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/sb.gif" alt="Scene Breakpoints Interactive Demo" width="100%" />
 </p>
 
 - 🗺️ **Document Execution Flows into Living Code Maps**
@@ -70,13 +70,13 @@ Every developer debugging in VS Code runs into these frustrations:
 1. **Add Breakpoint**: Right-click on any line and choose `Add to Debug Scene...`, or press `Ctrl + Alt + B` (`Cmd + Alt + B` on macOS), select a scene, and enter a note;
 
 <p align="center">
-  <img src="./docs/images/context-menu-add.png" alt="Context menu or Ctrl+Alt+B to add scene breakpoint" width="75%" />
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/context-menu-add.png" alt="Context menu or Ctrl+Alt+B to add scene breakpoint" width="75%" />
 </p>
 
 2. **Switch Scene**: Click the status bar item at the bottom (or press `Ctrl + Alt + S` / `Cmd + Alt + S` on macOS) to activate one or more scenes;
 
 <p align="center">
-  <img src="./docs/images/scene-quickpick.png" alt="Scene Switch QuickPick dialog" width="85%" />
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/scene-quickpick.png" alt="Scene Switch QuickPick dialog" width="85%" />
 </p>
 
 3. **Export Active**: After placing breakpoints freely in code, run `Scene: Export Current Breakpoints to Scene...` from the command palette to persist them.
@@ -99,7 +99,7 @@ Every developer debugging in VS Code runs into these frustrations:
 Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with built-in CodeLens buttons and schema validation:
 
 <p align="center">
-  <img src="./docs/images/config-file-codelens.png" alt="debug-scenes.json and CodeLens view" width="85%" />
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/config-file-codelens.png" alt="debug-scenes.json and CodeLens view" width="85%" />
 </p>
 
 ```json
