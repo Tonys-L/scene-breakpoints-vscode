@@ -141,8 +141,8 @@
 
 Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接帮你管理断点场景：
 
-### 1. 8 主流 VS Code AI Agent Skill 一键部署
-按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，即可一键将 `scene-breakpoints` 专属技能部署到工作区：
+### 1. 主流 AI Agent Skill 一键部署
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，即可一键将 `scene-breakpoints` 专属技能部署到工作区，覆盖以下 8 个平台：
 - **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
 - **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
 - **Windsurf**: `.windsurf/rules/scene-breakpoints.md`
@@ -168,7 +168,7 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 
 ## 💖 支持与反馈
 
-如果这个插件对你有帮助，欢迎在 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) 或 [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode) 给个评分 ⭐。  
+如果这个插件对你有帮助，欢迎在 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) 或 [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode) 给个评分 ⭐。  
 遇到问题或有任何建议，欢迎[提交 Issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues)。
 
 ---

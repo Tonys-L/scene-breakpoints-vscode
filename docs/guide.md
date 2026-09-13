@@ -367,4 +367,4 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
 
 - **GitHub Repository**: [https://github.com/Tonys-L/scene-breakpoints-vscode](https://github.com/Tonys-L/scene-breakpoints-vscode)
 - **Issues & Suggestions**: [GitHub Issues](https://github.com/Tonys-L/scene-breakpoints-vscode/issues)
-- **Enjoying Scene Breakpoints?** Leave us a ⭐ on the [Visual Studio Marketplace](https://marketplace.visualstudio.com)!
+- **Enjoying Scene Breakpoints?** Leave us a ⭐ on the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) or [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode)!

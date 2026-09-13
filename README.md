@@ -141,8 +141,8 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
 
 Scene Breakpoints collaborates seamlessly with modern AI coding assistants, allowing your AI to understand, create, and manage breakpoint scenes for you:
 
-### 1. One-Click Skill Matrix for 8 Major VS Code AI Agents
-Press `Ctrl+Shift+P` and run **`Scene Breakpoints: Install Agent Skill`** to deploy the `scene-breakpoints` skill directly into your workspace:
+### 1. One-Click AI Agent Skill Deployment
+Press `Ctrl+Shift+P` and run **`Scene Breakpoints: Install Agent Skill`** to deploy the `scene-breakpoints` skill directly into your workspace, covering 8 major AI IDEs & Agent platforms:
 - **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
 - **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
 - **Windsurf**: `.windsurf/rules/scene-breakpoints.md`
@@ -168,7 +168,7 @@ Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform s
 
 ## 💖 Support & Feedback
 
-If this extension is helpful to you, please consider leaving a ⭐ rating on [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) or [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode).  
+If this extension is helpful to you, please consider leaving a ⭐ rating on [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) or [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode).  
 Found a bug or have a suggestion? Feel free to [open an issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues).
 
 ---
