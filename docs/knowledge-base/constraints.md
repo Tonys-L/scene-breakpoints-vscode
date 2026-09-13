@@ -232,6 +232,7 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 | 2026-09-13 | 修复实际调试多线程（WorkerThread）/多会话 DAP continued 误杀与后台 stackTrace 响应覆盖导致断点命中高亮闪退 Bug；建立 Session 独立闭包隔离（Session-Affinity Guard）与场景断点真实性存在守卫（Target Breakpoint Guard）；18 大单元测试套件全绿 + 重新打成 VSIX 包 | Tony.L | #TASK-DEBUG-PAUSE-GUARD-004 |
 | 2026-09-13 | 正式将“版本号 SSOT 绑定与发版探测（杜绝散落硬编码导致 workspaceState 缓存拦截）”与“单测禁止私有镜像副本（杜绝假绿铁律）”沉淀写入项目硬约束库；落地 CustomModified 本地改动提示与一键 View Diff 虚拟对比；重新打包发布 v1.0.4 | Tony.L | #TASK-SKILL-SSOT-GUARD-005 |
 | 2026-09-13 | 补充分发包极致轻量与媒体隔离约束（INV-014，上限 500KB，当前 118KB）、CI/CD 统一锁定 Node 22 兼容性约束（INV-015）与版本多源一致性强校验（INV-016）；落地代码级自动化验证脚本 verify-guardrails.mjs 并挂载 prepublish 与单测门禁（扩充至 20 大全维套件 279ms 100% 绿灯，发布 v1.0.5） | Tony.L | #TASK-GUARDRAILS-AUTOMATION-006 |
+| 2026-09-13 | 修正 README 中 JSON 示例条件断点规范（type: "condition"）与备注字段（desc），与底层领域模型、schema.json 及 AI 技能 100% 对齐；补齐 activeScenes 声明式注脚与 Living Code Tours 统一术语；发布补丁版本 v1.0.6 | Tony.L | #TASK-RELEASE-PATCH-1.0.6 |
 
 
 

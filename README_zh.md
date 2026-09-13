@@ -5,7 +5,7 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-仓库-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/GitHub-CI-success?logo=github" alt="CI" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/开源协议-MIT-green.svg" alt="License" /></a>
   </p>
 
@@ -13,6 +13,8 @@
 </div>
 
 > 🏷️ **核心特性**：`断点分组管理` · `场景化调试` · `AI Agent 协同` · `代码漂移自愈` · `团队共享导览`
+
+**一句话介绍**：把散落的临时断点，变成可复用、可分享、可自愈的工程化调试资产。
 
 ---
 
@@ -85,11 +87,11 @@
 
 ## ⌨️ 快捷键速查
 
-| 快捷键 (Windows/Linux) | 快捷键 (macOS) | 功能说明 |
-| :--- | :--- | :--- |
-| `Ctrl + Alt + S` | `Cmd + Alt + S` | 呼出场景控制菜单 / 快速切换与多选场景（亦可点击底部状态栏） |
-| `Ctrl + Alt + B` | `Cmd + Alt + B` | 将当前代码行保存到指定场景并输入备注 |
-| `Alt + ↑` / `Alt + ↓` | `Alt + ↑` / `Alt + ↓` | 侧边栏树视图中快速上移 / 下移断点（支持长按连续位移，亦可鼠标拖拽） |
+| 快捷键 | 功能说明 |
+| :--- | :--- |
+| `Ctrl + Alt + S`（macOS: `Cmd + Alt + S`） | 呼出场景控制菜单 / 快速切换与多选场景（亦可点击底部状态栏） |
+| `Ctrl + Alt + B`（macOS: `Cmd + Alt + B`） | 将当前代码行保存到指定场景并输入备注 |
+| `Alt + ↑` / `Alt + ↓` | 侧边栏树视图中快速上移 / 下移断点（支持长按连续位移，亦可鼠标拖拽） |
 
 > 💡 **快捷键冲突提示**：Windows 下如果 `Ctrl + Alt + B` 等快捷键被输入法或显卡驱动热键占用，可在 VS Code 的“键盘快捷方式”（`Ctrl + K Ctrl + S`）中搜索 `sceneBreakpoints` 自定义绑定。
 
@@ -106,29 +108,38 @@
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+  "activeScenes": ["login-debug"],
   "bindings": {
     "Launch API Server": "login-debug"
   },
   "scenes": {
     "login-debug": [
       {
-        "type": "line",
+        "type": "condition",
         "file": "src/auth.ts",
         "line": 45,
         "condition": "user.isVip === true",
-        "desc": "仅在 VIP 用户登录时拦截"
+        "desc": "步骤 1: 仅在 VIP 用户登录时拦截"
       },
       {
         "type": "logpoint",
         "file": "src/agent-loop.ts",
         "line": 104,
         "logMessage": "Current status: {state.status}",
-        "desc": "输出状态不暂停"
+        "desc": "步骤 2: 输出运行时状态不暂停"
+      },
+      {
+        "type": "line",
+        "file": "src/user.ts",
+        "line": 88,
+        "desc": "步骤 3: 提取用户会话核心数据"
       }
     ]
   }
 }
 ```
+
+> 💡 **`activeScenes` 字段**：记录当前激活的场景列表（支持多场景并发激活）。AI Agent 通过修改此字段即可实现免命令唤起的声明式场景切换（详见下方 AI 协同章节）。
 
 ---
 
@@ -153,7 +164,7 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`**，可一目了然查看当前各平台 Skill 部署情况并提供一键修复：
 
 ```text
-⚡ [AI 宿主检测] 检测到当前运行环境为 Antigravity (已自适应置顶)
+⚡ [AI 宿主感知] 自动识别当前 IDE (Antigravity / Cursor / Trae / VS Code) 并置顶对应规则
 ✅ [配置状态] allowAiFileActivation: 已开启 (支持 AI 声明式读写场景)
 ✅ [已就绪 Skill] Antigravity, Cursor, Trae (最新规则基线)
 ⚠️ [待部署平台] GitHub Copilot, Windsurf → 点击 [一键安装] 即可秒级补齐
@@ -175,10 +186,7 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 
 ---
 
-> 🏷️ **核心标签**：`断点管理` `场景调试` `AI Agent 协同` `Agent Skill` `断点自愈` `断点防漂移` `代码导览`
-
----
-
 ## 📄 开源许可
 
 [MIT License](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE) © 2026 Tony.L
+

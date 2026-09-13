@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.6] - 2026-09-13
+
+### Fixed
+- **Breakpoint Schema & JSON Example Accuracy**:
+  - Fixed `type: "condition"` specification in configuration example (previously incorrectly demonstrated as `type: "line"` with a condition expression).
+  - Fixed breakpoint note field name from `description` to `desc` to align strictly with domain models, `schema.json`, and AI Agent skills, preventing silent note drops and schema warnings.
+  - Added explicit `activeScenes` demonstration with interactive footnote in declarative configuration examples.
+- **Documentation & Terminology Consistency**:
+  - Unified execution flow terminology to `Living Code Tours` across header tags and feature descriptions.
+  - Replaced static CI status badge with real-time dynamic GitHub Actions workflow status SVG.
+  - Generalized host IDE detection diagnostic outputs and streamlined shortcut reference table.
+
+---
+
 ## [1.0.5] - 2026-09-13
 
 ### Improvements & Optimization

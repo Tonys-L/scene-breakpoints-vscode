@@ -2,7 +2,7 @@
   "name": "scene-breakpoints-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "tony-l",
   "author": "Tony.L <286269159@qq.com>",
   "license": "MIT",

@@ -885,7 +885,7 @@ function escapeRegExp(str) {
 
 // src/domain/skillLifecycleResolver.ts
 var crypto = __toESM(require("node:crypto"));
-var LATEST_SKILL_VERSION = "1.0.5";
+var LATEST_SKILL_VERSION = "1.0.6";
 var OFFICIAL_SKILL_HISTORY = {
   // 从 1.0.3 开始建立官方核心正文指纹基线 (后续版本演进时向此字典追加)
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3"

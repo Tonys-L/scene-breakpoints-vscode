@@ -5,7 +5,7 @@
 
   <p>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode"><img src="https://img.shields.io/badge/GitHub-Repository-blue?logo=github" alt="GitHub" /></a>
-    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/GitHub-CI-success?logo=github" alt="CI" /></a>
+    <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml"><img src="https://github.com/Tonys-L/scene-breakpoints-vscode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
     <a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" /></a>
   </p>
 
@@ -13,6 +13,8 @@
 </div>
 
 > 🏷️ **Highlights**: `Breakpoint Management` · `Scenario Debugging` · `AI Agent Collaboration` · `Self-Healing Anti-Drift` · `Living Code Tour`
+
+**One-line summary**: Turn scattered temporary breakpoints into reusable, shareable, and self-healing debugging assets.
 
 ---
 
@@ -35,7 +37,7 @@ Every developer debugging in VS Code runs into these frustrations:
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/sb.gif" alt="Scene Breakpoints Interactive Demo" width="100%" />
 </p>
 
-- 🗺️ **Document Execution Flows into Living Code Maps**
+- 🗺️ **Document Execution Flows into Living Code Tours**
   Attach clear notes to each breakpoint (e.g. `Step 1: Auth Guard`, `Step 2: Decrement Inventory`). A scene becomes a self-guided walkthrough for complex codebases.
 
 - 🎯 **Switch Scenarios, Keep Only What You Need**
@@ -85,11 +87,11 @@ Every developer debugging in VS Code runs into these frustrations:
 
 ## ⌨️ Shortcuts
 
-| Shortcut (Windows/Linux) | Shortcut (macOS) | Description |
-| :--- | :--- | :--- |
-| `Ctrl + Alt + S` | `Cmd + Alt + S` | Open Scene Control Menu / Switch & Multi-select scenes (or click Status Bar) |
-| `Ctrl + Alt + B` | `Cmd + Alt + B` | Add current line to scene with a description |
-| `Alt + ↑` / `Alt + ↓` | `Alt + ↑` / `Alt + ↓` | Move breakpoint up / down in tree view (supports continuous hold or drag-and-drop) |
+| Shortcut | Description |
+| :--- | :--- |
+| `Ctrl + Alt + S` (macOS: `Cmd + Alt + S`) | Open Scene Control Menu / Switch & Multi-select scenes (or click Status Bar) |
+| `Ctrl + Alt + B` (macOS: `Cmd + Alt + B`) | Add current line to scene with a description |
+| `Alt + ↑` / `Alt + ↓` | Move breakpoint up / down in tree view (supports continuous hold or drag-and-drop) |
 
 > 💡 **Shortcut Conflict Tip**: On Windows, if `Ctrl + Alt + B` is captured by input methods or graphics card utilities, you can easily customize it under VS Code's **Keyboard Shortcuts** (`Ctrl + K Ctrl + S`) by searching for `sceneBreakpoints`.
 
@@ -106,27 +108,38 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+  "activeScenes": ["login-debug"],
   "bindings": {
     "Launch API Server": "login-debug"
   },
   "scenes": {
     "login-debug": [
       {
-        "type": "line",
+        "type": "condition",
         "file": "src/auth.ts",
         "line": 45,
-        "description": "Step 1: Auth Guard Entry"
+        "condition": "user.isVip === true",
+        "desc": "Step 1: Intercept only when VIP user logs in"
+      },
+      {
+        "type": "logpoint",
+        "file": "src/agent-loop.ts",
+        "line": 104,
+        "logMessage": "Current status: {state.status}",
+        "desc": "Step 2: Print runtime status without pausing"
       },
       {
         "type": "line",
         "file": "src/user.ts",
         "line": 88,
-        "description": "Step 2: Read user profile"
+        "desc": "Step 3: Extract core session data"
       }
     ]
   }
 }
 ```
+
+> 💡 **`activeScenes` property**: Records currently activated debug scene(s) (supports multi-scene layering). AI Agents can modify this field to trigger declarative scenario activation without invoking commands (see AI Agent section below).
 
 ---
 
@@ -151,7 +164,7 @@ Once installed, simply instruct your AI: *"Help me analyze why login failed and 
 Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform skill deployment status and perform one-click repairs:
 
 ```text
-⚡ [Host Environment] Detected Antigravity as active IDE (automatically pinned)
+⚡ [Host Environment] Auto-detect current IDE (Antigravity / Cursor / Trae / VS Code) and prioritize rules
 ✅ [Configuration] allowAiFileActivation: Enabled (declarative scene read/write ready)
 ✅ [Deployed Skills] Antigravity, Cursor, Trae (latest baseline)
 ⚠️ [Pending Platforms] GitHub Copilot, Windsurf → Click [One-Click Install] to deploy instantly
@@ -170,10 +183,6 @@ Run **`Scene Breakpoints: Diagnose AI Integration`** to inspect cross-platform s
 
 If this extension is helpful to you, please consider leaving a ⭐ rating on [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) or [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode).  
 Found a bug or have a suggestion? Feel free to [open an issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues).
-
----
-
-> 🏷️ **Keywords**: `breakpoints` `breakpoint-manager` `scene-breakpoints` `scenario-debugging` `ai-agent` `agent-skill` `breakpoint-healing` `anti-drift` `code-tour`
 
 ---
 
