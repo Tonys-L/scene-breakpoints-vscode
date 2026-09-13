@@ -20,13 +20,14 @@ import { runTreeViewTests } from "./unit/infra/treeview_provider.test.mjs";
 import { runTemplateProviderTests } from "./unit/infra/template_provider.test.mjs";
 import { runListenersRegistryTests } from "./unit/infra/listeners_registry.test.mjs";
 import { runExtractChangelogTests } from "./unit/infra/extract_changelog.test.mjs";
+import { runGuardrailsVerificationTests } from "./unit/infra/guardrails_verification.test.mjs";
 
 // Integration & Fidelity Tests
 import { runRoundtripAndEdgeTests } from "./integration/roundtrip_and_edge.test.mjs";
 import { runI18nTests } from "./integration/i18n.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 19 大自动化测试套件 (Domain / Application / Infra / Integration)");
+console.log("🚀 开始执行 Scene Breakpoints 全量 20 大自动化测试套件 (Domain / Application / Infra / Integration)");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -71,6 +72,8 @@ try {
 	console.log("");
 	runExtractChangelogTests();
 	console.log("");
+	runGuardrailsVerificationTests();
+	console.log("");
 
 	// 4. 集成与保真度测试 (Integration)
 	runRoundtripAndEdgeTests();
@@ -79,7 +82,7 @@ try {
 
 	const totalDuration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 19 大全维测试套件 100% 通过！总耗时: ${totalDuration}ms`);
+	console.log(`🎉 全部 20 大全维测试套件 100% 通过！总耗时: ${totalDuration}ms`);
 	console.log("=======================================================\n");
 } catch (err) {
 	console.error("\n❌ 自动化测试执行失败:\n", err);

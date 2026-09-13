@@ -131,6 +131,9 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 | **INV-011** | **多场景断点合并先到先得（First-Declared-Wins）与 `enabled: false` 显式覆盖规范**：以 `${file}:${line}` 或 `fn:${functionName}` 为唯一键，断点首次出现即存入合并字典；`enabled: false` 严格参与先到先得去重，后出现的同物理位置断点直接忽略，确保与代码实现 100% 确定性保真。 | `src/domain/sceneOperations.ts` (`mergeScenesBreakpoints`) |
 | **INV-012** | **调试会话保护（挂起策略 A）与核心拓扑 Diff 防线**：调试会话进行中（`activeDebugSession` 存在）外部修改断点拓扑时，绝不强制打断开发者心流，标记 `pendingTopologyUpdate = true` 并在会话终止时平滑补发；比对“磁盘新拓扑 vs `lastAppliedTopologyHash`”，若核心断点字段（`file+line+type+condition+hitCondition+logMessage+enabled`）未变，坚决阻断 DAP 重刷。快照在会话终止、清空命令及插件重启时显式失效。 | `src/domain/activationResolver.ts`、`src/application/sceneService.ts` 与 `src/infra/vscode/listeners/debugLifecycleListener.ts` |
 | **INV-013** | **Skill 核心正文指纹唯一性与生命周期判定纯净性**：跨平台 Agent Skill/Rules 的版本判定必须先剥离宿主平台特定的 Frontmatter 元数据头部并对换行符（CRLF/LF）及行末空白执行标准化归一化，基于纯净正文 SHA-256 哈希进行 `O(1)` 反查。未匹配官方历史哈希且正文不一致时，严格判定为用户已自定义修改（`CustomModified`），杜绝不可靠的文本自动合并，必须依托 VS Code 原生 `vscode.diff` 并排比对由用户自主裁决，并在任意覆写操作前强制在同目录下生成带时间戳的 `.bak` 物理备份副本。 | `src/domain/skillLifecycleResolver.ts`、`src/infra/vscode/commands/skillCommands.ts` 与 `src/infra/vscode/templateContentProvider.ts` |
+| **INV-014** | **分发包极致轻量与媒体隔离约束 (Package Slimming Guard)**：VSIX 安装包体积必须严格控制在 500 KB 以内（当前仅 118 KB）。严禁将高清动图（GIF）、测试用例、临时配置（`.trae/`）、知识库（`docs/knowledge-base/`）及构建脚本（`scripts/`）打入 VSIX。README 中的所有动图与截图必须严格引用 GitHub 官方 Raw CDN 绝对地址。 | `.vscodeignore`、`README.md`、`README_zh.md` 与 `scripts/verify-guardrails.mjs` |
+| **INV-015** | **CI/CD 运行环境与原生 Type Stripping 兼容性约束 (Node 22 Runtime Guard)**：单测采用 Node.js 原生 TypeScript Type Stripping 特性（`--experimental-transform-types`），该特性于 Node.js 22.7.0+ 引入。本地与 GitHub Actions 所有工作流（`ci.yml`、`release.yml`）必须统一锁定 `node-version: 22.x`，严禁遗留 Node 20.x 或更低版本。 | `.github/workflows/ci.yml`、`.github/workflows/release.yml` 与 `scripts/verify-guardrails.mjs` |
+| **INV-016** | **版本发布单一真实来源（SSOT）与多源一致性校验守卫 (Release SSOT Consistency Guard)**：`package.json` 中的 `version` 是版本生命周期的唯一事实来源。其必须与 `src/domain/skillLifecycleResolver.ts` 的 `LATEST_SKILL_VERSION`、`CHANGELOG.md` 最新版本标题及 `CHANGELOG_zh.md` 最新版本标题保持 100% 绝对一致。Release Notes 必须由流水线自动化脚本从 CHANGELOG 中提取注入，禁止在 Tag 注解中手动手写维护重复冗长内容。 | `package.json`、`CHANGELOG.md`、`CHANGELOG_zh.md` 与 `scripts/verify-guardrails.mjs` |
 
 ---
 
@@ -172,10 +175,16 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 - **禁止测试代码使用私有镜像副本（杜绝假绿铁律）**：所有单元测试必须真实直接导入生产源码模块，严禁在测试文件内手工复制/粘贴生产函数或数据结构副本。生产代码修改后测试必须能够即时感知并直接验证，彻底杜绝生产代码失效而测试代码因私有副本继续报绿的“假绿”欺骗陷阱；
 - **1:1 镜像对齐规范（Mirroring Pattern）**：单元测试严格与生产代码模块一一对应（如 `sceneCodeLensProvider.ts` 对应 `codelens_provider.test.mjs`），严禁在测试文件名中使用 `_and_` 拼凑测试多个不同职责的生产模块，消灭名实不符与拼盘测试坏味道；
 - **原生 Subpath Imports 导入规范**：测试代码统一采用 Node.js 原生子路径别名（`#src/*` 与 `#test/*`），严禁使用跨层多级 `../../../` 相对路径地狱；
-- 每次算法与领域状态逻辑修改后，必须运行 `npm test`（`node test/run-all.mjs`）确保全量 18 大测试套件 100% 通过；
+- 每次算法与领域状态逻辑修改后，必须运行 `npm test`（`node test/run-all.mjs`）确保全量 20 大测试套件 100% 通过；
 - 测试用例必须覆盖缩进倍率解耦、跨函数作用域隔离、软相似度上下文门禁防误判、以及异常语法容错；
 - **真实宿主端到端 (E2E) 测试约束**：核心用户交互（扩展激活、命令调用、DAP 真实断点注入与清空、侧边栏 TreeView、状态栏联动、CodeLens）必须具备由 `@vscode/test-electron` 驱动的真实隔离沙箱 E2E 测试，运行 `npm run test:e2e` 保证真实运行环境 0 运行时未定义错误；
 - **E2E 用例与文档双向同步铁律**：后续任何新增业务能力、修改现有功能、调整 UI 或重构交互命令时，必须同步在 `docs/knowledge-base/e2e-scenarios.md` 中更新测试场景规范，并同步在 `test-e2e/suite/` 编写对应自动化测试用例。未同步用例与文档的代码严禁合并发布。
+
+### 约束代码级自动化执行硬门禁 (Automated Executable Guardrails)
+- **脚本守卫 (`scripts/verify-guardrails.mjs`)**：将核心架构与发布约束固化为可执行代码，在 `npm test`、`vscode:prepublish` 与打包时自动运行；
+- **版本 SSOT 守卫 (INV-016)**：自动比对 `package.json`、`skillLifecycleResolver.ts`、`CHANGELOG.md`、`CHANGELOG_zh.md` 四处版本一致性，一旦出现分叉立即抛错阻断；
+- **媒体 CDN 外链守卫 (INV-014)**：静态扫描中英文 README，严禁出现本地相对图片路径，确保 VSIX 体积稳定维持在 120 KB 级（硬上限 500 KB）；
+- **工作流运行环境守卫 (INV-015)**：扫描 `.github/workflows/*.yml` 严禁出现过期的 Node 20.x，确保原生 Type Stripping 环境 100% 具备。
 
 ---
 
@@ -222,6 +231,8 @@ test-e2e/                                # 真实宿主端到端沙箱测试 (@v
 | 2026-09-13 | 落地 Node.js 原生 Subpath Imports 规范（#src/* 与 #test/*）；补齐 payloadSerializer、templateContentProvider、listeners 3 大遗漏专职单测（全工程扩充至 18 大全维套件 260ms 100% 绿灯，实现生产模块 1:1 镜像覆盖闭环） | Tony.L | #TASK-IMPORT-ALIAS-003 |
 | 2026-09-13 | 修复实际调试多线程（WorkerThread）/多会话 DAP continued 误杀与后台 stackTrace 响应覆盖导致断点命中高亮闪退 Bug；建立 Session 独立闭包隔离（Session-Affinity Guard）与场景断点真实性存在守卫（Target Breakpoint Guard）；18 大单元测试套件全绿 + 重新打成 VSIX 包 | Tony.L | #TASK-DEBUG-PAUSE-GUARD-004 |
 | 2026-09-13 | 正式将“版本号 SSOT 绑定与发版探测（杜绝散落硬编码导致 workspaceState 缓存拦截）”与“单测禁止私有镜像副本（杜绝假绿铁律）”沉淀写入项目硬约束库；落地 CustomModified 本地改动提示与一键 View Diff 虚拟对比；重新打包发布 v1.0.4 | Tony.L | #TASK-SKILL-SSOT-GUARD-005 |
+| 2026-09-13 | 补充分发包极致轻量与媒体隔离约束（INV-014，上限 500KB，当前 118KB）、CI/CD 统一锁定 Node 22 兼容性约束（INV-015）与版本多源一致性强校验（INV-016）；落地代码级自动化验证脚本 verify-guardrails.mjs 并挂载 prepublish 与单测门禁（扩充至 20 大全维套件 279ms 100% 绿灯，发布 v1.0.5） | Tony.L | #TASK-GUARDRAILS-AUTOMATION-006 |
+
 
 
 
