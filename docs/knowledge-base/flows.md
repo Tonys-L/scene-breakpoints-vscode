@@ -45,10 +45,10 @@ flowchart TD
 
     LoopBps -->|全部遍历完毕| ApplyDAP[批量调用 vscode.debug.addBreakpoints 下发编辑器]
     ApplyDAP --> ReleaseLock[释放原子状态锁 isApplying = false]
-    ReleaseLock --> CheckHealedCount{healedCount > 0?}
+    ReleaseLock --> CheckLoopback{healedCount > 0 或 enrichedCount > 0?}
 
-    CheckHealedCount -->|是| SyncConfig[显式回写 saveScenesConfig 更新 JSON 文件]
-    CheckHealedCount -->|否| UpdateState
+    CheckLoopback -->|是| SyncConfig[显式回写 saveScenesConfig 更新 JSON 文件 (行号修正/补齐指纹)]
+    CheckLoopback -->|否| UpdateState
     SyncConfig --> UpdateState[更新状态机 sceneStateManager.setActiveScene]
     UpdateState --> RenderUI[状态机通知 StatusBar 响应式渲染高亮]
     RenderUI --> End([激活完成])
@@ -133,3 +133,4 @@ stateDiagram-v2
 | 2026-09-08 | 初始版本 | Tony.L | KDD-INIT-001 |
 | 2026-09-08 | 引入断点脏状态（Clean ↔ Dirty）与防误清保护转换路径 | Tony.L | KDD-STATE-004 |
 | 2026-09-08 | 确立幽灵场景存在性校验分支与禁止转换为虚假激活状态规则 | Tony.L | KDD-DEFENSE-001 |
+| 2026-09-13 | 新增自愈指纹自动补齐（enrichedCount > 0）与持久化闭环流程分支 | Tony.L | #TASK-AUTO-ENRICH-001 |

@@ -41,6 +41,7 @@ export interface ActivateSceneResult {
 	missingScenes: string[];
 	loadedCount: number;
 	healedCount: number;
+	enrichedCount?: number;
 	unmatchedCount: number;
 	unmatchedBreakpoints?: SourceSceneBreakpoint[];
 }
@@ -106,14 +107,15 @@ async function doActivateScene(params: ActivateSceneParams): Promise<ActivateSce
 	);
 
 	const { loadedCount, healedCount } = applyResult;
+	const enrichedCount = applyResult.enrichedCount || 0;
 	const healedBreakpoints = applyResult.healedBreakpoints;
 	const unmatchedCount = (applyResult as any).unmatchedBreakpoints?.length || 0;
 
 	// 5. 将持久化结果投影更新至内存状态机，驱动 UI 渲染 (INV-004)
 	sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
 
-	// 6. 自愈持久化闭环 (Self-Healing Persistence Loopback)
-	if (healedCount > 0 && healedBreakpoints) {
+	// 6. 自愈与指纹补齐持久化闭环 (Self-Healing & Fingerprint Persistence Loopback)
+	if ((healedCount > 0 || enrichedCount > 0) && healedBreakpoints) {
 		let hasPersisted = false;
 		if (validTargetScenes.length === 1) {
 			config.scenes[validTargetScenes[0]] = healedBreakpoints;
@@ -125,15 +127,27 @@ async function doActivateScene(params: ActivateSceneParams): Promise<ActivateSce
 				for (const item of sceneList) {
 					if (item.type === "function") continue;
 					const srcItem = item as SourceSceneBreakpoint;
+					const normSrcFile = srcItem.file ? srcItem.file.replace(/\\/g, "/") : "";
 					const matched = healedBreakpoints.find(
-						(h): h is SourceSceneBreakpoint =>
-							h.type !== "function" &&
-							(h as SourceSceneBreakpoint).file === srcItem.file &&
-							(h as SourceSceneBreakpoint).contextSnippet?.current === srcItem.contextSnippet?.current,
+						(h): h is SourceSceneBreakpoint => {
+							if (h.type === "function") return false;
+							const normHFile = h.file ? h.file.replace(/\\/g, "/") : "";
+							if (normHFile !== normSrcFile) return false;
+							if (srcItem.contextSnippet?.current) {
+								return h.contextSnippet?.current === srcItem.contextSnippet.current;
+							}
+							return h.line === srcItem.line;
+						},
 					);
-					if (matched && srcItem.line !== matched.line) {
-						srcItem.line = matched.line;
-						hasPersisted = true;
+					if (matched) {
+						if (srcItem.line !== matched.line) {
+							srcItem.line = matched.line;
+							hasPersisted = true;
+						}
+						if (!srcItem.contextSnippet && matched.contextSnippet) {
+							srcItem.contextSnippet = matched.contextSnippet;
+							hasPersisted = true;
+						}
 					}
 				}
 			}
@@ -150,6 +164,7 @@ async function doActivateScene(params: ActivateSceneParams): Promise<ActivateSce
 		missingScenes,
 		loadedCount,
 		healedCount,
+		enrichedCount,
 		unmatchedCount,
 		unmatchedBreakpoints: applyResult.unmatchedBreakpoints,
 	};

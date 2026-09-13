@@ -43,6 +43,7 @@
 - **自愈持久化闭环 (Self-Healing Persistence Loopback)**：自愈成功后，`applyScene` 自动将自愈断点回写更新至 `.vscode/debug-scenes.json`（支持多场景反向映射精准回写），完成闭环；
 - **单次装配文件行内存缓存池 (fileLinesCache)**：自愈期间对同文件多断点维护内存文本行集合，消除重复磁盘读取与字符串切行开销；
 - **脱靶失联检测与告警 (Unmatched Warning & Visual Flag)**：当代码发生破坏性重构或被删除导致两阶段均未达标时，判定为 `unmatched` 脱靶状态。平滑回退至原行号的同时，激活完成时立即弹出 VS Code 警告通知并提供一键定位代码，侧边栏断点树节点实时呈现 `⚠️ 未匹配 (脱靶)` 视觉警告与悬浮释义；
+- **缺失自愈指纹自动补齐能力 (Missing Fingerprint Auto-Enrichment)**：当装配的断点条目（如 AI 生成或手动编写）缺失 `contextSnippet` 时，自动读取目标源码调用纯领域函数提取三行指纹，并在激活成功后原子持久化回写至 `.vscode/debug-scenes.json`，使断点后续无缝具备漂移自愈能力；
 - 判定失败时，优雅回退至原始行号，严禁胡乱漂移。
 
 **变化点**:
@@ -259,3 +260,4 @@
 | 2026-09-13 | 落地基于核心正文哈希反查的 Skill 生命周期三态判定、VS Code 原生 Diff 与自动备份机制 (v1.0.3) | Tony.L | KDD-SKILL-LIFECYCLE-001 |
 | 2026-09-13 | 全量对齐能力边界至 DDD 三层隔离架构代码路径 (domain/application/infra) | Tony.L | #TASK-ARCH-PATH-SYNC-001 |
 | 2026-09-13 | 移除多场景组合/继承 (includes) 扩展点规划，全面收敛至动态叠加激活体系 | Tony.L | #TASK-REMOVE-INCLUDES-001 |
+| 2026-09-13 | 落地场景激活时缺失自愈指纹自动提取补齐与持久化回写闭环 (Auto-Enrich Fingerprint) | Tony.L | #TASK-AUTO-ENRICH-001 |

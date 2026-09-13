@@ -329,5 +329,69 @@ export async function runSceneServiceTests() {
 		);
 	}
 
-	console.log("  ✅ [Application] 场景应用服务与串行排队测试套件（6 大核心维度·真实源码）全部通过！");
+	// ----------------------------------------------------
+	// 7. 测试缺失指纹断点在激活时的持久化回写闭环 (INV-004 & INV-010)
+	// ----------------------------------------------------
+	{
+		resetStateManager();
+		const repo = new MockSceneRepository({
+			activeScenes: ["demo-flow"],
+			scenes: {
+				"demo-flow": [
+					{ file: "demo.ts", line: 15, type: "line", desc: "未带指纹的初始断点" },
+				],
+			},
+		});
+
+		const bridge = {
+			appliedScenes: [],
+			applySceneBreakpoints: async (_ws, _label, bps) => {
+				const enriched = bps.map((b) => ({
+					...b,
+					contextSnippet: {
+						prev: "const a = 1;",
+						current: "const b = 2;",
+						next: "const c = 3;",
+						indent: 2,
+					},
+				}));
+				return {
+					loadedCount: enriched.length,
+					healedCount: 0,
+					enrichedCount: 1,
+					healedBreakpoints: enriched,
+					unmatchedBreakpoints: [],
+				};
+			},
+			collectCurrentBreakpoints: async () => [],
+			clearAllBreakpoints: async () => {},
+			applySingleBreakpointToEditor: async () => true,
+			syncBreakpointEnabledToEditor: async () => true,
+		};
+
+		const loopGuard = { marked: false, markInternalSaving: () => { loopGuard.marked = true; } };
+
+		const res = await activateScene({
+			workspaceRoot,
+			targetScenes: ["demo-flow"],
+			sceneRepository: repo,
+			breakpointBridge: bridge,
+			loopGuard,
+		});
+
+		assert.strictEqual(res.success, true);
+		assert.strictEqual(res.enrichedCount, 1, "激活结果必须包含 enrichedCount");
+		assert.strictEqual(loopGuard.marked, true, "持久化必须标记内部保存守卫");
+		assert.strictEqual(repo.saveCount, 1, "必须触发权威 SSOT 磁盘保存");
+		assert.ok(
+			repo.config.scenes["demo-flow"][0].contextSnippet,
+			"demo-flow 断点必须持久化补齐后的 contextSnippet",
+		);
+		assert.strictEqual(
+			repo.config.scenes["demo-flow"][0].contextSnippet.current,
+			"const b = 2;",
+		);
+	}
+
+	console.log("  ✅ [Application] 场景应用服务与串行排队测试套件（7 大核心维度·真实源码）全部通过！");
 }

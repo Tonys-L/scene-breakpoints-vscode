@@ -8,6 +8,17 @@
 
 ---
 
+## [1.0.7] - 2026-09-13
+
+### 新增与增强 (Added & Enhancements)
+- **场景激活自动现场补齐行自愈指纹 (Auto-Enrich Missing Fingerprints)**：
+  - 当通过 AI Agent（如 Antigravity、Cursor、Trae、Copilot 等）生成场景或开发者手工编写断点时，支持仅声明核心要素（`type`, `file`, `line`, `desc`），彻底免除人工抽取上下文代码片段的心智与 Token 负担；
+  - 场景首次激活下发至 VS Code DAP 调试器时，内核自动读取目标源码，利用纯领域算法现场提取 100% 保真的三行伴随代码指纹（`contextSnippet`）及前导缩进；
+  - 激活成功后，由内部串行持久化管道（受 `saveLoopGuard` 防回环守卫严格保护），静默将补全指纹后的断点回写至 `.vscode/debug-scenes.json`；
+  - 断点自激活瞬间起全面享有两阶段滑动窗口与大跨度作用域巡航自愈保护，真正兑现“AI 极简声明、插件自动加固”。
+
+---
+
 ## [1.0.6] - 2026-09-13
 
 ### 修复 (Fixed)

@@ -885,7 +885,7 @@ function escapeRegExp(str) {
 
 // src/domain/skillLifecycleResolver.ts
 var crypto = __toESM(require("node:crypto"));
-var LATEST_SKILL_VERSION = "1.0.6";
+var LATEST_SKILL_VERSION = "1.0.7";
 var OFFICIAL_SKILL_HISTORY = {
   // 从 1.0.3 开始建立官方核心正文指纹基线 (后续版本演进时向此字典追加)
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3"
@@ -1169,6 +1169,7 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
     }
     const targetBreakpoints = [];
     let healedCount = 0;
+    let enrichedCount = 0;
     const pathCache = /* @__PURE__ */ new Map();
     const fileLinesCache = /* @__PURE__ */ new Map();
     const unmatchedBreakpoints = [];
@@ -1206,25 +1207,52 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
         pathCache.set(cacheKey, targetUri);
       }
       if (!targetUri) continue;
+      const targetFullPath = targetUri.fsPath;
+      const docLinesGetter = (filePath) => {
+        const normFilePath = path4.normalize(filePath).toLowerCase();
+        const openDoc = vscode2.workspace.textDocuments.find(
+          (d) => path4.normalize(d.uri.fsPath).toLowerCase() === normFilePath
+        );
+        if (openDoc) {
+          const lines = [];
+          for (let i = 0; i < openDoc.lineCount; i++) {
+            lines.push(openDoc.lineAt(i).text);
+          }
+          return lines;
+        }
+        return void 0;
+      };
+      if (!srcItem.contextSnippet || typeof srcItem.contextSnippet.current !== "string") {
+        let lines;
+        if (fileLinesCache.has(targetFullPath)) {
+          lines = fileLinesCache.get(targetFullPath);
+        } else {
+          lines = docLinesGetter(targetFullPath);
+          if (!lines && fs3.existsSync(targetFullPath)) {
+            try {
+              const content = await fs3.promises.readFile(targetFullPath, "utf-8");
+              lines = content.split(/\r?\n/);
+            } catch {
+            }
+          }
+          if (lines) {
+            fileLinesCache.set(targetFullPath, lines);
+          }
+        }
+        if (lines && lines.length > 0) {
+          const lineZeroBased = srcItem.line - 1;
+          if (lineZeroBased >= 0 && lineZeroBased < lines.length) {
+            srcItem.contextSnippet = extractContextSnippetFromLines(lines, lineZeroBased);
+            enrichedCount++;
+          }
+        }
+      }
       let effectiveLine = srcItem.line;
       const healResult = await resolveHealedLine(
         workspaceRoot,
         srcItem,
         fileLinesCache,
-        (filePath) => {
-          const normFilePath = path4.normalize(filePath).toLowerCase();
-          const openDoc = vscode2.workspace.textDocuments.find(
-            (d) => path4.normalize(d.uri.fsPath).toLowerCase() === normFilePath
-          );
-          if (openDoc) {
-            const lines = [];
-            for (let i = 0; i < openDoc.lineCount; i++) {
-              lines.push(openDoc.lineAt(i).text);
-            }
-            return lines;
-          }
-          return void 0;
-        }
+        docLinesGetter
       );
       if (healResult.isHealed) {
         effectiveLine = healResult.healedLine;
@@ -1293,7 +1321,8 @@ async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
     return {
       loadedCount: targetBreakpoints.length,
       healedCount,
-      healedBreakpoints: healedCount > 0 ? bpsToLoad : void 0,
+      enrichedCount,
+      healedBreakpoints: healedCount > 0 || enrichedCount > 0 ? bpsToLoad : void 0,
       unmatchedBreakpoints
     };
   } finally {
@@ -2067,10 +2096,11 @@ async function doActivateScene(params) {
     bpsToLoad
   );
   const { loadedCount, healedCount } = applyResult;
+  const enrichedCount = applyResult.enrichedCount || 0;
   const healedBreakpoints = applyResult.healedBreakpoints;
   const unmatchedCount = applyResult.unmatchedBreakpoints?.length || 0;
   sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
-  if (healedCount > 0 && healedBreakpoints) {
+  if ((healedCount > 0 || enrichedCount > 0) && healedBreakpoints) {
     let hasPersisted = false;
     if (validTargetScenes.length === 1) {
       config.scenes[validTargetScenes[0]] = healedBreakpoints;
@@ -2082,12 +2112,27 @@ async function doActivateScene(params) {
         for (const item of sceneList) {
           if (item.type === "function") continue;
           const srcItem = item;
+          const normSrcFile = srcItem.file ? srcItem.file.replace(/\\/g, "/") : "";
           const matched = healedBreakpoints.find(
-            (h) => h.type !== "function" && h.file === srcItem.file && h.contextSnippet?.current === srcItem.contextSnippet?.current
+            (h) => {
+              if (h.type === "function") return false;
+              const normHFile = h.file ? h.file.replace(/\\/g, "/") : "";
+              if (normHFile !== normSrcFile) return false;
+              if (srcItem.contextSnippet?.current) {
+                return h.contextSnippet?.current === srcItem.contextSnippet.current;
+              }
+              return h.line === srcItem.line;
+            }
           );
-          if (matched && srcItem.line !== matched.line) {
-            srcItem.line = matched.line;
-            hasPersisted = true;
+          if (matched) {
+            if (srcItem.line !== matched.line) {
+              srcItem.line = matched.line;
+              hasPersisted = true;
+            }
+            if (!srcItem.contextSnippet && matched.contextSnippet) {
+              srcItem.contextSnippet = matched.contextSnippet;
+              hasPersisted = true;
+            }
           }
         }
       }
@@ -2103,6 +2148,7 @@ async function doActivateScene(params) {
     missingScenes,
     loadedCount,
     healedCount,
+    enrichedCount,
     unmatchedCount,
     unmatchedBreakpoints: applyResult.unmatchedBreakpoints
   };

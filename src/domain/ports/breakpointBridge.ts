@@ -3,6 +3,7 @@ import type { SceneBreakpoint, SourceSceneBreakpoint } from "../types";
 export interface ApplySceneResult {
 	loadedCount: number;
 	healedCount: number;
+	enrichedCount?: number;
 	healedBreakpoints?: SceneBreakpoint[];
 	unmatchedBreakpoints?: SourceSceneBreakpoint[];
 }

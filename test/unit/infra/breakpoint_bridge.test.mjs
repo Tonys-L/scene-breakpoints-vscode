@@ -358,5 +358,68 @@ export async function runBreakpointBridgeTests() {
 		);
 	}
 
+	// 8. 缺失自愈指纹断点自动提取补齐与回写闭环 (Auto-enrich missing contextSnippet)
+	{
+		__resetMockVscodeState();
+		const wsRoot = "D:/project/repo";
+
+		let savedConfig = null;
+		const mockRepo = {
+			loadScenesConfig: () => ({
+				scenes: {
+					"ai-scene": [
+						{ type: "line", file: "src/print.ts", line: 5, enabled: true, desc: "AI 生成断点" },
+					],
+				},
+				activeScenes: [],
+			}),
+			saveScenesConfig: (_ws, config) => {
+				savedConfig = JSON.parse(JSON.stringify(config));
+			},
+		};
+
+		const mockBridge = {
+			applySceneBreakpoints: async (_ws, _label, bps) => {
+				const enrichedBps = bps.map((b) => ({
+					...b,
+					contextSnippet: {
+						prev: "// prev line",
+						current: "console.log('print entry');",
+						next: "// next line",
+						indent: 4,
+					},
+				}));
+				return {
+					loadedCount: enrichedBps.length,
+					healedCount: 0,
+					enrichedCount: 1,
+					healedBreakpoints: enrichedBps,
+				};
+			},
+			collectCurrentBreakpoints: async () => [],
+			clearAllBreakpoints: async () => {},
+			applySingleBreakpointToEditor: async () => true,
+			syncBreakpointEnabledToEditor: async () => true,
+		};
+
+		const result = await activateScene({
+			workspaceRoot: wsRoot,
+			targetScenes: ["ai-scene"],
+			sceneRepository: mockRepo,
+			breakpointBridge: mockBridge,
+		});
+
+		assert.strictEqual(result.enrichedCount, 1, "激活结果必须准确返回 enrichedCount = 1");
+		assert.ok(savedConfig, "当有指纹补齐时必须触发持久化回写");
+		assert.ok(
+			savedConfig.scenes["ai-scene"][0].contextSnippet,
+			"ai-scene 中缺失指纹的断点必须被成功写入 contextSnippet",
+		);
+		assert.strictEqual(
+			savedConfig.scenes["ai-scene"][0].contextSnippet.current,
+			"console.log('print entry');",
+		);
+	}
+
 	console.log("  ✅ [Breakpoint Bridge] 宿主断点桥接器测试全部通过！");
 }

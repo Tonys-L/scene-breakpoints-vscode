@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { extractContextSnippet, resolveHealedLine } from "../../domain/healingEngine";
+import { extractContextSnippet, extractContextSnippetFromLines, resolveHealedLine } from "../../domain/healingEngine";
 import { sceneStateManager } from "../../domain/sceneStateManager";
 import { computeBreakpointsTopologyHash } from "../../domain/activationResolver";
 import type { ContextSnippet, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "../../domain/types";
@@ -28,6 +28,7 @@ export async function applySceneBreakpoints(
 
 		const targetBreakpoints: vscode.Breakpoint[] = [];
 		let healedCount = 0;
+		let enrichedCount = 0;
 		// 模糊寻道短期路径缓存：避免同一文件在循环中反复进行全盘 findFiles
 		const pathCache = new Map<string, vscode.Uri | null>();
 		// 源码行解析短期缓存：避免同一大文件在自愈时反复进行全量读盘与 split 切行
@@ -73,26 +74,58 @@ export async function applySceneBreakpoints(
 
 			if (!targetUri) continue;
 
+			const targetFullPath = targetUri.fsPath;
+			const docLinesGetter = (filePath: string) => {
+				const normFilePath = path.normalize(filePath).toLowerCase();
+				const openDoc = vscode.workspace.textDocuments.find(
+					(d) => path.normalize(d.uri.fsPath).toLowerCase() === normFilePath,
+				);
+				if (openDoc) {
+					const lines: string[] = [];
+					for (let i = 0; i < openDoc.lineCount; i++) {
+						lines.push(openDoc.lineAt(i).text);
+					}
+					return lines;
+				}
+				return undefined;
+			};
+
+			// 若断点条目缺失行自愈指纹，在物理行有效范围内从源码自动提取补齐
+			if (!srcItem.contextSnippet || typeof srcItem.contextSnippet.current !== "string") {
+				let lines: string[] | undefined;
+				if (fileLinesCache.has(targetFullPath)) {
+					lines = fileLinesCache.get(targetFullPath);
+				} else {
+					lines = docLinesGetter(targetFullPath);
+					if (!lines && fs.existsSync(targetFullPath)) {
+						try {
+							const content = await fs.promises.readFile(targetFullPath, "utf-8");
+							lines = content.split(/\r?\n/);
+						} catch {
+							// 异常安全忽略
+						}
+					}
+					if (lines) {
+						fileLinesCache.set(targetFullPath, lines);
+					}
+				}
+
+				if (lines && lines.length > 0) {
+					const lineZeroBased = srcItem.line - 1;
+					if (lineZeroBased >= 0 && lineZeroBased < lines.length) {
+						srcItem.contextSnippet = extractContextSnippetFromLines(lines, lineZeroBased);
+						enrichedCount++;
+					}
+				}
+			}
+
 			// 行号自愈探测 (带文件行内存缓存复用)
 			let effectiveLine = srcItem.line;
 			const healResult = await resolveHealedLine(
 				workspaceRoot,
 				srcItem,
 				fileLinesCache,
-				(filePath) => {
-					const normFilePath = path.normalize(filePath).toLowerCase();
-					const openDoc = vscode.workspace.textDocuments.find(
-						(d) => path.normalize(d.uri.fsPath).toLowerCase() === normFilePath,
-					);
-					if (openDoc) {
-						const lines: string[] = [];
-						for (let i = 0; i < openDoc.lineCount; i++) {
-							lines.push(openDoc.lineAt(i).text);
-						}
-						return lines;
-					}
-					return undefined;
-				},
+				docLinesGetter,
 			);
 			if (healResult.isHealed) {
 				effectiveLine = healResult.healedLine;
@@ -187,7 +220,8 @@ export async function applySceneBreakpoints(
 		return {
 			loadedCount: targetBreakpoints.length,
 			healedCount,
-			healedBreakpoints: healedCount > 0 ? bpsToLoad : undefined,
+			enrichedCount,
+			healedBreakpoints: (healedCount > 0 || enrichedCount > 0) ? bpsToLoad : undefined,
 			unmatchedBreakpoints,
 		};
 	} finally {

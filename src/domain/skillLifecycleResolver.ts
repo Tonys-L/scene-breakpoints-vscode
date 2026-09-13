@@ -3,7 +3,7 @@ import * as crypto from "node:crypto";
 /**
  * 插件当前内置的最新 Skill 规则版本号 (默认与 package.json 对齐)
  */
-export const LATEST_SKILL_VERSION = "1.0.6";
+export const LATEST_SKILL_VERSION = "1.0.7";
 
 /**
  * 官方历史核心正文指纹映射表 (Hash 作为 Key，O(1) 极速秒查版本)
