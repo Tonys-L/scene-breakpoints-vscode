@@ -2,14 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "type": "node",
-      "request": "launch",
-      "name": "🚀 运行断点全功能实测 Demo (Node.js)",
-      "skipFiles": ["<node_internals>/**"],
-      "program": "${workspaceFolder}/demo/debug-demo.mjs",
-      "console": "internalConsole"
-    },
-    {
       "name": "Launch Extension",
       "type": "extensionDevelopmentHost",
       "request": "launch",
