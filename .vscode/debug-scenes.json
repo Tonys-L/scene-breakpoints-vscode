@@ -1,305 +1,148 @@
 {
   "scenes": {
-    "demo-all-breakpoints": [
+    "arch:activation-flow": [
       {
         "type": "line",
-        "file": "demo/debug-demo.mjs",
-        "line": 22,
+        "file": "src/infra/vscode/commands/sceneCommands.ts",
+        "line": 42,
         "enabled": true,
-        "desc": "步骤1 (普通行断点): 检查订单入口与初始总额",
+        "desc": "步骤 1: applySceneCommand 命令入口与入参清洗",
         "contextSnippet": {
-          "current": "const orderUser = order.user;"
-        }
-      },
-      {
-        "type": "condition",
-        "file": "demo/debug-demo.mjs",
-        "line": 26,
-        "condition": "order.vipLevel === \"SVIP\"",
-        "enabled": true,
-        "desc": "步骤2 (条件断点): 仅在 VIP 等级为 SVIP 时停下",
-        "contextSnippet": {
-          "current": "if (order.vipLevel === \"SVIP\") {"
-        }
-      },
-      {
-        "type": "logpoint",
-        "file": "demo/debug-demo.mjs",
-        "line": 38,
-        "logMessage": "🛒 [Logpoint 日志] 正在核算商品: {item.name}, 单价: ¥{item.price}",
-        "enabled": true,
-        "desc": "步骤3 (日志断点 Logpoint): 不暂停，向控制台输出商品信息",
-        "contextSnippet": {
-          "current": "const subtotal = item.price * item.quantity;"
-        }
-      },
-      {
-        "type": "hitCount",
-        "file": "demo/debug-demo.mjs",
-        "line": 41,
-        "hitCondition": ">2",
-        "enabled": true,
-        "desc": "步骤4 (命中计数断点): 循环核算超过 2 次(第3件商品起)才停下",
-        "contextSnippet": {
-          "current": "totalAmount += subtotal;"
-        }
-      },
-      {
-        "type": "function",
-        "functionName": "executeFinalPayment",
-        "enabled": true,
-        "desc": "步骤5 (函数断点): 调用支付结算函数时自动拦截暂停"
-      }
-    ],
-    "demo-vip-only": [
-      {
-        "type": "condition",
-        "file": "demo/debug-demo.mjs",
-        "line": 26,
-        "condition": "order.vipLevel === \"SVIP\"",
-        "enabled": true,
-        "desc": "仅在 SVIP 时停下排查特惠",
-        "contextSnippet": {
-          "current": "if (order.vipLevel === \"SVIP\") {"
-        }
-      }
-    ],
-    "demo-payment-only": [
-      {
-        "type": "function",
-        "functionName": "executeFinalPayment",
-        "enabled": true,
-        "desc": "仅在核心支付网关扣款处暂停"
-      }
-    ],
-    "scene-activation-flow": [
-      {
-        "type": "line",
-        "file": "src/commands/applyScene.ts",
-        "line": 11,
-        "desc": "Step 1: Load debug-scenes.json configuration"
-      },
-      {
-        "type": "line",
-        "file": "src/commands/applyScene.ts",
-        "line": 128,
-        "desc": "Step 2: Aggregate breakpoints across scenes and deduplicate",
-        "enabled": true
-      },
-      {
-        "type": "line",
-        "file": "src/breakpointAdapter.ts",
-        "line": 19,
-        "desc": "Step 3: Enter batch breakpoint mutation protection"
-      },
-      {
-        "type": "line",
-        "file": "src/breakpointAdapter.ts",
-        "line": 78,
-        "desc": "Step 4: Probe and auto-heal breakpoint line numbers"
-      },
-      {
-        "type": "line",
-        "file": "src/breakpointAdapter.ts",
-        "line": 155,
-        "desc": "Step 5: Diff and install modified breakpoints into editor",
-        "enabled": true
-      },
-      {
-        "type": "line",
-        "file": "src/commands/applyScene.ts",
-        "line": 138,
-        "desc": "Step 6: Update state machine to refresh sidebar and status bar",
-        "enabled": true
-      }
-    ],
-    "code-drift-healing": [
-      {
-        "type": "line",
-        "file": "src/healingAdapter.ts",
-        "line": 77,
-        "desc": "Step 1: Extract 3-line fingerprint context (prev + current + next)"
-      },
-      {
-        "type": "line",
-        "file": "src/healingAdapter.ts",
-        "line": 101,
-        "desc": "Step 2: Trace upward to locate enclosing function anchor"
-      },
-      {
-        "type": "line",
-        "file": "src/healingAdapter.ts",
-        "line": 196,
-        "desc": "Step 3: Fast path: Return immediately if original line matches exactly"
-      },
-      {
-        "type": "condition",
-        "file": "src/healingAdapter.ts",
-        "line": 237,
-        "condition": "isCurrentExactMatch === true",
-        "desc": "Step 4: Slow path: Score candidates based on exact line match"
-      },
-      {
-        "type": "logpoint",
-        "file": "src/healingAdapter.ts",
-        "line": 296,
-        "logMessage": "confidence={confidenceRatio}, best={bestIdx+1}, threshold={HEALING_CONFIDENCE_THRESHOLD}",
-        "desc": "Step 5: Log confidence score without halting execution"
-      },
-      {
-        "type": "line",
-        "file": "src/healingAdapter.ts",
-        "line": 298,
-        "desc": "Step 6: Return healed line if confidence score meets threshold"
-      }
-    ],
-    "config-read-write": [
-      {
-        "type": "line",
-        "file": "src/config/configStorage.ts",
-        "line": 72,
-        "desc": "Entry: loadScenesConfig reads debug-scenes.json"
-      },
-      {
-        "type": "line",
-        "file": "src/config/configStorage.ts",
-        "line": 84,
-        "desc": "Guard: Detect Git merge conflict markers"
-      },
-      {
-        "type": "line",
-        "file": "src/config/configStorage.ts",
-        "line": 91,
-        "desc": "Parser: Strip comments and trailing commas before JSON parse"
-      },
-      {
-        "type": "line",
-        "file": "src/config/configStorage.ts",
-        "line": 136,
-        "desc": "Entry: saveScenesConfig writes debug-scenes.json"
-      },
-      {
-        "type": "condition",
-        "file": "src/config/configStorage.ts",
-        "line": 148,
-        "condition": "isWriting === true",
-        "desc": "Mutex: Queue into pendingSave if disk write is in progress"
-      },
-      {
-        "type": "function",
-        "functionName": "stripJsonComments",
-        "desc": "Function Breakpoint: JSON comment stripper"
-      }
-    ],
-    "demo-ts": [
-      {
-        "type": "line",
-        "file": "demo/healing-demo.ts",
-        "line": 14,
-        "desc": "log",
-        "contextSnippet": {
-          "prev": "console.log(`[Order] Preparing to process payment for order ${order.id}`);",
-          "current": "console.log(`[Order] Customer name: ${order.customer}`);",
-          "next": "if (order.amount <= 0) {",
-          "scopeAnchor": "processOrderPayment",
-          "indent": 2
+          "current": "if (Array.isArray(sceneParam)) {"
         }
       },
       {
         "type": "line",
-        "file": "demo/healing-demo.ts",
-        "line": 20,
-        "desc": "transactionId",
+        "file": "src/application/sceneService.ts",
+        "line": 65,
+        "enabled": true,
+        "desc": "步骤 2: doActivateScene 场景匹配、多场景去重与串行排队",
         "contextSnippet": {
-          "prev": "}",
-          "current": "const transactionId = `TX-${Date.now()}`;",
-          "next": "console.log(`[Order] Payment successful! Transaction: ${transactionId}`);",
-          "scopeAnchor": "processOrderPayment",
-          "indent": 2
+          "current": "for (const target of rawTargetScenes) {"
         }
-      }
-    ],
-    "demo-python": [
+      },
       {
         "type": "line",
-        "file": "demo/healing-demo.py",
+        "file": "src/domain/activationResolver.ts",
         "line": 7,
-        "desc": "aaa",
+        "enabled": true,
+        "desc": "步骤 3: computeBreakpointsTopologyHash 计算断点核心拓扑指纹",
         "contextSnippet": {
-          "prev": "print(f\"[Python] Customer: {order.get('customer')}\")",
-          "current": "print(f\"[Python] Customer: {order.get('customer')}\")",
-          "next": "# AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）",
-          "scopeAnchor": "process_transaction",
-          "indent": 8
+          "current": "export function computeBreakpointsTopologyHash(breakpoints: SceneBreakpoint[]): string {"
         }
       },
       {
         "type": "line",
-        "file": "demo/healing-demo.py",
-        "line": 11,
-        "desc": "bbb",
+        "file": "src/domain/healingEngine.ts",
+        "line": 515,
+        "enabled": true,
+        "desc": "步骤 4: resolveHealedLine 自愈算法行号动态计算与防漂移",
         "contextSnippet": {
-          "prev": "# AI 插入的货币与前置参数检查（测试控制流关键字防误判与行号漂移）",
-          "current": "if not order.get(\"id\"):",
-          "next": "raise ValueError(\"Order ID missing\")",
-          "scopeAnchor": "process_transaction",
-          "indent": 8
+          "current": "export async function resolveHealedLine("
         }
       },
       {
         "type": "line",
-        "file": "demo/healing-demo copy.py",
-        "line": 14,
-        "desc": "sdafasd",
+        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
+        "line": 204,
+        "enabled": true,
+        "desc": "步骤 5: applySceneBreakpoints 增量 Diff 与 DAP 真正装配至 VS Code",
         "contextSnippet": {
-          "prev": "currency = order.get(\"currency\", \"USD\")",
-          "current": "print(f\"[Python] Currency detected: {currency}\")",
-          "next": "if (order[\"amount\"] <= 0):",
-          "scopeAnchor": "process_transaction",
-          "indent": 8
+          "current": "if (toRemove.length > 0) {"
         }
       }
     ],
-    "demo-go": [
+    "arch:healing-engine": [
       {
         "type": "line",
-        "file": "demo/healing-demo.go",
-        "line": 14,
+        "file": "src/domain/healingEngine.ts",
+        "line": 390,
         "enabled": true,
-        "desc": "Go: Receiver method with initialized if statement",
+        "desc": "步骤 1: calculateCandidateLineScore 候选行指纹加权打分",
         "contextSnippet": {
-          "prev": "fmt.Printf(\"[Go] Order amount: %.2f\\n\", amount)",
-          "current": "if err := s.validate(amount); err != nil {",
-          "next": "return fmt.Errorf(\"payment validation failed: %w\", err)",
-          "indent": 4,
-          "scopeAnchor": "ExecutePayment"
+          "current": "export function calculateCandidateLineScore("
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/healingEngine.ts",
+        "line": 457,
+        "enabled": true,
+        "desc": "步骤 2: 作用域巡航大跨度重锚定 (突破 30 行滑动窗口)",
+        "contextSnippet": {
+          "current": "if (targetScope) {"
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/healingEngine.ts",
+        "line": 515,
+        "enabled": true,
+        "desc": "步骤 3: resolveHealedLine 文件加载与多阶段自愈总入口",
+        "contextSnippet": {
+          "current": "export async function resolveHealedLine("
         }
       }
     ],
-    "demo-rust": [
+    "arch:storage-loop-guard": [
       {
         "type": "line",
-        "file": "demo/healing-demo.rs",
-        "line": 13,
+        "file": "src/infra/storage/jsonFileSceneRepository.ts",
+        "line": 85,
         "enabled": true,
-        "desc": "Rust: match statement branch",
+        "desc": "步骤 1: loadScenesConfig JSONC 注释剥离与健壮清洗",
         "contextSnippet": {
-          "prev": "match status {",
-          "current": "PaymentStatus::Approved => {",
-          "next": "println!(\"[Rust] Invoice approved successfully!\");",
-          "indent": 8,
-          "scopeAnchor": "settle_invoice"
+          "current": "export function loadScenesConfig(workspaceRoot: string): ScenesConfig {"
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/saveLoopGuard.ts",
+        "line": 25,
+        "enabled": true,
+        "desc": "步骤 2: markInternalSaving 标记插件内部写盘以防死锁回环",
+        "contextSnippet": {
+          "current": "public markInternalSaving(): void {"
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/vscode/listeners/configFileWatcherListener.ts",
+        "line": 27,
+        "enabled": true,
+        "desc": "步骤 3: configFileWatcher 触发，检查回环标记并决定是否重载",
+        "contextSnippet": {
+          "current": "if (saveLoopGuard.isInternalSaving()) {"
+        }
+      }
+    ],
+    "arch:treeview-render": [
+      {
+        "type": "line",
+        "file": "src/infra/vscode/sceneTreeProvider.ts",
+        "line": 150,
+        "enabled": true,
+        "desc": "步骤 1: getChildren 构造侧边栏场景与断点树节点模型",
+        "contextSnippet": {
+          "current": "public async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {"
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/vscode/sceneTreeProvider.ts",
+        "line": 280,
+        "enabled": true,
+        "desc": "步骤 2: handleDrop 树节点拖拽重排与顺序持久化",
+        "contextSnippet": {
+          "current": "async handleDrop("
         }
       }
     ]
   },
   "bindings": {
-    "🚀 运行断点全功能实测 Demo (Node.js)": [
-      "demo-all-breakpoints"
-    ],
-    "Launch Extension": "scene-activation-flow"
+    "Run Extension": "arch:activation-flow"
   },
   "activeScenes": [
-    "demo-all-breakpoints"
+    "arch:activation-flow"
   ]
 }
