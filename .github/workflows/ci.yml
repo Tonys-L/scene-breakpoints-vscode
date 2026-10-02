@@ -33,8 +33,11 @@ jobs:
       - name: Build extension
         run: npm run build
 
-      - name: Run unit test suites (13 categories)
-        run: npm test
+      - name: Run unit test suites with coverage threshold (≥85%)
+        run: npm run test:coverage
+
+      - name: Verify engineering guardrails
+        run: npm run verify
 
       - name: Run E2E test suites (Linux with xvfb)
         if: runner.os == 'Linux'

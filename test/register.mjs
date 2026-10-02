@@ -28,8 +28,11 @@ registerHooks({
 		}
 
 		// 2. 原生 Subpath Imports 优先与 TypeScript 自动补全
-		if (specifier.startsWith("#src/") || specifier.startsWith("#test/")) {
-			const subpath = specifier.startsWith("#src/") ? `src/${specifier.slice(5)}` : `test/${specifier.slice(6)}`;
+		if (specifier.startsWith("#src/") || specifier.startsWith("#test/") || specifier.startsWith("#scripts/")) {
+			let subpath = "";
+			if (specifier.startsWith("#src/")) subpath = `src/${specifier.slice(5)}`;
+			else if (specifier.startsWith("#test/")) subpath = `test/${specifier.slice(6)}`;
+			else subpath = `scripts/${specifier.slice(9)}`;
 			const basePath = path.resolve(PROJECT_ROOT, subpath);
 			for (const candidate of [basePath, `${basePath}.ts`, `${basePath}.mjs`, `${basePath}/index.ts`, `${basePath}/index.mjs`]) {
 				const stat = fs.statSync(candidate, { throwIfNoEntry: false });

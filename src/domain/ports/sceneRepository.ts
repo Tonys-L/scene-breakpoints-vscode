@@ -1,4 +1,4 @@
-import type { ScenesConfig } from "../types";
+import type { ScenesConfig } from "#src/domain/types";
 
 /**
  * 核心层能力契约：场景配置持久化仓储端口 (ISceneRepository)
@@ -10,9 +10,6 @@ export interface ISceneRepository {
 
 	/** 同步保存场景配置文件至磁盘 */
 	saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void;
-
-	/** 异步通过互斥队列原子写入场景配置文件 */
-	saveScenesConfigAtomic(workspaceRoot: string, config: ScenesConfig): Promise<void>;
 
 	/** 获取场景配置文件物理路径 */
 	getScenesConfigPath(workspaceRoot: string): string;

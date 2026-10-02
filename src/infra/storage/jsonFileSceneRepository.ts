@@ -1,25 +1,47 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { syncService } from "./saveLoopGuard";
-const syncCoordinator = syncService;
-import type { ScenesConfig } from "../../domain/types";
-import type { ISceneRepository } from "../../domain/ports/sceneRepository";
+import { echoLoopGuard } from "./echoLoopGuard";
+import { AtomicFileJsonStore } from "./atomicFileJsonStore";
+import type { ISelfHealingStore } from "./selfHealingStore";
+import type { ScenesConfig } from "#src/domain/types";
+import type { ISceneRepository } from "#src/domain/ports/sceneRepository";
 
-export function getWorkspaceRoot(warnIfMissing = false): string | undefined {
-	const folders = vscode.workspace.workspaceFolders;
-	if (!folders || folders.length === 0) {
-		if (warnIfMissing) {
-			vscode.window.showWarningMessage(vscode.l10n.t("Please open a workspace folder to use Scene Breakpoints."));
-		}
-		return undefined;
-	}
-	return folders[0].uri.fsPath;
+/**
+ * 存储层用户通知抽象 (消除基础设施直接对 VS Code 弹窗硬绑定)
+ */
+export interface StorageNotifier {
+	error(message: string): void;
+	info(message: string): void;
+	warn(message: string): void;
+}
+
+const defaultNotifier: StorageNotifier = {
+	error: (msg) => {
+		void vscode.window.showErrorMessage(msg);
+	},
+	info: (msg) => {
+		void vscode.window.showInformationMessage(msg);
+	},
+	warn: (msg) => {
+		void vscode.window.showWarningMessage(msg);
+	},
+};
+
+let activeNotifier: StorageNotifier = defaultNotifier;
+
+export function setStorageNotifier(notifier: StorageNotifier): void {
+	activeNotifier = notifier;
+}
+
+export function resetStorageNotifier(): void {
+	activeNotifier = defaultNotifier;
 }
 
 export function getScenesConfigPath(workspaceRoot: string): string {
 	return path.join(workspaceRoot, ".vscode", "debug-scenes.json");
 }
+
 
 export function stripJsonComments(jsonStr: string): string {
 	if (typeof jsonStr !== "string") return "{}";
@@ -47,9 +69,17 @@ export function sanitizeScenesConfig(parsed: any): ScenesConfig {
 
 	const cleanScenes: Record<string, any[]> = {};
 	for (const [k, v] of Object.entries(candidateScenes)) {
-		if (k !== "$schema" && k !== "bindings" && Array.isArray(v)) {
+		if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
 			cleanScenes[k] = (v as any[]).filter((it) => it && typeof it === "object");
 		}
+	}
+
+	let cleanActiveScenes: string[] | undefined;
+	const rawActiveScenes = parsed.activeScenes || candidateScenes.activeScenes;
+	if (Array.isArray(rawActiveScenes)) {
+		cleanActiveScenes = rawActiveScenes
+			.map((it) => String(it).trim())
+			.filter(Boolean);
 	}
 
 	let cleanBindings: Record<string, string | string[]> | undefined;
@@ -65,11 +95,17 @@ export function sanitizeScenesConfig(parsed: any): ScenesConfig {
 		}
 	}
 
+	const result: ScenesConfig = { scenes: cleanScenes };
 	if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-		return { bindings: cleanBindings, scenes: cleanScenes };
+		result.bindings = cleanBindings;
 	}
-	return { scenes: cleanScenes };
+	if (cleanActiveScenes && cleanActiveScenes.length > 0) {
+		result.activeScenes = cleanActiveScenes;
+	}
+	return result;
 }
+
+const atomicStore: ISelfHealingStore<ScenesConfig, string> = new AtomicFileJsonStore<ScenesConfig>();
 
 export function loadScenesConfig(workspaceRoot: string): ScenesConfig {
 	const configPath = getScenesConfigPath(workspaceRoot);
@@ -78,113 +114,63 @@ export function loadScenesConfig(workspaceRoot: string): ScenesConfig {
 	}
 
 	try {
-		const content = fs.readFileSync(configPath, "utf-8");
-		if (!content || !content.trim()) {
-			return { scenes: {} };
-		}
-
-		if (hasGitConflictMarkers(content)) {
-			vscode.window.showErrorMessage(
-				vscode.l10n.t("Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe."),
+		const raw = fs.readFileSync(configPath, "utf-8");
+		if (hasGitConflictMarkers(raw)) {
+			activeNotifier.error(
+				vscode.l10n.t("Scene configuration has Git merge conflicts. Please resolve them first."),
 			);
 			return { scenes: {} };
 		}
-
-		const sanitized = stripJsonComments(content);
-		const parsed = JSON.parse(sanitized);
-
-		if (!parsed || typeof parsed !== "object") {
-			vscode.window.showWarningMessage(vscode.l10n.t("debug-scenes.json root must be an object"));
-			return { scenes: {} };
-		}
-
-		const candidateScenes = (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes))
-			? parsed.scenes
-			: parsed;
-
-		const cleanScenes: Record<string, any[]> = {};
-		for (const [k, v] of Object.entries(candidateScenes)) {
-			if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
-				cleanScenes[k] = (v as any[]).filter((it) => it && typeof it === "object");
-			}
-		}
-
-		let cleanBindings: Record<string, string | string[]> | undefined;
-		const rawBindings = parsed.bindings || candidateScenes.bindings;
-		if (rawBindings && typeof rawBindings === "object" && !Array.isArray(rawBindings)) {
-			cleanBindings = {};
-			for (const [bk, bv] of Object.entries(rawBindings)) {
-				if (typeof bv === "string" && bv.trim()) {
-					cleanBindings[bk] = bv.trim();
-				} else if (Array.isArray(bv)) {
-					cleanBindings[bk] = (bv as unknown[]).map((it) => String(it).trim()).filter(Boolean);
-				}
-			}
-		}
-
-		const result: ScenesConfig = { scenes: cleanScenes };
-		if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-			result.bindings = cleanBindings;
-		}
-		const rawActiveScenes = parsed.activeScenes ?? candidateScenes.activeScenes;
-		if (rawActiveScenes !== undefined) {
-			result.activeScenes = rawActiveScenes;
-		}
-		return result;
-	} catch (e: any) {
-		vscode.window.showErrorMessage(vscode.l10n.t("Failed to read debug-scenes.json: {0}", e.message));
+	} catch {
+		// 忽略读取错误，交由 atomicStore 完整性自愈管道处理
 	}
-	return { scenes: {} };
-}
 
-let isWriting = false;
-let pendingSave: { workspaceRoot: string; config: ScenesConfig } | undefined;
+	try {
+		const report = atomicStore.load(configPath, {
+			fallback: () => ({ scenes: {} }),
+			parse: (text) => JSON.parse(stripJsonComments(text)),
+			validate: (data): data is ScenesConfig => Boolean(data && typeof data === "object"),
+			onHealed: (msg) => {
+				activeNotifier.info(
+					vscode.l10n.t("Scene configuration self-healed: {0}", msg),
+				);
+			},
+		});
+
+		if (report.status === "healed") {
+			echoLoopGuard.markInternalSaving();
+		}
+
+		return sanitizeScenesConfig(report.data);
+	} catch (e: any) {
+		activeNotifier.error(vscode.l10n.t("Failed to read debug-scenes.json: {0}", e?.message || String(e)));
+		return { scenes: {} };
+	}
+}
 
 export function saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void {
 	const configPath = getScenesConfigPath(workspaceRoot);
-	const vscodeDir = path.dirname(configPath);
 	try {
-		syncCoordinator.markInternalSaving();
-		if (!fs.existsSync(vscodeDir)) {
-			fs.mkdirSync(vscodeDir, { recursive: true });
-		}
+		echoLoopGuard.markInternalSaving();
 		const content = JSON.stringify(config, null, 2);
-		syncCoordinator.setLastSavedContent(content);
+		echoLoopGuard.setLastSavedContent(content);
 
-		// 并发互斥保护：若当前正在写盘，缓存最新配置，待当前写完后原子续写
-		if (isWriting) {
-			pendingSave = { workspaceRoot, config };
-			return;
-		}
-
-		isWriting = true;
-		try {
-			fs.writeFileSync(configPath, content, "utf-8");
-		} finally {
-			isWriting = false;
-			syncCoordinator.markInternalSaving();
-			if (pendingSave) {
-				const next = pendingSave;
-				pendingSave = undefined;
-				saveScenesConfig(next.workspaceRoot, next.config);
-			}
-		}
+		atomicStore.save(configPath, config);
 	} catch (e: any) {
-		vscode.window.showErrorMessage(vscode.l10n.t("Failed to save debug-scenes.json: {0}", e.message));
+		activeNotifier.error(vscode.l10n.t("Failed to save debug-scenes.json: {0}", e?.message || String(e)));
 	}
 }
 
 export function isContentMatchingLastSaved(content: string): boolean {
-	return syncCoordinator.isContentMatchingLastSaved(content);
+	return echoLoopGuard.isContentMatchingLastSaved(content);
 }
 
 export function getLastSavedContent(): string {
-	return syncCoordinator.getLastSavedContent();
+	return echoLoopGuard.getLastSavedContent();
 }
 
 export const jsonFileSceneRepository: ISceneRepository = {
 	loadScenesConfig,
 	saveScenesConfig,
 	getScenesConfigPath,
-	getWorkspaceRoot,
 };

@@ -5,7 +5,7 @@
 **问题**: 在状态栏弹出的菜单项中，试图使用 `$(circle-filled~charts-green)` 给激活场景加上绿点，但界面直接将原始字符串打印了出来。
 **原因**: VS Code 的 `StatusBarItem` 支持 `$(icon~color)` 扩展语法，但 `QuickPickItem`（选择列表）的 `label` 和 `description` 不支持波浪号修饰颜色，会导致纯文本泄露。
 **解决方案**: 在 `QuickPick` 中改用系统原生彩色 Emoji（如 `🟢` 代表激活，`⚪` 代表未激活），并配合 `quickPick.activeItems = [activeItem]` 赋予整行高亮选中背景。
-**影响文件**: `src/commands/showMenu.ts`
+**影响文件**: `src/ui/commands/menuCommands.ts` (原 `src/commands/showMenu.ts`)
 **日期**: 2026-09-07
 
 ### 1.2 批量下发断点时清空阶段触发 `onDidChangeBreakpoints` 竞态闪烁
@@ -13,7 +13,7 @@
 **问题**: 切换场景时，状态栏偶尔会闪烁一下 `(None)` 然后再变回目标场景。
 **原因**: 在 `applySceneBreakpoints` 内部，第一步调用了 `removeBreakpoints(all)`。在全部清除完成但尚未注入新断点的瞬间，VS Code 抛出 `onDidChangeBreakpoints`，全局监听器看到当前断点数为 0，误触发了重置。
 **解决方案**: 引入 `SceneStateManager.isApplyingScene()` 原子状态锁，在下发断点的 `try...finally` 期间加锁，事件监听器检测到加锁时静默忽略清空重置。
-**影响文件**: `src/sceneStateManager.ts`, `src/breakpointAdapter.ts`, `src/extension.ts`
+**影响文件**: `src/application/sceneStateManager.ts`, `src/infra/vscode/vscodeBreakpointBridge.ts`, `src/extension.ts`
 **日期**: 2026-09-07
 
 ### 1.3 正则剥离 JSONC 注释时的字符串字面量误吞陷阱
@@ -21,7 +21,7 @@
 **问题**: 用户在断点描述或 URL 字段中包含 `/*` 或类似注释路径（如 `http://localhost/auth/*key*`）时，`JSON.parse` 报错 `SyntaxError: Unterminated string in JSON`。
 **原因**: 粗暴的正则 `/\/\*[\s\S]*?\*\//` 会越过双引号，将双引号内部的文本误当成注释剥离，破坏字符串闭合引号。
 **解决方案**: 必须采用**双引号字符串字面量优先匹配保护机制**：`replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, str) => str || "")`，捕获组 $1 命中的双引号字符串完整原样保留，仅剥离外部裸露注释。
-**影响文件**: `src/configManager.ts`
+**影响文件**: `src/infra/storage/jsonFileSceneRepository.ts` (原 `src/configManager.ts`)
 **日期**: 2026-09-08
 
 ### 1.4 场景追加导出时的原子去重契约
@@ -29,7 +29,7 @@
 **问题**: 用户将当前断点追加导出至已有场景时，如果已有场景中已有同行号断点，简单数组拼接会导致出现多条重复断点记录。
 **原因**: 追加导出未走断点唯一性契约校验（文件+行号 或 函数名）。
 **解决方案**: 场景导出追加统一调用 `upsertBreakpointToScene`，同行断点覆盖更新属性（条件/命中数/描述），异行断点平滑追加，确保持久化数组严格去重。
-**影响文件**: `src/commands/exportScene.ts`
+**影响文件**: `src/ui/commands/sceneCommands.ts` (原 `src/commands/exportScene.ts`)
 **日期**: 2026-09-08
 
 ### 1.5 TreeView 节点 ThemeIcon 选中高亮变灰与 16x16 容器尺寸等比压缩陷阱
@@ -41,7 +41,7 @@
 **问题 2**: 为实现断点图标与复选框排版，制作了 `34x16` 的组合 SVG，结果界面渲染时图标被等比压小了一半多，变得极其微缩。
 **原因**: VS Code 树视图节点图标容器 `.monaco-tl-icon` 在 CSS 中被宿主严格硬性限制为 `16px x 16px`（`background-size: contain`）。宽 34 高 16 的图片塞入 16x16 容器后，被强制等比缩小了 53%（高度仅剩 7.5px）。
 **解决方案**: 将所有断点图标严格设计为标准 `16x16` 居中饱满矢量 SVG（中心圆/菱形直径 10.5px，1:1 匹配原生红点），复选框使用 VS Code 树视图原生 `TreeItem.checkboxState` 控制。
-**影响文件**: `src/sceneTreeProvider.ts`, `media/icons/*.svg`
+**影响文件**: `src/ui/views/sceneTreeProvider.ts`, `media/icons/*.svg`
 **日期**: 2026-09-08
 
 ### 1.6 树视图闪烁根因：多重重绘风暴与单节点局部刷新治理
@@ -57,7 +57,7 @@
 2. **文件内容哈希指纹守卫（Content Hash Guard）**：`configManager` 写盘时记录内容哈希，`fileWatcher` 接收到磁盘变动时比对内容指纹，若与内部写入完全一致则 100% 物理阻断，彻底免疫系统延迟；
 3. **断点异步事件保护窗**：为 `syncBreakpointEnabledToEditor` 补齐 `await` 并设置 150ms 延时保护释放，确保事件分发期间 `isApplyingScene()` 保持有效；
 4. **场景折叠状态持久化记忆**：`SceneNode` 记录用户展开集合 `expandedScenes`，防止刷新导致展开折叠跳动。
-**影响文件**: `src/sceneTreeProvider.ts`, `src/configManager.ts`, `src/breakpointAdapter.ts`, `src/extension.ts`
+**影响文件**: `src/ui/views/sceneTreeProvider.ts`, `src/infra/storage/jsonFileSceneRepository.ts`, `src/infra/vscode/vscodeBreakpointBridge.ts`, `src/extension.ts`
 **日期**: 2026-09-08
 
 ### 1.7 调试启动配置联动推导必须验证场景真实存在性（防幽灵激活）
@@ -65,7 +65,7 @@
 **问题**: 启动配置（`launch.json` 或 `.env` 中的 `DEBUG_SCENE`）中写了不存在的场景名时，状态栏居然被染成绿色并显示为该不存在场景，但实际并未激活任何场景，且原有断点可能被误清空。
 **原因**: `resolveLaunchBoundScenes` 解析环境变量与 `bindings` 映射时，直接将字符串透传返回，未与 `config.scenes` 的有效场景清单进行校验；`applySceneCommand` 也未做校验，直接执行了 `setActiveScenes`。
 **解决方案**: 在推导层与激活命令层建立双重存在性强校验守卫，严格核对场景名是否在 `config.scenes` 中存在（支持大小写不敏感容错）。未定义的场景坚决不予返回与激活，并在命令层立即弹出错误提示中断执行。
-**影响文件**: `src/configManager.ts`, `src/commands/applyScene.ts`
+**影响文件**: `src/infra/storage/jsonFileSceneRepository.ts`, `src/ui/commands/sceneCommands.ts`
 **日期**: 2026-09-08
 
 ### 1.8 树节点内存实体与反序列化持久化实体的双向同步陷阱（复选框瞬间弹回）
@@ -88,7 +88,7 @@
 **解决方案**:
 在 `saveScenesConfig` 中引入并发互斥锁 `isWriting` 与待处理缓存 `pendingSave`：
 当写盘处于进行中时，后续请求合并暂存于 `pendingSave`；当前写盘完成（`finally` 块）后立即原子续写最新缓存，确保串行互斥写入且永不丢配置。
-**影响文件**: `src/configManager.ts`
+**影响文件**: `src/infra/storage/jsonFileSceneRepository.ts`
 **日期**: 2026-09-08
 
 ### 1.10 esbuild 外部依赖排除模式下模块漏写 vscode 导入引发运行时 ReferenceError
@@ -96,7 +96,7 @@
 **问题**: 用户执行 `sceneBreakpoints.exportScene` 命令时，VS Code 抛出 `Error running command sceneBreakpoints.exportScene: vscode is not defined`。
 **原因**: 项目采用 esbuild 单文件打包并配置了 `--external:vscode`。源码模块中若直接使用 `vscode.xxx` 却未显式声明 `import * as vscode from "vscode"`，esbuild 不会执行 TS 类型检查，而是将其视为全局自由变量直接输出在 bundle 中。在 VS Code 运行期，CommonJS 执行上下文中不存在全局 `vscode` 对象，导致在命令执行时报 `ReferenceError: vscode is not defined`。
 **解决方案**: 源码中任何调用宿主 API 的模块均必须严格声明 `import * as vscode from "vscode";`，esbuild 会将其安全映射为 `require("vscode")` 的命名空间局部引用。
-**影响文件**: `src/commands/exportScene.ts`
+**影响文件**: `src/ui/commands/sceneCommands.ts`
 **日期**: 2026-09-11
 
 ### 1.11 Content Hash Guard 拦截内部写盘后业务命令层必须主动触发树视图刷新
@@ -104,13 +104,13 @@
 **问题**: 用户从剪贴板成功导入新场景后，调试侧边栏（Scene Breakpoints 视图）没有立即显示新导入的场景，必须手动点击刷新按钮。
 **原因**: 工程为防止写盘被系统防病毒软件/文件系统延迟触发二次整树闪烁，在 `fileWatcher` 中设计了 `Content Hash Guard`。内部写盘的内容与最近保存指纹一致时会被 `fileWatcher` 直接拦截放行，不触发 `treeDataProvider.refresh()`。若导入的场景未处于激活态，状态机不会变更，导致树视图完全未收到重绘信号。
 **解决方案**: 任何通过 `saveScenesConfig` 新增或修改配置的命令层逻辑（如剪贴板导入、导出场景），在写盘持久化后必须主动调度 `await vscode.commands.executeCommand("sceneBreakpoints.refreshView");` 显式驱动树视图更新。
-**影响文件**: `src/commands/clipboardSync.ts`, `src/commands/exportScene.ts`
+**影响文件**: `src/ui/commands/clipboardCommands.ts`, `src/ui/commands/sceneCommands.ts`
 ### 1.12 类方法正则误捕获控制流关键字导致作用域回溯中断与得分不足
 
 **问题**: 用户在断点上方插入空行和代码后激活场景，自愈算法未触发，断点依然停留在旧行号。
 **原因**: `extractScopeAnchor` 中的类方法通用正则 `/^\s*([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*[{:]/` 将 JS/TS/Python 的控制流语句（如 `if (cond) {`、`while (x):`、`for (...)`）中的关键字当成了方法名提取并立即返回。导致算法提前终止向上扫描，误判当前作用域为 `"if"`，无法匹配到真实外层函数名，白白丢失 5 分加权，得分跌破置信门槛而安全回退。
 **解决方案**: 在提取作用域正则前，显式拦截并排除通用控制流保留字黑名单（`UNIVERSAL_CONTROL_FLOW_KEYWORDS`：`if`, `for`, `while`, `switch`, `catch`, `with` 等），强制穿透控制流直达真正的外层函数定义行。
-**影响文件**: `src/healingAdapter.ts`
+**影响文件**: `src/domain/services/healingEngine.ts` (原 `src/healingAdapter.ts`)
 **日期**: 2026-09-12
 
 ### 1.13 纯物理相邻行匹配在代码间插入空行时失效，演进为非空拓扑窗口
@@ -118,7 +118,7 @@
 **问题**: 开发者或 AI 在断点上方或下方插入单个空行或格式化换行时，断点伴随上下文匹配分数大幅跌落。
 **原因**: 原自愈算法死板比对物理绝对相邻行 `lines[i - 1]` 与 `lines[i + 1]`。一旦中间插入空行，`lines[i - 1]` 变为纯空白文本 `""`，导致原有的 `prev` 代码行在 `lines[i - 2]` 被直接无视，错失 5 分拓扑加分。
 **解决方案**: 引入语言无关的“非空拓扑伴随窗口”机制（`findPrevNonEmptyLine` 与 `findNextNonEmptyLine`），在提取指纹与计算自愈时均自动穿透空白行，寻找最近的有效代码行进行拓扑锚定，彻底免疫任意数量空行、格式化空行的干扰。
-**影响文件**: `src/healingAdapter.ts`
+**影响文件**: `src/domain/services/healingEngine.ts`
 **日期**: 2026-09-12
 
 ### 1.14 模块调用 Node.js 内置模块（如 path）未显式导入在 esbuild 下静默打包但在运行时触发 ReferenceError
@@ -126,7 +126,7 @@
 **问题**: 用户执行 `sceneBreakpoints.applySceneItem` 激活场景时，VS Code 抛出 `Error running command sceneBreakpoints.applySceneItem: path is not defined`。
 **原因**: 项目采用 esbuild 单文件打包且未在打包配置中强制开启 TypeScript 类型检查。若源码模块内部直接调用了 `path.basename` 或 `path.isAbsolute`，但文件顶部忘记显式写 `import * as path from "node:path"`，esbuild 会将其作为自由全局变量输出。而在 VS Code 宿主运行期，模块闭包作用域中并没有全局 `path` 对象，导致在触发该代码分支（如断点脱靶告警）时抛出 `ReferenceError: path is not defined`。
 **解决方案**: 任何模块只要使用了 Node.js 核心库（`path`、`fs`、`os` 等），必须严格在文件顶部显式声明 `import * as path from "node:path";`。
-**影响文件**: `src/commands/applyScene.ts`
+**影响文件**: `src/ui/commands/sceneCommands.ts`
 ### 1.15 领域层误引 VS Code 宿主 API 破坏分层并在 esbuild 打包运行时抛 ReferenceError
 
 **问题**: 执行断点自愈装配（如 `TC-HEAL-01 ~ 04`）时，VS Code 抛出 `ReferenceError: vscode is not defined at resolveHealedLine`。
@@ -157,5 +157,14 @@
 3. **精准过滤 continued 事件与剔除 undefined 误杀**：仅当全线程恢复或命中线程恢复时才清空高亮，会话存活期间焦点震荡不执行清空。
 **影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/infra/vscode/sceneTreeProvider.ts`, `test/unit/infra/listeners_registry.test.mjs`
 **日期**: 2026-09-13
+
+### 1.18 剪贴板导入全新场景时从未更新的旧配置读取断点数量抛出 TypeError 异常
+
+**问题**: 用户或 E2E 测试通过命令 `sceneBreakpoints.importSceneFromClipboard` 导入一个配置中原本不存在的全新场景时，导入虽成功写盘，但随后弹出通知时崩溃并抛出 `TypeError: Cannot read properties of undefined (reading 'length')`。
+**原因**: 在 `clipboardCommands.ts` 中，`config` 对象是在函数入口处通过 `loadScenesConfig` 加载的旧内存快照。当导入新场景并落盘后，弹窗通知尝试通过 `config.scenes[finalSceneName].length` 读取断点数量；由于旧快照尚未包含新场景，`config.scenes[finalSceneName]` 为 `undefined`，访问 `.length` 触发未捕获异常。
+**解决方案**: 严禁从旧 `config` 快照读取动态变更属性，改为直接读取当前已被聚合根实体更新的 `targetScene.breakpoints.length`，确保任何场景状态下 100% 安全取值。
+**影响文件**: `src/infra/vscode/commands/clipboardCommands.ts`
+**日期**: 2026-09-24
+
 
 

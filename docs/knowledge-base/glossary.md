@@ -16,7 +16,7 @@
 ### C
 
 #### 能力契约 (Capability Contract)
-核心层定义的业务能力接口，表达“能做什么”。示例：自愈探测能力 `resolveHealedLine`、配置清洗与读写能力 `loadScenesConfig`。
+核心层定义的业务能力接口，表达“能做什么”。示例：自愈探测能力 `HealingEngine.heal`、配置清洗与读写能力 `loadScenesConfig`。
 
 #### 上下文伴随指纹 (Context Snippet / Context Triple)
 在保存断点时自动抓取的目标代码行核心文本（`current`），以及可选的前一行（`prev`）和后一行（`next`）文本。用于在行号漂移时进行高置信度的上下文协同验证。
@@ -39,7 +39,7 @@
 ### G
 
 #### 幽灵场景拦截守卫 (Ghost Scene Guard)
-在调试启动配置推导（`resolveLaunchBoundScenes`）或命令激活（`applySceneCommand`）时，对输入的目标场景名称进行真实存在性双向审计（存在性过滤与大小写容错匹配）。未在 `debug-scenes.json` 中定义的虚假场景将被强行拦截，绝不作为当前激活状态写入状态机。
+在调试启动配置推导（`LaunchBindingResolver.resolveScenes`）或命令激活（`applySceneCommand`）时，对输入的目标场景名称进行真实存在性双向审计（存在性过滤与大小写容错匹配）。未在 `debug-scenes.json` 中定义的虚假场景将被强行拦截，绝不作为当前激活状态写入状态机。
 
 ---
 
@@ -61,6 +61,9 @@
 
 #### 接口契约 (API Contract / Command Contract)
 对外暴露的命令调用入口，表达“如何调用”。示例：`sceneBreakpoints.applyScene`、`sceneBreakpoints.showMenu`。
+
+#### 行末注解与幽灵文本 (Inlay Hints)
+VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码行末尾渲染浅色半透明胶囊标签（如 `💡 [场景名 #序号] 备注`），提供不用悬浮鼠标即可一眼洞察所属场景与步骤的视觉透视能力，并挂载富文本 Markdown 悬浮卡片。
 
 ---
 
@@ -84,13 +87,24 @@
 ### S
 
 #### 单写者串行队列 (Single-Writer Serial Queue)
-应用用例层（`src/application/sceneService.ts`）内置的私有任务队列调度机制。将所有针对场景主状态的写操作（如场景激活、新增断点、清除重置、外部变更调度、剪贴板导入等）严格约束进串行化互斥管道，前序任务完成（无论成功还是失败）方才出队执行后续任务，从根源上杜绝异步并发交错造成的读写脏覆盖与竞态死锁。
+应用用例层（`src/application/sceneManager.ts` 与 `breakpointManager.ts`）内置的私有任务队列调度机制。将所有针对场景主状态的写操作（如场景激活、新增断点、清除重置、外部变更调度、剪贴板导入等）严格约束进串行化互斥管道，前序任务完成（无论成功还是失败）方才出队执行后续任务，从根源上杜绝异步并发交错造成的读写脏覆盖与竞态死锁。
 
 #### 场景 (Scene)
 一个用业务语义命名的断点集合（例如 `user-login`、`order-pay-flow`），声明式保存在 `.vscode/debug-scenes.json` 中，可一键整体激活或反向导出。
 
 #### 场景状态机 (Scene State Machine / SceneStateManager)
 系统全局唯一的激活场景状态管理者（Single Source of Truth），负责发射状态变动通知事件，驱动底部状态栏被动更新，并维护防止竞态闪烁的执行锁。
+
+---
+
+#### 场景目录聚合根 (SceneCatalog Aggregate Root)
+领域驱动设计（DDD）核心聚合根，对应单个工作区中 `.vscode/debug-scenes.json` 权威 SSOT 配置文档。负责管控全量场景字典、当前激活场景集合、先到先得断点拓扑合并、幽灵防御与全场景静默加固，是断点业务持久化交互的唯一入口。
+
+#### 场景局部实体 (Scene Entity)
+断点的领域聚合容器实体，隶属于 `SceneCatalog`。负责单个业务场景内部断点序列的有序排列、同位置查重覆盖（INV-001）、位置调整（上下移动、置顶置底、拖拽重排）与批量启闭控制。
+
+#### 断点充血实体 (Breakpoint Entity)
+封装 VS Code 5 类断点物理属性的充血领域实体。内聚了代码伴随指纹提取（`enrich`）、自愈结果吸收校准（`applyHealed`）、多态查重匹配（`matches`）与纯数据序列化契约。
 
 ---
 
@@ -106,20 +120,10 @@
 | 缩写 | 全称 | 说明 |
 |------|------|------|
 | **DAP** | Debug Adapter Protocol | 调试适配协议 |
+| **DDD** | Domain-Driven Design | 领域驱动设计 |
 | **SRP** | Single Responsibility Principle | 单一职责原则 |
 | **SSOT** | Single Source of Truth | 单一事实来源原则 |
 | **KDD** | Knowledge Driven Development | 知识库驱动开发 |
 | **ADR** | Architecture Decision Record | 架构决策记录 |
 | **BP** | Breakpoint | 断点 |
 
----
-
-## 变更记录
-
-| 日期 | 变更内容 | 变更人 | 关联变更 |
-|------|----------|--------|----------|
-| 2026-09-08 | 初始版本 | Tony.L | KDD-INIT-001 |
-| 2026-09-08 | 补充 DOM Diff 节点复用与幽灵场景拦截守卫术语定义 | Tony.L | KDD-GLOSSARY-002 |
-| 2026-09-12 | 新增断点脱靶/失联断点 (Unmatched Breakpoint) 术语定义 | Tony.L | KDD-UNMATCHED-WARN-001 |
-| 2026-09-12 | 补充核心断点拓扑 Diff 与挂起拓扑更新/调试会话保护术语定义 | Tony.L | KDD-SKILL-MIGRATE-001 |
-| 2026-09-13 | 补充能力契约端口 (Ports) 与单写者串行队列 (Single-Writer Serial Queue) 术语定义 | Tony.L | #TASK-ARCH-PATH-SYNC-001 |

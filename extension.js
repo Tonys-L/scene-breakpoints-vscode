@@ -33,390 +33,39 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode17 = __toESM(require("vscode"));
+var vscode27 = __toESM(require("vscode"));
 
-// src/domain/healingEngine.ts
-var fs = __toESM(require("node:fs"));
-var path = __toESM(require("node:path"));
-var HEALING_CONFIDENCE_THRESHOLD = 0.6;
-var HEALING_SEARCH_WINDOW = 30;
-var SCOPE_MAX_LOOKUP_LINES = 60;
-var SCOPE_BODY_SEARCH_WINDOW = 150;
-function cleanLine(text) {
-  if (typeof text !== "string") return "";
-  const normalized = text.trim().replace(/\s+/g, " ");
-  return normalized.length > 140 ? normalized.substring(0, 140) : normalized;
+// src/application/dependencies.ts
+var defaultDependencies = {};
+function configureDependencies(deps) {
+  defaultDependencies = { ...defaultDependencies, ...deps };
 }
-function stripTrailingComment(line) {
-  if (!line) return "";
-  return line.replace(/\s*(?:\/\/|#|--).*$/, "").trim();
+function getDependencies() {
+  return defaultDependencies;
 }
-function countIndent(text) {
-  if (typeof text !== "string") return 0;
-  const match = text.replace(/\t/g, "  ").match(/^(\s*)/);
-  return match ? match[1].length : 0;
-}
-function findPrevNonEmptyLine(lines, fromIdx) {
-  for (let i = fromIdx - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (line && line.trim()) {
-      return cleanLine(line);
-    }
-  }
-  return void 0;
-}
-function findNextNonEmptyLine(lines, fromIdx) {
-  for (let i = fromIdx + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line && line.trim()) {
-      return cleanLine(line);
-    }
-  }
-  return void 0;
-}
-function findGeometricParent(lines, fromIdx, currentIndent) {
-  for (let i = fromIdx - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (!line || !line.trim()) continue;
-    const ind = countIndent(line);
-    if (ind < currentIndent) {
-      return cleanLine(line);
-    }
-  }
-  return void 0;
-}
-var CONTROL_FLOW_KEYWORDS = /* @__PURE__ */ new Set([
-  "if",
-  "else",
-  "elif",
-  "for",
-  "while",
-  "do",
-  "loop",
-  "switch",
-  "case",
-  "catch",
-  "finally",
-  "with",
-  "select",
-  "defer",
-  "go",
-  "return",
-  "throw"
-]);
-var SCOPE_PATTERNS = [
-  // Python / Ruby: def foo(...) or async def foo(...)
-  /^\s*(?:async\s+)?def\s+([a-zA-Z0-9_$]+)/,
-  // JS / TS / PHP: function foo(...) or async function foo(...)
-  /^\s*(?:export\s+)?(?:async\s+)?function(?:\s+([a-zA-Z0-9_$]+)|\s*\()/i,
-  // Go / Swift / Kotlin: func (r *Receiver) Method(...) or fun Method(...)
-  /^\s*(?:(?:pub|public|private|protected|internal|override|final)\s+)*(?:func|fun)\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/i,
-  // Rust: fn foo(...) or pub fn foo(...)
-  /^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_$]+)/,
-  // 类构造函数 constructor(...)
-  /^\s*(?:public|private|protected)*\s*constructor\b/i,
-  // 类属性访问器 get prop() / set prop(v)
-  /^\s*(?:public|private|protected|static)*\s*(?:get|set)\s+([a-zA-Z0-9_$]+)/i,
-  // Java / C# / C++ 类方法: 修饰符 + 返回类型(可能带泛型或指针) + 方法名(参数)
-  /^\s*(?:(?:public|private|protected|static|final|native|synchronized|abstract|virtual|override|async)\s+)+[a-zA-Z0-9_$<>,\[\]\s*&]+\s+([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\s*[{;]/i,
-  // 类方法或对象方法: methodName(...) { or methodName = (...) =>
-  /^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?(?:<[^>]*>)?\s*\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
-  // Class / Struct / Interface / Trait / Enum / Type
-  /^\s*(?:export\s+)?(?:class|struct|interface|trait|enum|type)\s+([a-zA-Z0-9_$]+)/,
-  // Rust impl 块: impl Trait for Struct or impl Struct
-  /^\s*impl(?:\s+<[^>]+>)?(?:\s+[a-zA-Z0-9_$]+)?\s+for\s+([a-zA-Z0-9_$]+)/,
-  /^\s*impl(?:\s+<[^>]+>)?\s+([a-zA-Z0-9_$]+)/
-];
-function extractScopeAnchor(lines, lineZeroBased) {
-  const maxLookup = Math.max(0, lineZeroBased - SCOPE_MAX_LOOKUP_LINES);
-  for (let i = lineZeroBased; i >= maxLookup; i--) {
-    const rawLine = lines[i];
-    if (!rawLine || !rawLine.trim()) continue;
-    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
-      continue;
-    }
-    for (const pattern of SCOPE_PATTERNS) {
-      const match = rawLine.match(pattern);
-      if (match) {
-        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
-        if (identifier && identifier.trim() && !CONTROL_FLOW_KEYWORDS.has(identifier.trim())) {
-          return identifier.trim();
-        }
-      }
-    }
-  }
-  return void 0;
-}
-function findScopeAnchorLine(lines, scopeAnchor) {
-  if (!scopeAnchor || !scopeAnchor.trim()) return void 0;
-  const target = scopeAnchor.trim();
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i];
-    if (!rawLine || !rawLine.trim() || !rawLine.includes(target)) continue;
-    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
-      continue;
-    }
-    for (const pattern of SCOPE_PATTERNS) {
-      const match = rawLine.match(pattern);
-      if (match) {
-        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
-        if (identifier && identifier.trim() === target) {
-          return i;
-        }
-      }
-    }
-  }
-  return void 0;
-}
-function extractContextSnippetFromLines(lines, lineZeroBased) {
-  const currentLineText = lines[lineZeroBased] ?? "";
-  const current = cleanLine(currentLineText);
-  const indent = countIndent(currentLineText);
-  const prev = findPrevNonEmptyLine(lines, lineZeroBased);
-  const next = findNextNonEmptyLine(lines, lineZeroBased);
-  const sampleLines = lines.slice(Math.max(0, lineZeroBased - 60), lineZeroBased + 1);
-  const scopeAnchor = extractScopeAnchor(sampleLines, sampleLines.length - 1);
-  return { prev, current, next, scopeAnchor, indent };
-}
-function extractContextSnippet(docOrLines, lineZeroBased) {
-  if (Array.isArray(docOrLines)) {
-    return extractContextSnippetFromLines(docOrLines, lineZeroBased);
-  }
-  const lines = [];
-  for (let i = 0; i < docOrLines.lineCount; i++) {
-    lines.push(docOrLines.lineAt(i).text);
-  }
-  return extractContextSnippetFromLines(lines, lineZeroBased);
-}
-function calculateSimilarity(strA, strB) {
-  if (strA === strB) return 1;
-  const trimA = strA.trim();
-  const trimB = strB.trim();
-  if (!trimA || !trimB) return 0;
-  if (trimA === trimB) return 0.95;
-  const wordsA = trimA.match(/[a-zA-Z0-9_$]+/g) || [];
-  const wordsB = trimB.match(/[a-zA-Z0-9_$]+/g) || [];
-  if (wordsA.length > 0 && wordsB.length > 0) {
-    const setA = new Set(wordsA);
-    let matchedWords = 0;
-    for (const w of wordsB) {
-      if (setA.has(w)) matchedWords++;
-    }
-    const wordSim = matchedWords / Math.max(wordsA.length, wordsB.length);
-    const charSetA = new Set(trimA.split(""));
-    let commonChars = 0;
-    for (const ch of trimB) {
-      if (charSetA.has(ch)) commonChars++;
-    }
-    const charSim = commonChars / Math.max(trimA.length, trimB.length);
-    return wordSim * 0.7 + charSim * 0.3;
-  }
-  return 0;
-}
-function calculateCandidateLineScore(lines, i, snippet, getCandidateScope, distancePenalty) {
-  const lineText = cleanLine(lines[i]);
-  let score = 0;
-  const isCurrentExactMatch = lineText === snippet.targetCurrent;
-  let hasDirectMatch = isCurrentExactMatch;
-  if (isCurrentExactMatch) {
-    score += 10;
-  } else if (snippet.targetCurrent && stripTrailingComment(lineText) === stripTrailingComment(snippet.targetCurrent) && stripTrailingComment(lineText).length > 0) {
-    score += 9;
-    hasDirectMatch = true;
-  }
-  let hasPrevMatch = false;
-  const candPrev = findPrevNonEmptyLine(lines, i);
-  if (snippet.targetPrev && candPrev && (candPrev === snippet.targetPrev || i > 0 && cleanLine(lines[i - 1]) === snippet.targetPrev)) {
-    score += 5;
-    hasPrevMatch = true;
-  }
-  let hasNextMatch = false;
-  const candNext = findNextNonEmptyLine(lines, i);
-  if (snippet.targetNext && candNext && (candNext === snippet.targetNext || i < lines.length - 1 && cleanLine(lines[i + 1]) === snippet.targetNext)) {
-    score += 5;
-    hasNextMatch = true;
-  }
-  let hasContextMatch = hasPrevMatch || hasNextMatch;
-  if (!isCurrentExactMatch && hasContextMatch) {
-    const sim = calculateSimilarity(lineText, snippet.targetCurrent);
-    if (sim >= 0.7) {
-      score += Math.round(sim * 6);
-      hasDirectMatch = true;
-    }
-  }
-  if (hasPrevMatch && hasNextMatch) {
-    hasDirectMatch = true;
-  }
-  let candIndent = 0;
-  if (snippet.targetIndent !== void 0) {
-    candIndent = countIndent(lines[i]);
-    if (candIndent === snippet.targetIndent) {
-      score += 3;
-    } else if (snippet.targetIndent > 0 && candIndent > 0 && (candIndent === snippet.targetIndent * 2 || snippet.targetIndent === candIndent * 2)) {
-      score += 2;
-    }
-  }
-  if (snippet.targetScope && score >= 5) {
-    const candParent = findGeometricParent(lines, i, candIndent);
-    const candidateScope = getCandidateScope(i);
-    if (candidateScope && candidateScope === snippet.targetScope || candParent && (candParent === snippet.targetScope || candParent.includes(snippet.targetScope))) {
-      score += 5;
-      hasContextMatch = true;
-    }
-  }
-  score -= distancePenalty;
-  return { score, hasDirectMatch };
-}
-function resolveHealedLineFromLines(lines, item) {
-  if (!item || !item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
-    return { healedLine: item?.line ?? 1, isHealed: false, status: "matched" };
-  }
-  if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
-    return { healedLine: item.line, isHealed: false, status: "matched" };
-  }
-  if (!lines || lines.length === 0) {
-    return { healedLine: item.line, isHealed: false, status: "unmatched" };
-  }
-  const origIdx = item.line - 1;
-  const targetCurrent = cleanLine(item.contextSnippet.current);
-  const targetPrev = item.contextSnippet.prev ? cleanLine(item.contextSnippet.prev) : void 0;
-  const targetNext = item.contextSnippet.next ? cleanLine(item.contextSnippet.next) : void 0;
-  const targetScope = item.contextSnippet.scopeAnchor;
-  const targetIndent = item.contextSnippet.indent;
-  if (origIdx >= 0 && origIdx < lines.length) {
-    if (cleanLine(lines[origIdx]) === targetCurrent) {
-      return { healedLine: item.line, isHealed: false, status: "matched", confidence: 1 };
-    }
-  }
-  const offsets = [];
-  for (let step = 1; step <= HEALING_SEARCH_WINDOW; step++) {
-    offsets.push(step);
-    offsets.push(-step);
-  }
-  const scopeCache = /* @__PURE__ */ new Map();
-  const getCandidateScope = (lineIdx) => {
-    if (scopeCache.has(lineIdx)) return scopeCache.get(lineIdx);
-    const scope = extractScopeAnchor(lines, lineIdx);
-    scopeCache.set(lineIdx, scope);
-    return scope;
-  };
-  let maxPossibleScore = 10;
-  if (targetPrev) maxPossibleScore += 5;
-  if (targetNext) maxPossibleScore += 5;
-  if (targetScope) maxPossibleScore += 5;
-  if (targetIndent !== void 0) maxPossibleScore += 3;
-  const snippetSpec = { targetCurrent, targetPrev, targetNext, targetScope, targetIndent };
-  let bestIdx = -1;
-  let bestScore = -1;
-  for (const offset of offsets) {
-    const i = origIdx + offset;
-    if (i < 0 || i >= lines.length) continue;
-    const { score, hasDirectMatch } = calculateCandidateLineScore(
-      lines,
-      i,
-      snippetSpec,
-      getCandidateScope,
-      Math.abs(offset) * 0.05
+
+// src/application/serialQueue.ts
+var SerialQueue = class {
+  queue = Promise.resolve();
+  /**
+   * 将异步任务放入串行队列执行
+   */
+  enqueue(task) {
+    const result = this.queue.then(
+      () => task(),
+      () => task()
     );
-    if (hasDirectMatch && score > bestScore) {
-      bestScore = score;
-      bestIdx = i;
-    }
-  }
-  const confidenceRatio = maxPossibleScore > 0 ? bestScore / maxPossibleScore : 0;
-  if (bestIdx !== -1 && (bestScore >= 12.5 || confidenceRatio >= HEALING_CONFIDENCE_THRESHOLD)) {
-    const newHealedLine = bestIdx + 1;
-    const isHealed = newHealedLine !== item.line;
-    return {
-      healedLine: newHealedLine,
-      isHealed,
-      status: isHealed ? "healed" : "matched",
-      confidence: confidenceRatio
-    };
-  }
-  if (targetScope) {
-    const scopeHeaderIdx = findScopeAnchorLine(lines, targetScope);
-    if (scopeHeaderIdx !== void 0) {
-      let p2BestIdx = -1;
-      let p2BestScore = -1;
-      const searchEnd = Math.min(lines.length - 1, scopeHeaderIdx + SCOPE_BODY_SEARCH_WINDOW);
-      const headerLine = lines[scopeHeaderIdx] || "";
-      const isPythonStyle = headerLine.trim().endsWith(":");
-      const headerIndent = countIndent(headerLine);
-      for (let i = scopeHeaderIdx; i <= searchEnd; i++) {
-        if (isPythonStyle && i > scopeHeaderIdx) {
-          const lineContent = lines[i];
-          if (lineContent && lineContent.trim() && !lineContent.trim().startsWith("#")) {
-            if (countIndent(lineContent) <= headerIndent) {
-              break;
-            }
-          }
-        }
-        const distance = Math.abs(i - origIdx);
-        const { score, hasDirectMatch } = calculateCandidateLineScore(
-          lines,
-          i,
-          snippetSpec,
-          getCandidateScope,
-          distance * 0.01
-        );
-        if (hasDirectMatch && score > p2BestScore) {
-          p2BestScore = score;
-          p2BestIdx = i;
-        }
+    this.queue = result.then(
+      () => {
+      },
+      () => {
       }
-      const p2Ratio = maxPossibleScore > 0 ? p2BestScore / maxPossibleScore : 0;
-      if (p2BestIdx !== -1 && (p2BestScore >= 12.5 || p2Ratio >= HEALING_CONFIDENCE_THRESHOLD)) {
-        const newHealedLine = p2BestIdx + 1;
-        const isHealed = newHealedLine !== item.line;
-        return {
-          healedLine: newHealedLine,
-          isHealed,
-          status: isHealed ? "healed" : "matched",
-          confidence: p2Ratio
-        };
-      }
-    }
+    );
+    return result;
   }
-  return { healedLine: item.line, isHealed: false, status: "unmatched", confidence: confidenceRatio };
-}
-async function resolveHealedLine(workspaceRoot, item, fileLinesCache, getDocumentLines) {
-  if (!item.contextSnippet || typeof item.contextSnippet.current !== "string" || !item.line) {
-    return { healedLine: item.line, isHealed: false, status: "matched" };
-  }
-  if (typeof item.line !== "number" || isNaN(item.line) || item.line <= 0) {
-    return { healedLine: item.line, isHealed: false, status: "matched" };
-  }
-  if (!item.file || typeof item.file !== "string") {
-    return { healedLine: item.line, isHealed: false, status: "matched" };
-  }
-  const filePath = path.isAbsolute(item.file) ? item.file : path.join(workspaceRoot, item.file);
-  let lines;
-  if (fileLinesCache && fileLinesCache.has(filePath)) {
-    lines = fileLinesCache.get(filePath);
-  } else {
-    if (getDocumentLines) {
-      lines = getDocumentLines(filePath);
-    }
-    if (!lines && fs.existsSync(filePath)) {
-      try {
-        const content = await fs.promises.readFile(filePath, "utf-8");
-        lines = content.split(/\r?\n/);
-      } catch {
-        return { healedLine: item.line, isHealed: false, status: "unmatched" };
-      }
-    }
-    if (lines && fileLinesCache) {
-      fileLinesCache.set(filePath, lines);
-    }
-  }
-  if (!lines || lines.length === 0) {
-    return { healedLine: item.line, isHealed: false, status: "unmatched" };
-  }
-  return resolveHealedLineFromLines(lines, item);
-}
+};
 
-// src/domain/sceneStateManager.ts
+// src/application/sceneStateManager.ts
 var PureEventEmitter = class {
   listeners = /* @__PURE__ */ new Set();
   event = (listener) => {
@@ -471,6 +120,9 @@ var SceneStateManager = class {
   }
   setBaselineBreakpointCount(count) {
     this.baselineBreakpointCount = count;
+  }
+  incrementActiveBaseline() {
+    this.baselineBreakpointCount++;
   }
   setActiveScenes(sceneNames, initialBpCount = 0) {
     const uniqueSorted = Array.from(new Set(sceneNames.map((s) => s.trim()).filter(Boolean))).sort();
@@ -541,1013 +193,1913 @@ var SceneStateManager = class {
 };
 var sceneStateManager = new SceneStateManager();
 
-// src/domain/activationResolver.ts
-function computeBreakpointsTopologyHash(breakpoints) {
-  if (!Array.isArray(breakpoints) || breakpoints.length === 0) {
-    return "";
-  }
-  const tokens = breakpoints.map((bp) => {
-    const isEnabled = bp.enabled ?? true;
-    if (bp.type === "function") {
-      const fn = bp;
-      return `fn:${fn.functionName || ""}:${fn.condition || ""}:${fn.hitCondition || ""}:${isEnabled}`;
-    }
-    const src = bp;
-    const normFile = (src.file || "").replace(/\\/g, "/").toLowerCase();
-    return `src:${normFile}:${src.line}:${src.type}:${src.condition || ""}:${src.hitCondition || ""}:${src.logMessage || ""}:${isEnabled}`;
-  });
-  return tokens.sort().join("|");
-}
-function extractTargetActiveScenes(rawActive) {
-  if (Array.isArray(rawActive)) {
-    const cleaned = rawActive.filter((item) => typeof item === "string").map((item) => item.trim()).filter((item) => item.length > 0);
-    return Array.from(new Set(cleaned));
-  }
-  if (typeof rawActive === "string") {
-    const trimmed = rawActive.trim();
-    return trimmed.length > 0 ? [trimmed] : [];
-  }
-  return [];
-}
-function filterGhostScenes(candidates, scenesDict) {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return [];
-  }
-  if (!scenesDict || typeof scenesDict !== "object" || Array.isArray(scenesDict)) {
-    return [];
-  }
-  const declaredKeys = Object.keys(scenesDict);
-  const result = [];
-  for (const candidate of candidates) {
-    const matched = declaredKeys.find((k) => k.toLowerCase() === candidate.toLowerCase());
-    if (matched && !result.includes(matched)) {
-      result.push(matched);
-    }
-  }
-  return result;
-}
-function resolveActiveScenesDiff(params) {
-  const { allowAiActivation, currentActiveScenes, rawActiveScenes, scenesDict } = params;
-  if (!allowAiActivation) {
-    return { shouldApply: false, action: "noop", targetScenes: [] };
-  }
-  const extracted = extractTargetActiveScenes(rawActiveScenes);
-  const targetScenes = filterGhostScenes(extracted, scenesDict);
-  const currentSorted = [...currentActiveScenes].sort();
-  const targetSorted = [...targetScenes].sort();
-  const isIdentical = currentSorted.length === targetSorted.length && currentSorted.every((s, i) => s === targetSorted[i]);
-  if (isIdentical) {
-    return { shouldApply: false, action: "noop", targetScenes };
-  }
-  if (targetScenes.length > 0) {
-    return { shouldApply: true, action: "apply", targetScenes };
-  }
-  if (currentActiveScenes.length > 0) {
-    return { shouldApply: true, action: "clear", targetScenes: [] };
-  }
-  return { shouldApply: false, action: "noop", targetScenes: [] };
-}
-
-// src/domain/sceneOperations.ts
-var path2 = __toESM(require("node:path"));
-function upsertBreakpointToScene(config, sceneName, newEntry) {
-  if (!config || !newEntry || typeof sceneName !== "string" || !sceneName.trim()) {
-    return;
-  }
-  const targetScene = sceneName.trim();
-  if (!config.scenes) {
-    config.scenes = {};
-  }
-  const list = config.scenes[targetScene] || [];
-  if (newEntry.type === "function") {
-    const funcEntry = newEntry;
-    const existIdx = list.findIndex(
-      (it) => it.type === "function" && it.functionName === funcEntry.functionName
-    );
-    if (existIdx >= 0) {
-      list[existIdx] = funcEntry;
-    } else {
-      list.push(funcEntry);
-    }
-  } else {
-    const srcEntry = newEntry;
-    const normFile = srcEntry.file ? srcEntry.file.replace(/\\/g, "/") : "";
-    const existIdx = list.findIndex(
-      (it) => it.type !== "function" && it.file.replace(/\\/g, "/") === normFile && it.line === srcEntry.line
-    );
-    if (existIdx >= 0) {
-      list[existIdx] = srcEntry;
-    } else {
-      list.push(srcEntry);
-    }
-  }
-  config.scenes[targetScene] = list;
-}
-function removeBreakpointFromConfig(config, sceneName, index) {
-  const list = config?.scenes?.[sceneName];
-  if (!Array.isArray(list) || index < 0 || index >= list.length) {
-    return false;
-  }
-  list.splice(index, 1);
-  return true;
-}
-function renameSceneInConfig(config, oldName, newName) {
-  const trimmedNew = typeof newName === "string" ? newName.trim() : "";
-  if (!trimmedNew || !config.scenes || !config.scenes[oldName] || config.scenes[trimmedNew]) {
-    return false;
-  }
-  config.scenes[trimmedNew] = config.scenes[oldName];
-  delete config.scenes[oldName];
-  if (config.bindings) {
-    for (const [bk, bv] of Object.entries(config.bindings)) {
-      if (typeof bv === "string" && bv === oldName) {
-        config.bindings[bk] = trimmedNew;
-      } else if (Array.isArray(bv)) {
-        config.bindings[bk] = bv.map((it) => it === oldName ? trimmedNew : it);
+// src/shared/utils/stringSimilarity.ts
+function stripTrailingComment(line) {
+  if (!line) return "";
+  let inString = null;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"' || char === "'" || char === "`") {
+      if (!inString) inString = char;
+      else if (inString === char && line[i - 1] !== "\\") inString = null;
+    } else if (!inString) {
+      if (char === "/" && line[i + 1] === "/") {
+        return line.slice(0, i).trim();
       }
-    }
-  }
-  return true;
-}
-function deleteSceneFromConfig(config, sceneName) {
-  if (!config?.scenes || typeof sceneName !== "string" || !config.scenes[sceneName]) {
-    return false;
-  }
-  delete config.scenes[sceneName];
-  if (config.bindings) {
-    for (const [bk, bv] of Object.entries(config.bindings)) {
-      if (typeof bv === "string" && bv === sceneName) {
-        delete config.bindings[bk];
-      } else if (Array.isArray(bv)) {
-        const filtered = bv.filter((it) => it !== sceneName);
-        if (filtered.length === 0) {
-          delete config.bindings[bk];
+      if (char === "#" || char === "-" && line[i + 1] === "-") {
+        return line.slice(0, i).trim();
+      }
+      if (char === "/" && line[i + 1] === "*") {
+        const endIdx = line.indexOf("*/", i + 2);
+        if (endIdx !== -1) {
+          line = line.slice(0, i) + line.slice(endIdx + 2);
+          i--;
+          continue;
         } else {
-          config.bindings[bk] = filtered;
+          return line.slice(0, i).trim();
         }
       }
     }
   }
-  return true;
+  return line.trim();
 }
-function toggleBreakpointEnabledInConfig(config, sceneName, index) {
-  const list = config?.scenes?.[sceneName];
-  if (!Array.isArray(list) || index < 0 || index >= list.length) {
-    return false;
+function cleanWhitespace(text) {
+  if (typeof text !== "string") return "";
+  const uncommented = stripTrailingComment(text);
+  const normalized = uncommented.trim().replace(/\s+/g, " ");
+  return normalized.length > 140 ? normalized.substring(0, 140) : normalized;
+}
+function jaccardSimilarity(str1, str2) {
+  if (str1 === str2) return 1;
+  const clean1 = cleanWhitespace(str1);
+  const clean2 = cleanWhitespace(str2);
+  if (!clean1 || !clean2) return 0;
+  if (clean1 === clean2) return 0.95;
+  const wordsA = clean1.match(/[a-zA-Z0-9_$]+/g) || [];
+  const wordsB = clean2.match(/[a-zA-Z0-9_$]+/g) || [];
+  if (wordsA.length > 0 && wordsB.length > 0) {
+    const setA = new Set(wordsA);
+    let matchedWords = 0;
+    for (const w of wordsB) {
+      if (setA.has(w)) matchedWords++;
+    }
+    const wordSim = matchedWords / Math.max(wordsA.length, wordsB.length);
+    const charSetA = new Set(clean1.split(""));
+    let commonChars = 0;
+    for (const ch of clean2) {
+      if (charSetA.has(ch)) commonChars++;
+    }
+    const charSim = commonChars / Math.max(clean1.length, clean2.length);
+    return wordSim * 0.7 + charSim * 0.3;
   }
-  const item = list[index];
-  if (!item) return false;
-  item.enabled = !(item.enabled ?? true);
-  return true;
+  return 0;
 }
-function setAllBreakpointsEnabledInScene(config, sceneName, targetEnabled) {
-  const list = config?.scenes?.[sceneName];
-  if (!Array.isArray(list) || list.length === 0) return false;
-  let changed = false;
-  for (const item of list) {
-    if (item && (item.enabled ?? true) !== targetEnabled) {
-      item.enabled = targetEnabled;
-      changed = true;
+var cleanLine = cleanWhitespace;
+var calculateSimilarity = jaccardSimilarity;
+
+// src/shared/utils/textUtils.ts
+var CONTROL_FLOW_KEYWORDS = /* @__PURE__ */ new Set([
+  "if",
+  "else",
+  "elif",
+  "for",
+  "while",
+  "do",
+  "loop",
+  "switch",
+  "case",
+  "catch",
+  "finally",
+  "with",
+  "select",
+  "defer",
+  "go",
+  "return",
+  "throw"
+]);
+var SCOPE_PATTERNS = [
+  /^\s*(?:async\s+)?def\s+([a-zA-Z0-9_$]+)/,
+  /^\s*(?:export\s+)?(?:async\s+)?function(?:\s+([a-zA-Z0-9_$]+)|\s*\()/i,
+  /^\s*(?:(?:pub|public|private|protected|internal|override|final)\s+)*(?:func|fun)\s+(?:\([^)]+\)\s+)?([a-zA-Z0-9_$]+)/i,
+  /^\s*(?:pub(?:\([^)]+\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z0-9_$]+)/,
+  /^\s*(?:public|private|protected)*\s*constructor\b/i,
+  /^\s*(?:public|private|protected|static)*\s*(?:get|set)\s+([a-zA-Z0-9_$]+)/i,
+  /^\s*(?:(?:public|private|protected|static|final|native|synchronized|abstract|virtual|override|async)\s+)+[a-zA-Z0-9_$<>,\[\]\s*&]+\s+([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\s*[{;]/i,
+  /^\s*(?:public|private|protected|static|async)*\s*([a-zA-Z0-9_$]+)\s*(?:=\s*(?:async\s*)?(?:<[^>]*>)?\s*\([^)]*\)\s*=>|\([^)]*\)\s*[{:])/i,
+  /^\s*(?:export\s+)?(?:class|struct|interface|trait|enum|type)\s+([a-zA-Z0-9_$]+)/,
+  /^\s*impl(?:\s+<[^>]+>)?(?:\s+[a-zA-Z0-9_$]+)?\s+for\s+([a-zA-Z0-9_$]+)/,
+  /^\s*impl(?:\s+<[^>]+>)?\s+([a-zA-Z0-9_$]+)/
+];
+function countIndent(text) {
+  if (typeof text !== "string") return 0;
+  const match = text.replace(/\t/g, "  ").match(/^(\s*)/);
+  return match ? match[1].length : 0;
+}
+function findPrevNonEmptyLine(lines, fromIdx) {
+  for (let i = fromIdx - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line && line.trim()) {
+      return cleanWhitespace(line);
     }
   }
-  return changed;
+  return void 0;
 }
-function duplicateSceneInConfig(config, sourceSceneName, targetSceneName) {
-  const trimmedTarget = typeof targetSceneName === "string" ? targetSceneName.trim() : "";
-  if (!config?.scenes || !trimmedTarget) {
-    return false;
+function findNextNonEmptyLine(lines, fromIdx) {
+  for (let i = fromIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line && line.trim()) {
+      return cleanWhitespace(line);
+    }
   }
-  const srcList = config.scenes[sourceSceneName];
-  if (!Array.isArray(srcList) || config.scenes[trimmedTarget]) {
-    return false;
-  }
-  config.scenes[trimmedTarget] = JSON.parse(JSON.stringify(srcList));
-  return true;
+  return void 0;
 }
-function syncEditorBreakpointChangesToConfig(config, activeScenes, changedBreakpoints, workspaceRoot) {
-  if (!config.scenes || activeScenes.length === 0 || changedBreakpoints.length === 0) {
-    return false;
+function findGeometricParent(lines, fromIdx, currentIndent) {
+  for (let i = fromIdx - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || !line.trim()) continue;
+    const ind = countIndent(line);
+    if (ind < currentIndent) {
+      return cleanWhitespace(line);
+    }
   }
-  let hasUpdates = false;
-  for (const bp of changedBreakpoints) {
-    const targetEnabled = bp.enabled ?? true;
-    if (bp.functionName) {
-      const targetFuncName = bp.functionName;
-      for (const sceneName of activeScenes) {
-        const list = config.scenes[sceneName] || [];
-        for (const item of list) {
-          if (item.type === "function") {
-            const funcItem = item;
-            if (funcItem.functionName === targetFuncName) {
-              if ((funcItem.enabled ?? true) !== targetEnabled) {
-                funcItem.enabled = targetEnabled;
-                hasUpdates = true;
-              }
-            }
-          }
-        }
-      }
+  return void 0;
+}
+function extractScopeAnchor(lines, fromIdx, maxLookup = 60) {
+  if (!Array.isArray(lines) || lines.length === 0 || fromIdx < 0) return void 0;
+  const startIdx = Math.min(fromIdx, lines.length - 1);
+  const endIdx = Math.max(0, startIdx - maxLookup);
+  for (let i = startIdx; i >= endIdx; i--) {
+    const rawLine = lines[i];
+    if (!rawLine || !rawLine.trim()) continue;
+    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
       continue;
     }
-    let bpFsPath = "";
-    let bpLine = 0;
-    if (bp.location) {
-      bpFsPath = bp.location.uri.fsPath;
-      bpLine = bp.location.range.start.line + 1;
-    } else if (bp.file && typeof bp.line === "number") {
-      bpFsPath = bp.file;
-      bpLine = bp.line;
-    }
-    if (!bpFsPath || bpLine <= 0) continue;
-    const normBpPath = path2.normalize(bpFsPath).toLowerCase();
-    for (const sceneName of activeScenes) {
-      const list = config.scenes[sceneName] || [];
-      for (const item of list) {
-        if (item.type !== "function") {
-          const srcItem = item;
-          if (srcItem.line === bpLine) {
-            let itemFullPath = srcItem.file;
-            if (workspaceRoot && !path2.isAbsolute(itemFullPath)) {
-              itemFullPath = path2.join(workspaceRoot, itemFullPath);
-            }
-            const normItemPath = path2.normalize(itemFullPath).toLowerCase();
-            if (normItemPath === normBpPath) {
-              if ((srcItem.enabled ?? true) !== targetEnabled) {
-                srcItem.enabled = targetEnabled;
-                hasUpdates = true;
-              }
-            }
-          }
+    for (const pattern of SCOPE_PATTERNS) {
+      const match = rawLine.match(pattern);
+      if (match) {
+        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
+        if (identifier && !CONTROL_FLOW_KEYWORDS.has(identifier)) {
+          return identifier;
         }
       }
     }
   }
-  return hasUpdates;
+  return void 0;
 }
-function mergeScenesBreakpoints(config, sceneNames) {
-  const merged = [];
-  for (const sceneName of sceneNames) {
-    const list = config.scenes[sceneName] || [];
-    for (const bp of list) {
-      if (bp.type === "function") {
-        const funcBp = bp;
-        const exists = merged.some(
-          (it) => it.type === "function" && it.functionName === funcBp.functionName
-        );
-        if (!exists) merged.push(funcBp);
-      } else {
-        const srcBp = bp;
-        const normFile = srcBp.file ? srcBp.file.replace(/\\/g, "/") : "";
-        const exists = merged.some(
-          (it) => it.type !== "function" && it.file.replace(/\\/g, "/") === normFile && it.line === srcBp.line
-        );
-        if (!exists) merged.push(srcBp);
-      }
-    }
-  }
-  return merged;
-}
-function moveBreakpointInScene(config, sceneName, index, direction) {
-  const list = config.scenes?.[sceneName];
-  if (!Array.isArray(list) || index < 0 || index >= list.length) {
-    return false;
-  }
-  if (direction === "top") {
-    if (index === 0) return false;
-    const [item] = list.splice(index, 1);
-    list.unshift(item);
-    return true;
-  }
-  if (direction === "bottom") {
-    if (index === list.length - 1) return false;
-    const [item] = list.splice(index, 1);
-    list.push(item);
-    return true;
-  }
-  const targetIndex = direction === "up" ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= list.length) {
-    return false;
-  }
-  const temp = list[index];
-  list[index] = list[targetIndex];
-  list[targetIndex] = temp;
-  return true;
-}
-function reorderBreakpointInScene(config, sceneName, sourceIndex, targetIndex) {
-  const list = config.scenes?.[sceneName];
-  if (!Array.isArray(list)) return false;
-  if (sourceIndex < 0 || sourceIndex >= list.length) return false;
-  if (targetIndex < 0 || targetIndex >= list.length) return false;
-  if (sourceIndex === targetIndex) return false;
-  const [item] = list.splice(sourceIndex, 1);
-  list.splice(targetIndex, 0, item);
-  return true;
-}
-function findBreakpointLineInJson(jsonContent, sceneName, bp) {
-  const lines = jsonContent.split(/\r?\n/);
-  let inTargetScene = false;
-  let sceneLine = 1;
-  let bracketDepth = 0;
+function findScopeAnchorLine(lines, scopeAnchor) {
+  if (!scopeAnchor || !scopeAnchor.trim()) return void 0;
+  const target = scopeAnchor.trim();
   for (let i = 0; i < lines.length; i++) {
-    const lineText = lines[i];
-    if (!inTargetScene) {
-      const scenePattern = new RegExp(`"${escapeRegExp(sceneName)}"\\s*:`);
-      if (scenePattern.test(lineText)) {
-        inTargetScene = true;
-        sceneLine = i + 1;
-        bracketDepth = (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
-      }
+    const rawLine = lines[i];
+    if (!rawLine || !rawLine.trim() || !rawLine.includes(target)) continue;
+    if (/^\s*(?:if|for|while|switch|catch|with|elif)\s*\(/.test(rawLine)) {
       continue;
     }
-    bracketDepth += (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
-    if (bracketDepth < 0 || bracketDepth === 0 && lineText.includes("]")) {
-      break;
-    }
-    if (bp.type === "function") {
-      const fn = bp;
-      if (fn.functionName && lineText.includes(`"${fn.functionName}"`)) {
-        return i + 1;
-      }
-    } else {
-      const src = bp;
-      const targetFile = (src.file || "").replace(/\\/g, "/");
-      const baseName = path2.basename(targetFile);
-      if (lineText.includes(`"${targetFile}"`) || lineText.includes(`"${baseName}"`) || lineText.includes(`"line"`) && lineText.includes(String(src.line))) {
-        return i + 1;
+    for (const pattern of SCOPE_PATTERNS) {
+      const match = rawLine.match(pattern);
+      if (match) {
+        const identifier = match[1] || (pattern.source.includes("constructor") ? "constructor" : void 0);
+        if (identifier && identifier.trim() === target) {
+          return i;
+        }
       }
     }
   }
-  return sceneLine;
+  return void 0;
 }
-function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function stripMarkdown(text) {
+  const trimmed = (text || "").trim();
+  const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
+  if (blockMatch) {
+    return blockMatch[1].trim();
+  }
+  return trimmed;
 }
-
-// src/domain/skillLifecycleResolver.ts
-var crypto = __toESM(require("node:crypto"));
-var LATEST_SKILL_VERSION = "1.0.7";
-var OFFICIAL_SKILL_HISTORY = {
-  // 从 1.0.3 开始建立官方核心正文指纹基线 (后续版本演进时向此字典追加)
-  "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3"
-};
-function stripSkillFrontmatter(content) {
-  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n\r?\n?/, "");
-}
-function normalizeSkillContent(content) {
-  const body = stripSkillFrontmatter(content);
-  return body.replace(/\r\n/g, "\n").split("\n").map((line) => line.trimEnd()).join("\n").trim();
-}
-function computeSkillFingerprint(content) {
-  const normalized = normalizeSkillContent(content);
-  return crypto.createHash("sha256").update(normalized, "utf8").digest("hex");
-}
-function resolveSkillLifecycleState(localContent, latestTemplateContent, latestVersion = LATEST_SKILL_VERSION) {
-  const localHash = computeSkillFingerprint(localContent);
-  const latestHash = computeSkillFingerprint(latestTemplateContent);
-  if (localHash === latestHash) {
-    return {
-      status: "UpToDate",
-      detectedVersion: latestVersion,
-      localHash,
-      latestHash
-    };
-  }
-  const historicalVersion = OFFICIAL_SKILL_HISTORY[localHash];
-  if (historicalVersion) {
-    return {
-      status: "CleanOutdated",
-      detectedVersion: historicalVersion,
-      localHash,
-      latestHash
-    };
-  }
-  return {
-    status: "CustomModified",
-    localHash,
-    latestHash
-  };
-}
-
-// src/domain/launchResolver.ts
-function resolveLaunchBoundScenes(config, launchName, envScene) {
-  const sceneNames = Object.keys(config.scenes || {});
-  const matchSceneName = (candidate) => {
-    const trimmed = candidate.trim();
-    if (!trimmed) return void 0;
-    const lower = trimmed.toLowerCase();
-    return sceneNames.find((name) => name.toLowerCase() === lower);
-  };
-  if (envScene && typeof envScene === "string" && envScene.trim()) {
-    const rawScenes = envScene.split(",").map((s) => s.trim()).filter(Boolean);
-    const matchedScenes = rawScenes.map(matchSceneName).filter((s) => typeof s === "string");
-    return matchedScenes;
-  }
-  const normalizedLaunchName = (launchName || "").trim();
-  if (!normalizedLaunchName) return [];
-  if (config.bindings && typeof config.bindings === "object") {
-    const bindingKeys = Object.keys(config.bindings);
-    const matchedKey = bindingKeys.find(
-      (k) => k.trim().toLowerCase() === normalizedLaunchName.toLowerCase()
-    );
-    if (matchedKey) {
-      const target = config.bindings[matchedKey];
-      if (typeof target === "string" && target.trim()) {
-        const rawScenes = target.split(",").map((s) => s.trim()).filter(Boolean);
-        const matchedScenes = rawScenes.map(matchSceneName).filter((s) => typeof s === "string");
-        return matchedScenes;
-      }
-      if (Array.isArray(target)) {
-        const matchedScenes = target.map((item) => typeof item === "string" ? matchSceneName(item) : void 0).filter((s) => typeof s === "string");
-        return matchedScenes;
-      }
-    }
-  }
-  const exactSameScene = matchSceneName(normalizedLaunchName);
-  return exactSameScene ? [exactSameScene] : [];
-}
-
-// src/infra/storage/jsonFileSceneRepository.ts
-var fs2 = __toESM(require("node:fs"));
-var path3 = __toESM(require("node:path"));
-var vscode = __toESM(require("vscode"));
-
-// src/infra/storage/saveLoopGuard.ts
-var SaveLoopGuard = class {
-  internalSavingTimer;
-  _isInternalSaving = false;
-  lastSavedContent = "";
-  /**
-   * 当前是否正处于扩展内部写盘保护周期内
-   */
-  isInternalSaving() {
-    return this._isInternalSaving;
-  }
-  /**
-   * 显式标记内部写盘行为，并启动延时安全释放窗口
-   */
-  markInternalSaving(timeoutMs = 600) {
-    this._isInternalSaving = true;
-    if (this.internalSavingTimer) {
-      clearTimeout(this.internalSavingTimer);
-    }
-    this.internalSavingTimer = setTimeout(() => {
-      this._isInternalSaving = false;
-      this.internalSavingTimer = void 0;
-    }, timeoutMs);
-  }
-  /**
-   * 记录最新一次内部持久化写盘的文件内容指纹
-   */
-  setLastSavedContent(content) {
-    this.lastSavedContent = content;
-  }
-  getLastSavedContent() {
-    return this.lastSavedContent;
-  }
-  /**
-   * 比对磁盘传入内容是否与扩展最新内部写盘内容完全一致（用于拦截自身 fileWatcher 回环）
-   */
-  isContentMatchingLastSaved(content) {
-    if (!this.lastSavedContent || !content) return false;
-    try {
-      return JSON.stringify(JSON.parse(content)) === JSON.stringify(JSON.parse(this.lastSavedContent));
-    } catch {
-      return content.trim() === this.lastSavedContent.trim();
-    }
-  }
-  /**
-   * 事务化执行内部保存操作，自动包裹指纹记录与安全窗
-   */
-  async runWithSavingGuard(action) {
-    this.markInternalSaving();
-    try {
-      return await action();
-    } finally {
-      this.markInternalSaving();
-    }
-  }
-};
-var saveLoopGuard = new SaveLoopGuard();
-var syncService = saveLoopGuard;
-
-// src/infra/storage/jsonFileSceneRepository.ts
-var syncCoordinator = syncService;
-function getWorkspaceRoot(warnIfMissing = false) {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
-    if (warnIfMissing) {
-      vscode.window.showWarningMessage(vscode.l10n.t("Please open a workspace folder to use Scene Breakpoints."));
-    }
-    return void 0;
-  }
-  return folders[0].uri.fsPath;
-}
-function getScenesConfigPath(workspaceRoot) {
-  return path3.join(workspaceRoot, ".vscode", "debug-scenes.json");
-}
-function stripJsonComments(jsonStr) {
+function stripComments(jsonStr) {
   if (typeof jsonStr !== "string") return "{}";
   const stripped = jsonStr.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, stringLiteral) => {
     return stringLiteral ? stringLiteral : "";
   }).replace(/,\s*([\]}])/g, "$1").trim();
   return stripped.length > 0 ? stripped : "{}";
 }
-function hasGitConflictMarkers(text) {
-  if (typeof text !== "string") return false;
-  return /^[<]{7}\s|^[=]{7}$|^[>]{7}\s/m.test(text);
+
+// src/domain/models/fingerprint.ts
+function extractContextSnippetFromLines(lines, lineZeroBased) {
+  const currentLineText = lines[lineZeroBased] ?? "";
+  const current = cleanLine(currentLineText);
+  const indent = countIndent(currentLineText);
+  const prev = findPrevNonEmptyLine(lines, lineZeroBased);
+  const next = findNextNonEmptyLine(lines, lineZeroBased);
+  const sampleLines = lines.slice(Math.max(0, lineZeroBased - 60), lineZeroBased + 1);
+  const scopeAnchor = extractScopeAnchor(sampleLines, sampleLines.length - 1);
+  return { prev, current, next, scopeAnchor, indent };
 }
-function loadScenesConfig(workspaceRoot) {
-  const configPath = getScenesConfigPath(workspaceRoot);
-  if (!fs2.existsSync(configPath)) {
-    return { scenes: {} };
+var Fingerprint = class _Fingerprint {
+  current;
+  prev;
+  next;
+  scopeAnchor;
+  indent;
+  constructor(props) {
+    this.current = cleanLine(props.current || "");
+    this.prev = props.prev ? cleanLine(props.prev) : void 0;
+    this.next = props.next ? cleanLine(props.next) : void 0;
+    this.scopeAnchor = props.scopeAnchor ? cleanLine(props.scopeAnchor) : void 0;
+    this.indent = typeof props.indent === "number" ? props.indent : void 0;
+    Object.freeze(this);
   }
-  try {
-    const content = fs2.readFileSync(configPath, "utf-8");
-    if (!content || !content.trim()) {
-      return { scenes: {} };
+  /**
+   * 从纯数据 DTO 创建指纹值对象
+   */
+  static fromSnippet(snippet) {
+    if (!snippet || typeof snippet.current !== "string" || !snippet.current.trim()) {
+      return void 0;
     }
-    if (hasGitConflictMarkers(content)) {
-      vscode.window.showErrorMessage(
-        vscode.l10n.t("Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe.")
-      );
-      return { scenes: {} };
-    }
-    const sanitized = stripJsonComments(content);
-    const parsed = JSON.parse(sanitized);
-    if (!parsed || typeof parsed !== "object") {
-      vscode.window.showWarningMessage(vscode.l10n.t("debug-scenes.json root must be an object"));
-      return { scenes: {} };
-    }
-    const candidateScenes = parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes) ? parsed.scenes : parsed;
-    const cleanScenes = {};
-    for (const [k, v] of Object.entries(candidateScenes)) {
-      if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
-        cleanScenes[k] = v.filter((it) => it && typeof it === "object");
-      }
-    }
-    let cleanBindings;
-    const rawBindings = parsed.bindings || candidateScenes.bindings;
-    if (rawBindings && typeof rawBindings === "object" && !Array.isArray(rawBindings)) {
-      cleanBindings = {};
-      for (const [bk, bv] of Object.entries(rawBindings)) {
-        if (typeof bv === "string" && bv.trim()) {
-          cleanBindings[bk] = bv.trim();
-        } else if (Array.isArray(bv)) {
-          cleanBindings[bk] = bv.map((it) => String(it).trim()).filter(Boolean);
-        }
-      }
-    }
-    const result = { scenes: cleanScenes };
-    if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-      result.bindings = cleanBindings;
-    }
-    const rawActiveScenes = parsed.activeScenes ?? candidateScenes.activeScenes;
-    if (rawActiveScenes !== void 0) {
-      result.activeScenes = rawActiveScenes;
-    }
-    return result;
-  } catch (e) {
-    vscode.window.showErrorMessage(vscode.l10n.t("Failed to read debug-scenes.json: {0}", e.message));
+    return new _Fingerprint({
+      current: snippet.current,
+      prev: snippet.prev,
+      next: snippet.next,
+      scopeAnchor: snippet.scopeAnchor,
+      indent: snippet.indent
+    });
   }
-  return { scenes: {} };
-}
-var isWriting = false;
-var pendingSave;
-function saveScenesConfig(workspaceRoot, config) {
-  const configPath = getScenesConfigPath(workspaceRoot);
-  const vscodeDir = path3.dirname(configPath);
-  try {
-    syncCoordinator.markInternalSaving();
-    if (!fs2.existsSync(vscodeDir)) {
-      fs2.mkdirSync(vscodeDir, { recursive: true });
+  /**
+   * 静态工厂：直接从源码文本行数组在指定行号位置提取并构建指纹值对象
+   * @param lines 源码文本行数组 (0-indexed 数组)
+   * @param targetLine 目标代码行号 (1-indexed)
+   */
+  static fromLines(lines, targetLine) {
+    if (!lines || lines.length === 0 || targetLine < 1 || targetLine > lines.length) {
+      return void 0;
     }
-    const content = JSON.stringify(config, null, 2);
-    syncCoordinator.setLastSavedContent(content);
-    if (isWriting) {
-      pendingSave = { workspaceRoot, config };
-      return;
+    const rawLine = lines[targetLine - 1];
+    if (!rawLine || !rawLine.trim()) {
+      return void 0;
     }
-    isWriting = true;
-    try {
-      fs2.writeFileSync(configPath, content, "utf-8");
-    } finally {
-      isWriting = false;
-      syncCoordinator.markInternalSaving();
-      if (pendingSave) {
-        const next = pendingSave;
-        pendingSave = void 0;
-        saveScenesConfig(next.workspaceRoot, next.config);
-      }
+    const snippet = extractContextSnippetFromLines(lines, targetLine - 1);
+    if (!snippet || !snippet.current) {
+      return void 0;
     }
-  } catch (e) {
-    vscode.window.showErrorMessage(vscode.l10n.t("Failed to save debug-scenes.json: {0}", e.message));
+    return new _Fingerprint(snippet);
   }
-}
-function isContentMatchingLastSaved(content) {
-  return syncCoordinator.isContentMatchingLastSaved(content);
-}
-var jsonFileSceneRepository = {
-  loadScenesConfig,
-  saveScenesConfig,
-  getScenesConfigPath,
-  getWorkspaceRoot
+  /**
+   * 指纹是否有效（具备非空当前行）
+   */
+  isValid() {
+    return typeof this.current === "string" && this.current.trim().length > 0;
+  }
+  /**
+   * 是否具备上级函数/方法作用域锚点
+   */
+  hasScope() {
+    return typeof this.scopeAnchor === "string" && this.scopeAnchor.trim().length > 0;
+  }
+  /**
+   * 检查候选代码行文本是否与当前指纹精准匹配或剥离注释后匹配
+   */
+  matches(candidateText) {
+    if (typeof candidateText !== "string") return false;
+    const cleanedCandidate = cleanLine(candidateText);
+    if (!cleanedCandidate) return false;
+    if (cleanedCandidate === this.current) {
+      return true;
+    }
+    const strippedCandidate = stripTrailingComment(candidateText);
+    const strippedCurrent = stripTrailingComment(this.current);
+    if (strippedCandidate && strippedCurrent && strippedCandidate === strippedCurrent) {
+      return true;
+    }
+    return false;
+  }
+  /**
+   * 计算候选代码行文本与当前指纹的抗混淆词法单元相似度 (0 ~ 1.0)
+   */
+  similarity(candidateText) {
+    if (typeof candidateText !== "string") return 0;
+    return calculateSimilarity(this.current, candidateText);
+  }
+  /**
+   * 值对象等价性比较（两个指纹属性全部相同则等价）
+   */
+  equals(other) {
+    if (!other || !(other instanceof _Fingerprint)) return false;
+    return this.current === other.current && this.prev === other.prev && this.next === other.next && this.scopeAnchor === other.scopeAnchor;
+  }
+  /**
+   * 序列化为纯数据 DTO，用于落盘持久化或跨层传输
+   */
+  toJSON() {
+    const res = {
+      current: this.current
+    };
+    if (this.prev) res.prev = this.prev;
+    if (this.next) res.next = this.next;
+    if (this.scopeAnchor) res.scopeAnchor = this.scopeAnchor;
+    if (typeof this.indent === "number") res.indent = this.indent;
+    return res;
+  }
 };
 
-// src/infra/vscode/vscodeBreakpointBridge.ts
-var fs3 = __toESM(require("node:fs"));
-var path4 = __toESM(require("node:path"));
-var vscode2 = __toESM(require("vscode"));
-async function applySceneBreakpoints(workspaceRoot, targetScene, bpsToLoad) {
-  sceneStateManager.setApplyingState(true);
-  try {
-    const currentBreakpoints = vscode2.debug.breakpoints;
-    if (!bpsToLoad || bpsToLoad.length === 0) {
-      if (currentBreakpoints.length > 0) {
-        await vscode2.debug.removeBreakpoints(currentBreakpoints);
-      }
-      return { loadedCount: 0, healedCount: 0 };
+// src/domain/models/breakpoint.ts
+var Breakpoint = class _Breakpoint {
+  type;
+  file;
+  line;
+  enabled;
+  condition;
+  hitCondition;
+  logMessage;
+  functionName;
+  desc;
+  fingerprint;
+  constructor(data) {
+    const raw = data;
+    this.type = raw.type || (raw.functionName ? "function" : "line");
+    this.enabled = raw.enabled ?? true;
+    this.desc = raw.desc;
+    this.condition = raw.condition;
+    this.hitCondition = raw.hitCondition;
+    if (raw.contextSnippet) {
+      this.fingerprint = Fingerprint.fromSnippet(raw.contextSnippet);
     }
-    const targetBreakpoints = [];
-    let healedCount = 0;
-    let enrichedCount = 0;
-    const pathCache = /* @__PURE__ */ new Map();
-    const fileLinesCache = /* @__PURE__ */ new Map();
-    const unmatchedBreakpoints = [];
-    for (const item of bpsToLoad) {
-      if (!item || typeof item !== "object") continue;
-      const isEnabled = item.enabled ?? true;
-      if (item.type === "function") {
-        const funcItem = item;
-        if (typeof funcItem.functionName === "string" && funcItem.functionName.trim()) {
-          const fbp = new vscode2.FunctionBreakpoint(
-            funcItem.functionName.trim(),
-            isEnabled,
-            funcItem.condition,
-            funcItem.hitCondition
-          );
-          targetBreakpoints.push(fbp);
-        }
-        continue;
-      }
-      const srcItem = item;
-      if (!srcItem.file || typeof srcItem.file !== "string") continue;
-      if (typeof srcItem.line !== "number" || isNaN(srcItem.line) || srcItem.line <= 0) continue;
-      let targetUri;
-      const cacheKey = srcItem.file;
-      if (pathCache.has(cacheKey)) {
-        targetUri = pathCache.get(cacheKey);
-      } else {
-        const fullPath = path4.isAbsolute(srcItem.file) ? srcItem.file : path4.join(workspaceRoot, srcItem.file);
-        if (fs3.existsSync(fullPath)) {
-          targetUri = vscode2.Uri.file(fullPath);
-        } else {
-          const found = await vscode2.workspace.findFiles(`**/${path4.basename(srcItem.file)}`, "**/node_modules/**", 1);
-          targetUri = found.length > 0 ? found[0] : null;
-        }
-        pathCache.set(cacheKey, targetUri);
-      }
-      if (!targetUri) continue;
-      const targetFullPath = targetUri.fsPath;
-      const docLinesGetter = (filePath) => {
-        const normFilePath = path4.normalize(filePath).toLowerCase();
-        const openDoc = vscode2.workspace.textDocuments.find(
-          (d) => path4.normalize(d.uri.fsPath).toLowerCase() === normFilePath
-        );
-        if (openDoc) {
-          const lines = [];
-          for (let i = 0; i < openDoc.lineCount; i++) {
-            lines.push(openDoc.lineAt(i).text);
-          }
-          return lines;
-        }
-        return void 0;
+    if (this.type === "function") {
+      this.functionName = data.functionName || "";
+    } else {
+      const src = data;
+      this.file = src.file ? src.file.replace(/\\/g, "/") : "";
+      this.line = typeof src.line === "number" ? src.line : 1;
+      this.logMessage = src.logMessage;
+    }
+  }
+  /**
+   * 获取或设置上下文指纹 (与内部不可变指纹值对象 Fingerprint 100% 桥接)
+   */
+  get contextSnippet() {
+    return this.fingerprint ? this.fingerprint.toJSON() : void 0;
+  }
+  set contextSnippet(val) {
+    if (val) {
+      this.fingerprint = Fingerprint.fromSnippet(val);
+    } else {
+      this.fingerprint = void 0;
+    }
+  }
+  /**
+   * 检查当前断点是否已具备有效的代码伴随指纹
+   */
+  isFingerprinted() {
+    return this.fingerprint?.isValid() ?? false;
+  }
+  /**
+   * 获取当前断点的指纹值对象
+   */
+  getFingerprint() {
+    return this.fingerprint;
+  }
+  /**
+   * 附加或更新当前断点的伴随指纹
+   */
+  setFingerprint(fingerprint) {
+    this.fingerprint = fingerprint;
+  }
+  /**
+   * 启闭切换
+   */
+  toggle() {
+    this.enabled = !this.enabled;
+    return this.enabled;
+  }
+  /**
+   * 设置启用状态
+   */
+  setEnabled(enabled) {
+    this.enabled = enabled;
+  }
+  /**
+   * 解析断点物理绝对路径（跨平台纯净实现）
+   */
+  resolveFullPath(workspaceRoot) {
+    if (this.type === "function" || !this.file) return "";
+    const normFile = this.file.replace(/\\/g, "/");
+    const isAbs = /^[a-zA-Z]:\//.test(normFile) || normFile.startsWith("/");
+    if (isAbs || !workspaceRoot) {
+      return normFile;
+    }
+    const normRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+    const rel = normFile.replace(/^\/+/, "");
+    return `${normRoot}/${rel}`;
+  }
+  /**
+   * 更新断点物理代码行号 (自愈命中或行号校准)
+   */
+  updateLine(newLine) {
+    if (this.type === "function") return false;
+    if (typeof newLine !== "number" || isNaN(newLine) || newLine <= 0) return false;
+    if (this.line === newLine) return false;
+    this.line = newLine;
+    return true;
+  }
+  /**
+   * 判断当前断点是否匹配目标自愈候选断点（同文件下，优先指纹严格匹配，回退物理行号匹配）
+   */
+  matchesHealedTarget(healed) {
+    if (this.type === "function" || healed.type === "function") return false;
+    const normThisFile = (this.file || "").replace(/\\/g, "/").toLowerCase();
+    const normHealedFile = (healed.file || "").replace(/\\/g, "/").toLowerCase();
+    if (normThisFile !== normHealedFile) return false;
+    if (this.contextSnippet?.current && healed.contextSnippet?.current) {
+      return this.contextSnippet.current === healed.contextSnippet.current;
+    }
+    return this.line === healed.line;
+  }
+  /**
+   * 吸收并应用自愈修正结果（行号校准与指纹对齐），返回是否有实质性变更
+   */
+  applyHealed(healed) {
+    if (this.type === "function" || healed.type === "function") return false;
+    let changed = false;
+    if (typeof healed.line === "number" && this.line !== healed.line) {
+      this.line = healed.line;
+      changed = true;
+    }
+    if (healed.contextSnippet && (!this.contextSnippet || this.contextSnippet.current !== healed.contextSnippet.current)) {
+      this.contextSnippet = JSON.parse(JSON.stringify(healed.contextSnippet));
+      changed = true;
+    }
+    return changed;
+  }
+  /**
+   * 现场提取当前代码行的伴随指纹并持久化绑定 (幂等保护：若已具备有效指纹则跳过)
+   */
+  enrich(lines) {
+    if (this.isFingerprinted()) {
+      return false;
+    }
+    if (this.type === "function" || !this.line || !Array.isArray(lines) || lines.length === 0) {
+      return false;
+    }
+    const fp = Fingerprint.fromLines(lines, this.line);
+    if (!fp) return false;
+    this.fingerprint = fp;
+    return true;
+  }
+  enrichFingerprint(lines) {
+    return this.enrich(lines);
+  }
+  /**
+   * 物理位置比对与跨平台路径归一化匹配
+   */
+  matches(other) {
+    if (!other) return false;
+    if (this.type === "function") {
+      return other.type === "function" && other.functionName === this.functionName;
+    }
+    if (other.type === "function") {
+      return false;
+    }
+    const otherFile = other.file ? other.file.replace(/\\/g, "/") : "";
+    const currentFile = this.file ? this.file.replace(/\\/g, "/") : "";
+    return currentFile.toLowerCase() === otherFile.toLowerCase() && this.line === other.line;
+  }
+  /**
+   * 导出为符合 schema.json 规范的纯 DTO 对象
+   */
+  toJSON() {
+    if (this.type === "function") {
+      const res2 = {
+        type: "function",
+        functionName: this.functionName || "",
+        enabled: this.enabled
       };
-      if (!srcItem.contextSnippet || typeof srcItem.contextSnippet.current !== "string") {
-        let lines;
-        if (fileLinesCache.has(targetFullPath)) {
-          lines = fileLinesCache.get(targetFullPath);
-        } else {
-          lines = docLinesGetter(targetFullPath);
-          if (!lines && fs3.existsSync(targetFullPath)) {
-            try {
-              const content = await fs3.promises.readFile(targetFullPath, "utf-8");
-              lines = content.split(/\r?\n/);
-            } catch {
+      if (this.condition) res2.condition = this.condition;
+      if (this.hitCondition) res2.hitCondition = this.hitCondition;
+      if (this.desc) res2.desc = this.desc;
+      return res2;
+    }
+    const res = {
+      type: this.type,
+      file: this.file || "",
+      line: this.line || 1,
+      enabled: this.enabled
+    };
+    if (this.condition) res.condition = this.condition;
+    if (this.hitCondition) res.hitCondition = this.hitCondition;
+    if (this.logMessage) res.logMessage = this.logMessage;
+    if (this.desc) res.desc = this.desc;
+    if (this.fingerprint && this.fingerprint.isValid()) {
+      res.contextSnippet = this.fingerprint.toJSON();
+    }
+    return res;
+  }
+  get raw() {
+    return this.toJSON();
+  }
+  clone() {
+    return new _Breakpoint(this.toJSON());
+  }
+};
+
+// src/domain/models/scene.ts
+var Scene = class _Scene {
+  name;
+  breakpoints = [];
+  constructor(name, initialBreakpoints = []) {
+    this.name = (name || "").trim();
+    this.breakpoints = initialBreakpoints.map((b) => b instanceof Breakpoint ? b : new Breakpoint(b));
+  }
+  /**
+   * 获取当前场景内的断点列表（只读副本引用）
+   */
+  getBreakpoints() {
+    return this.breakpoints;
+  }
+  /**
+   * 获取指定索引位置的断点
+   */
+  getBreakpoint(index) {
+    if (index < 0 || index >= this.breakpoints.length) {
+      return void 0;
+    }
+    return this.breakpoints[index];
+  }
+  /**
+   * 全量替换场景内的断点列表（常用于全量覆盖模式）
+   */
+  setBreakpoints(newBreakpoints = []) {
+    this.breakpoints = newBreakpoints.map((b) => b instanceof Breakpoint ? b : new Breakpoint(b));
+  }
+  /**
+   * 清空场景内全部断点
+   */
+  clearBreakpoints() {
+    this.breakpoints = [];
+  }
+  /**
+   * 向场景添加断点，遵循同位置唯一性查重覆盖契约 (INV-001)
+   */
+  upsertBreakpoint(newBp) {
+    const bpInstance = newBp instanceof Breakpoint ? newBp : new Breakpoint(newBp);
+    const existIdx = this.breakpoints.findIndex((it) => it.matches(bpInstance));
+    if (existIdx >= 0) {
+      this.breakpoints[existIdx] = bpInstance;
+    } else {
+      this.breakpoints.push(bpInstance);
+    }
+  }
+  /**
+   * 从场景中移除指定索引位置的断点
+   */
+  removeBreakpoint(index) {
+    if (index < 0 || index >= this.breakpoints.length) {
+      return false;
+    }
+    this.breakpoints.splice(index, 1);
+    return true;
+  }
+  /**
+   * 调整断点在场景内的排列次序（上移/下移/置顶/置底）
+   */
+  moveBreakpoint(index, direction) {
+    if (index < 0 || index >= this.breakpoints.length) {
+      return false;
+    }
+    if (direction === "top") {
+      if (index === 0) return false;
+      const [item] = this.breakpoints.splice(index, 1);
+      this.breakpoints.unshift(item);
+      return true;
+    }
+    if (direction === "bottom") {
+      if (index === this.breakpoints.length - 1) return false;
+      const [item] = this.breakpoints.splice(index, 1);
+      this.breakpoints.push(item);
+      return true;
+    }
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= this.breakpoints.length) {
+      return false;
+    }
+    const temp = this.breakpoints[index];
+    this.breakpoints[index] = this.breakpoints[targetIndex];
+    this.breakpoints[targetIndex] = temp;
+    return true;
+  }
+  /**
+   * 拖拽重排断点至目标索引位置 (reorder)
+   */
+  reorderBreakpoint(sourceIndex, targetIndex) {
+    if (sourceIndex < 0 || sourceIndex >= this.breakpoints.length || targetIndex < 0 || targetIndex >= this.breakpoints.length || sourceIndex === targetIndex) {
+      return false;
+    }
+    const [item] = this.breakpoints.splice(sourceIndex, 1);
+    this.breakpoints.splice(targetIndex, 0, item);
+    return true;
+  }
+  /**
+   * 切换场景中指定索引断点的启用/禁用状态
+   */
+  toggleBreakpointEnabled(index) {
+    if (index < 0 || index >= this.breakpoints.length) {
+      return false;
+    }
+    const bp = this.breakpoints[index];
+    bp.enabled = !(bp.enabled ?? true);
+    return true;
+  }
+  toggleBreakpoint(index) {
+    return this.toggleBreakpointEnabled(index);
+  }
+  /**
+   * 批量设置场景内所有断点的启用/禁用状态
+   */
+  setAllEnabled(targetEnabled) {
+    let hasChanged = false;
+    for (const bp of this.breakpoints) {
+      if ((bp.enabled ?? true) !== targetEnabled) {
+        bp.enabled = targetEnabled;
+        hasChanged = true;
+      }
+    }
+    return hasChanged;
+  }
+  /**
+   * 获取当前场景中所有尚未提取有效指纹的物理断点
+   */
+  getUnfingerprintedBreakpoints() {
+    return this.breakpoints.filter(
+      (bp) => bp.type !== "function" && !bp.isFingerprinted() && bp.file && bp.line
+    );
+  }
+  /**
+   * 将自愈修正后的断点集合回填到当前场景中，返回是否有断点发生了更新
+   */
+  backfillHealed(healedBreakpoints) {
+    if (!healedBreakpoints || healedBreakpoints.length === 0) return false;
+    let hasChanged = false;
+    for (const bp of this.breakpoints) {
+      if (bp.type === "function") continue;
+      const matched = healedBreakpoints.find((h) => bp.matchesHealedTarget(h));
+      if (matched && bp.applyHealed(matched)) {
+        hasChanged = true;
+      }
+    }
+    return hasChanged;
+  }
+  /**
+   * 同步单个断点目标的启用/禁用状态（支持函数断点名匹配与文件路径归一化匹配）
+   */
+  syncBreakpointEnabled(target) {
+    let changed = false;
+    const targetEnabled = target.enabled ?? true;
+    if (target.functionName) {
+      for (const bp of this.breakpoints) {
+        if (bp.type === "function" && bp.functionName === target.functionName) {
+          if (bp.enabled !== targetEnabled) {
+            bp.setEnabled(targetEnabled);
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+    if (target.file && typeof target.line === "number") {
+      const normTarget = target.file.replace(/\\/g, "/").toLowerCase();
+      for (const bp of this.breakpoints) {
+        if (bp.type === "function" || bp.line !== target.line || !bp.file) continue;
+        const normBp = bp.file.replace(/\\/g, "/").toLowerCase();
+        if (normBp === normTarget || normTarget.endsWith("/" + normBp) || normBp.endsWith("/" + normTarget)) {
+          if (bp.enabled !== targetEnabled) {
+            bp.setEnabled(targetEnabled);
+            changed = true;
+          }
+        }
+      }
+    }
+    return changed;
+  }
+  /**
+   * 深度克隆生成场景副本
+   */
+  clone(newName) {
+    const clonedBps = this.breakpoints.map((b) => b.clone());
+    return new _Scene(newName, clonedBps);
+  }
+  /**
+   * 将多个场景按“先到先得”排重策略 (INV-004, INV-011) 合并生成一个新的场景实体
+   */
+  static merge(scenes, mergedName = "merged") {
+    const mergedBreakpoints = [];
+    for (const scene of scenes) {
+      if (!scene) continue;
+      for (const bp of scene.getBreakpoints()) {
+        const exists = mergedBreakpoints.some((it) => it.matches(bp));
+        if (!exists) {
+          mergedBreakpoints.push(bp);
+        }
+      }
+    }
+    return new _Scene(mergedName, mergedBreakpoints);
+  }
+  /**
+   * 将另一场景或断点集合按“先到先得”排重策略合并吸收至当前场景中
+   */
+  mergeFrom(other) {
+    const incoming = other instanceof _Scene ? other.getBreakpoints() : other;
+    for (const bp of incoming) {
+      const exists = this.breakpoints.some((it) => it.matches(bp));
+      if (!exists) {
+        this.breakpoints.push(bp);
+      }
+    }
+  }
+  /**
+   * 导出为纯数据断点数组 DTO
+   */
+  toJSON() {
+    return this.breakpoints.map((b) => b.toJSON());
+  }
+};
+
+// src/domain/models/sceneCatalog.ts
+var SceneCatalog = class _SceneCatalog {
+  $schema;
+  scenes = /* @__PURE__ */ new Map();
+  activeScenes = [];
+  bindings = {};
+  hasExplicitActiveScenes = false;
+  constructor(config) {
+    if (config) {
+      this.$schema = config.$schema;
+      if (Array.isArray(config.activeScenes)) {
+        this.activeScenes = [...config.activeScenes];
+        this.hasExplicitActiveScenes = true;
+      }
+      this.bindings = config.bindings ? JSON.parse(JSON.stringify(config.bindings)) : {};
+      if (config.scenes && typeof config.scenes === "object") {
+        for (const [name, bps] of Object.entries(config.scenes)) {
+          if (Array.isArray(bps)) {
+            this.scenes.set(name, new Scene(name, bps));
+          }
+        }
+      }
+    }
+  }
+  /**
+   * 从原始配置对象或 DTO 构造聚合根
+   */
+  static fromConfig(config) {
+    return new _SceneCatalog(config);
+  }
+  /**
+   * 获取全量场景实体列表
+   */
+  getAllScenes() {
+    return Array.from(this.scenes.values());
+  }
+  /**
+   * 获取全量场景名称列表
+   */
+  getSceneNames() {
+    return Array.from(this.scenes.keys());
+  }
+  /**
+   * 检查是否存在指定场景（大小写容错匹配，INV-009）
+   */
+  hasScene(name) {
+    return !!this.findExactSceneName(name);
+  }
+  /**
+   * 查找并获取与入参大小写容错匹配的真实场景键名
+   */
+  findExactSceneName(name) {
+    if (!name || typeof name !== "string") return void 0;
+    const targetLower = name.trim().toLowerCase();
+    for (const key of this.scenes.keys()) {
+      if (key.toLowerCase() === targetLower) {
+        return key;
+      }
+    }
+    return void 0;
+  }
+  /**
+   * 获取指定名称的场景实体（支持大小写容错）
+   */
+  getScene(name) {
+    const exactName = this.findExactSceneName(name);
+    return exactName ? this.scenes.get(exactName) : void 0;
+  }
+  /**
+   * 获取或创建场景实体
+   */
+  getOrCreateScene(name) {
+    const existing = this.getScene(name);
+    if (existing) return existing;
+    const trimmedName = name.trim();
+    const created = new Scene(trimmedName);
+    this.scenes.set(trimmedName, created);
+    return created;
+  }
+  /**
+   * 重命名场景，并联动维护 launch.json 启动项映射 bindings
+   */
+  renameScene(oldName, newName) {
+    const exactOld = this.findExactSceneName(oldName);
+    const trimmedNew = typeof newName === "string" ? newName.trim() : "";
+    if (!exactOld || !trimmedNew || this.hasScene(trimmedNew)) {
+      return false;
+    }
+    const scene = this.scenes.get(exactOld);
+    scene.name = trimmedNew;
+    this.scenes.delete(exactOld);
+    this.scenes.set(trimmedNew, scene);
+    this.activeScenes = this.activeScenes.map((s) => s === exactOld ? trimmedNew : s);
+    if (this.bindings) {
+      for (const [k, v] of Object.entries(this.bindings)) {
+        if (typeof v === "string" && v === exactOld) {
+          this.bindings[k] = trimmedNew;
+        } else if (Array.isArray(v)) {
+          this.bindings[k] = v.map((it) => it === exactOld ? trimmedNew : it);
+        }
+      }
+    }
+    return true;
+  }
+  /**
+   * 删除场景，并联动清理 bindings 与 activeScenes
+   */
+  deleteScene(name) {
+    const exactName = this.findExactSceneName(name);
+    if (!exactName) return false;
+    this.scenes.delete(exactName);
+    this.activeScenes = this.activeScenes.filter((s) => s !== exactName);
+    if (this.bindings) {
+      for (const [k, v] of Object.entries(this.bindings)) {
+        if (typeof v === "string" && v === exactName) {
+          delete this.bindings[k];
+        } else if (Array.isArray(v)) {
+          const filtered = v.filter((it) => it !== exactName);
+          if (filtered.length === 0) {
+            delete this.bindings[k];
+          } else {
+            this.bindings[k] = filtered;
+          }
+        }
+      }
+    }
+    return true;
+  }
+  /**
+   * 克隆/复制场景副本，支持可选的目标文件过滤 (INV-004)
+   */
+  duplicateScene(sourceSceneName, targetSceneName, targetFile) {
+    const trimmedTarget = typeof targetSceneName === "string" ? targetSceneName.trim() : "";
+    if (!trimmedTarget) return false;
+    const sourceScene = this.getScene(sourceSceneName);
+    if (!sourceScene || this.hasScene(trimmedTarget)) {
+      return false;
+    }
+    if (targetFile) {
+      const normTargetFile = targetFile.replace(/\\/g, "/").toLowerCase();
+      const clonedBreakpoints = [];
+      for (const bp of sourceScene.getBreakpoints()) {
+        if (bp.type === "function") continue;
+        const bpFile = (bp.file || "").replace(/\\/g, "/").toLowerCase();
+        if (bpFile === normTargetFile || bpFile.endsWith("/" + normTargetFile)) {
+          clonedBreakpoints.push(bp.clone());
+        }
+      }
+      this.scenes.set(trimmedTarget, new Scene(trimmedTarget, clonedBreakpoints));
+    } else {
+      this.scenes.set(trimmedTarget, sourceScene.clone(trimmedTarget));
+    }
+    return true;
+  }
+  /**
+   * 获取当前激活的场景列表
+   */
+  getActiveScenes() {
+    return [...this.activeScenes];
+  }
+  /**
+   * 获取启动项路由表
+   */
+  getBindings() {
+    return { ...this.bindings };
+  }
+  /**
+   * 激活指定场景列表，施加幽灵场景强防御 (INV-009)
+   */
+  activate(targetScenes) {
+    const validTargetScenes = [];
+    const missingScenes = [];
+    for (const target of targetScenes) {
+      const matched = this.findExactSceneName(target);
+      if (matched) {
+        if (!validTargetScenes.includes(matched)) {
+          validTargetScenes.push(matched);
+        }
+      } else {
+        missingScenes.push(target);
+      }
+    }
+    if (validTargetScenes.length === 0) {
+      return {
+        success: false,
+        validTargetScenes: [],
+        missingScenes
+      };
+    }
+    this.activeScenes = validTargetScenes;
+    this.hasExplicitActiveScenes = true;
+    return {
+      success: true,
+      validTargetScenes,
+      missingScenes
+    };
+  }
+  /**
+   * 清空当前激活场景
+   */
+  clearActive() {
+    this.activeScenes = [];
+    this.hasExplicitActiveScenes = true;
+  }
+  /**
+   * 序列化为与磁盘 .vscode/debug-scenes.json 100% 格式吻合的纯 JSON DTO
+   */
+  toJSON() {
+    const scenesDict = {};
+    for (const [name, scene] of this.scenes.entries()) {
+      scenesDict[name] = scene.toJSON();
+    }
+    const res = {
+      scenes: scenesDict
+    };
+    if (this.$schema) res.$schema = this.$schema;
+    if (this.hasExplicitActiveScenes || this.activeScenes.length > 0) {
+      res.activeScenes = [...this.activeScenes];
+    }
+    if (Object.keys(this.bindings).length > 0) res.bindings = { ...this.bindings };
+    return res;
+  }
+};
+
+// src/domain/services/healingEngine.ts
+var HEALING_CONFIDENCE_THRESHOLD = 0.6;
+var HEALING_SEARCH_WINDOW = 30;
+var SCOPE_BODY_SEARCH_WINDOW = 150;
+function extractContextSnippet(docOrLines, lineZeroBased) {
+  if (Array.isArray(docOrLines)) {
+    return extractContextSnippetFromLines(docOrLines, lineZeroBased);
+  }
+  const lines = [];
+  for (let i = 0; i < docOrLines.lineCount; i++) {
+    lines.push(docOrLines.lineAt(i).text);
+  }
+  return extractContextSnippetFromLines(lines, lineZeroBased);
+}
+function calculateCandidateLineScore(lines, i, snippet, getCandidateScope, distancePenalty) {
+  const lineText = cleanWhitespace(lines[i]);
+  let score = 0;
+  const isCurrentExactMatch = lineText === snippet.targetCurrent;
+  let hasDirectMatch = isCurrentExactMatch;
+  if (isCurrentExactMatch) {
+    score += 10;
+  } else if (snippet.targetCurrent && stripTrailingComment(lineText) === stripTrailingComment(snippet.targetCurrent) && stripTrailingComment(lineText).length > 0) {
+    score += 9;
+    hasDirectMatch = true;
+  }
+  let hasPrevMatch = false;
+  const candPrev = findPrevNonEmptyLine(lines, i);
+  if (snippet.targetPrev && candPrev && (candPrev === snippet.targetPrev || i > 0 && cleanWhitespace(lines[i - 1]) === snippet.targetPrev)) {
+    score += 5;
+    hasPrevMatch = true;
+  }
+  let hasNextMatch = false;
+  const candNext = findNextNonEmptyLine(lines, i);
+  if (snippet.targetNext && candNext && (candNext === snippet.targetNext || i < lines.length - 1 && cleanWhitespace(lines[i + 1]) === snippet.targetNext)) {
+    score += 5;
+    hasNextMatch = true;
+  }
+  let hasContextMatch = hasPrevMatch || hasNextMatch;
+  if (!isCurrentExactMatch && hasContextMatch) {
+    const sim = jaccardSimilarity(lineText, snippet.targetCurrent);
+    if (sim >= 0.7) {
+      score += Math.round(sim * 6);
+      hasDirectMatch = true;
+    }
+  }
+  if (hasPrevMatch && hasNextMatch) {
+    hasDirectMatch = true;
+  }
+  let candIndent = 0;
+  if (snippet.targetIndent !== void 0) {
+    candIndent = countIndent(lines[i]);
+    if (candIndent === snippet.targetIndent) {
+      score += 3;
+    } else if (snippet.targetIndent > 0 && candIndent > 0 && (candIndent === snippet.targetIndent * 2 || snippet.targetIndent === candIndent * 2)) {
+      score += 2;
+    }
+  }
+  if (snippet.targetScope && score >= 5) {
+    const candParent = findGeometricParent(lines, i, candIndent);
+    const candidateScope = getCandidateScope(i);
+    if (candidateScope && candidateScope === snippet.targetScope || candParent && (candParent === snippet.targetScope || candParent.includes(snippet.targetScope))) {
+      score += 5;
+      hasContextMatch = true;
+    }
+  }
+  score -= distancePenalty;
+  return { score, hasDirectMatch };
+}
+var HealingEngine = class {
+  constructor(confidenceThreshold = HEALING_CONFIDENCE_THRESHOLD, searchWindow = HEALING_SEARCH_WINDOW, scopeBodyWindow = SCOPE_BODY_SEARCH_WINDOW) {
+    this.confidenceThreshold = confidenceThreshold;
+    this.searchWindow = searchWindow;
+    this.scopeBodyWindow = scopeBodyWindow;
+  }
+  confidenceThreshold;
+  searchWindow;
+  scopeBodyWindow;
+  /**
+   * 对给定代码行数组及伴随指纹执行两阶段自愈运算 (纯内存算法)
+   */
+  heal(lines, targetLine, fp) {
+    if (!targetLine || typeof targetLine !== "number" || isNaN(targetLine) || targetLine <= 0) {
+      return { healedLine: targetLine || 1, isHealed: false, status: "matched" };
+    }
+    if (!lines || lines.length === 0) {
+      return { healedLine: targetLine, isHealed: false, status: "unmatched" };
+    }
+    const fingerprint = fp instanceof Fingerprint ? fp : Fingerprint.fromSnippet(fp);
+    if (!fingerprint || !fingerprint.isValid()) {
+      return { healedLine: targetLine, isHealed: false, status: "matched" };
+    }
+    const origIdx = targetLine - 1;
+    const targetCurrent = fingerprint.current;
+    const targetPrev = fingerprint.prev;
+    const targetNext = fingerprint.next;
+    const targetScope = fingerprint.scopeAnchor;
+    const targetIndent = fingerprint.indent;
+    if (origIdx >= 0 && origIdx < lines.length) {
+      if (cleanWhitespace(lines[origIdx]) === targetCurrent) {
+        return { healedLine: targetLine, isHealed: false, status: "matched", confidence: 1 };
+      }
+    }
+    const offsets = [];
+    for (let step = 1; step <= this.searchWindow; step++) {
+      offsets.push(step);
+      offsets.push(-step);
+    }
+    const scopeCache = /* @__PURE__ */ new Map();
+    const getCandidateScope = (lineIdx) => {
+      if (scopeCache.has(lineIdx)) return scopeCache.get(lineIdx);
+      const scope = extractScopeAnchor(lines, lineIdx);
+      scopeCache.set(lineIdx, scope);
+      return scope;
+    };
+    let maxPossibleScore = 10;
+    if (targetPrev) maxPossibleScore += 5;
+    if (targetNext) maxPossibleScore += 5;
+    if (targetScope) maxPossibleScore += 5;
+    if (targetIndent !== void 0) maxPossibleScore += 3;
+    const snippetSpec = { targetCurrent, targetPrev, targetNext, targetScope, targetIndent };
+    let bestIdx = -1;
+    let bestScore = -1;
+    for (const offset of offsets) {
+      const i = origIdx + offset;
+      if (i < 0 || i >= lines.length) continue;
+      const { score, hasDirectMatch } = calculateCandidateLineScore(
+        lines,
+        i,
+        snippetSpec,
+        getCandidateScope,
+        Math.abs(offset) * 0.05
+      );
+      if (hasDirectMatch && score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+    const confidenceRatio = maxPossibleScore > 0 ? bestScore / maxPossibleScore : 0;
+    if (bestIdx !== -1 && (bestScore >= 12.5 || confidenceRatio >= this.confidenceThreshold)) {
+      const newHealedLine = bestIdx + 1;
+      const isHealed = newHealedLine !== targetLine;
+      return {
+        healedLine: newHealedLine,
+        isHealed,
+        status: isHealed ? "healed" : "matched",
+        confidence: confidenceRatio
+      };
+    }
+    if (targetScope) {
+      const scopeHeaderIdx = findScopeAnchorLine(lines, targetScope);
+      if (scopeHeaderIdx !== void 0) {
+        let p2BestIdx = -1;
+        let p2BestScore = -1;
+        const searchEnd = Math.min(lines.length - 1, scopeHeaderIdx + this.scopeBodyWindow);
+        const headerLine = lines[scopeHeaderIdx] || "";
+        const isPythonStyle = headerLine.trim().endsWith(":");
+        const headerIndent = countIndent(headerLine);
+        for (let i = scopeHeaderIdx; i <= searchEnd; i++) {
+          if (isPythonStyle && i > scopeHeaderIdx) {
+            const lineContent = lines[i];
+            if (lineContent && lineContent.trim() && !lineContent.trim().startsWith("#")) {
+              if (countIndent(lineContent) <= headerIndent) {
+                break;
+              }
             }
           }
-          if (lines) {
-            fileLinesCache.set(targetFullPath, lines);
+          const distance = Math.abs(i - origIdx);
+          const { score, hasDirectMatch } = calculateCandidateLineScore(
+            lines,
+            i,
+            snippetSpec,
+            getCandidateScope,
+            distance * 0.01
+          );
+          if (hasDirectMatch && score > p2BestScore) {
+            p2BestScore = score;
+            p2BestIdx = i;
           }
         }
-        if (lines && lines.length > 0) {
-          const lineZeroBased = srcItem.line - 1;
-          if (lineZeroBased >= 0 && lineZeroBased < lines.length) {
-            srcItem.contextSnippet = extractContextSnippetFromLines(lines, lineZeroBased);
-            enrichedCount++;
-          }
-        }
-      }
-      let effectiveLine = srcItem.line;
-      const healResult = await resolveHealedLine(
-        workspaceRoot,
-        srcItem,
-        fileLinesCache,
-        docLinesGetter
-      );
-      if (healResult.isHealed) {
-        effectiveLine = healResult.healedLine;
-        srcItem.line = effectiveLine;
-        healedCount++;
-      } else if (healResult.status === "unmatched") {
-        unmatchedBreakpoints.push(srcItem);
-      }
-      const pos = new vscode2.Position(Math.max(0, effectiveLine - 1), 0);
-      const location = new vscode2.Location(targetUri, pos);
-      let bp;
-      switch (srcItem.type) {
-        case "condition":
-          bp = new vscode2.SourceBreakpoint(location, isEnabled, srcItem.condition);
-          break;
-        case "hitCount":
-          bp = new vscode2.SourceBreakpoint(location, isEnabled, void 0, srcItem.hitCondition);
-          break;
-        case "logpoint":
-          bp = new vscode2.SourceBreakpoint(location, isEnabled, void 0, void 0, srcItem.logMessage);
-          break;
-        case "line":
-        default:
-          bp = new vscode2.SourceBreakpoint(location, isEnabled);
-          break;
-      }
-      targetBreakpoints.push(bp);
-    }
-    const matchedCurrentIndices = /* @__PURE__ */ new Set();
-    const matchedTargetIndices = /* @__PURE__ */ new Set();
-    for (let cIdx = 0; cIdx < currentBreakpoints.length; cIdx++) {
-      const curr = currentBreakpoints[cIdx];
-      for (let tIdx = 0; tIdx < targetBreakpoints.length; tIdx++) {
-        if (matchedTargetIndices.has(tIdx)) continue;
-        const target = targetBreakpoints[tIdx];
-        if (curr instanceof vscode2.FunctionBreakpoint && target instanceof vscode2.FunctionBreakpoint) {
-          if (curr.functionName === target.functionName && curr.enabled === target.enabled && curr.condition === target.condition && curr.hitCondition === target.hitCondition) {
-            matchedCurrentIndices.add(cIdx);
-            matchedTargetIndices.add(tIdx);
-            break;
-          }
-        } else if (curr instanceof vscode2.SourceBreakpoint && target instanceof vscode2.SourceBreakpoint) {
-          const currPath = path4.normalize(curr.location.uri.fsPath).toLowerCase();
-          const targetPath = path4.normalize(target.location.uri.fsPath).toLowerCase();
-          if (currPath === targetPath && curr.location.range.start.line === target.location.range.start.line && curr.enabled === target.enabled && curr.condition === target.condition && curr.hitCondition === target.hitCondition && curr.logMessage === target.logMessage) {
-            matchedCurrentIndices.add(cIdx);
-            matchedTargetIndices.add(tIdx);
-            break;
-          }
+        const p2Ratio = maxPossibleScore > 0 ? p2BestScore / maxPossibleScore : 0;
+        if (p2BestIdx !== -1 && (p2BestScore >= 12.5 || p2Ratio >= this.confidenceThreshold)) {
+          const newHealedLine = p2BestIdx + 1;
+          const isHealed = newHealedLine !== targetLine;
+          return {
+            healedLine: newHealedLine,
+            isHealed,
+            status: isHealed ? "healed" : "matched",
+            confidence: p2Ratio
+          };
         }
       }
     }
-    const toRemove = currentBreakpoints.filter((_, idx) => !matchedCurrentIndices.has(idx));
-    const toAdd = targetBreakpoints.filter((_, idx) => !matchedTargetIndices.has(idx));
-    if (toRemove.length > 0) {
-      await vscode2.debug.removeBreakpoints(toRemove);
-    }
-    if (toAdd.length > 0) {
-      await vscode2.debug.addBreakpoints(toAdd);
-    }
-    const unmatchedKeys = unmatchedBreakpoints.map(
-      (bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`
-    );
-    sceneStateManager.setUnmatchedBreakpoints(unmatchedKeys);
-    sceneStateManager.setLastAppliedTopologyHash(computeBreakpointsTopologyHash(bpsToLoad));
-    return {
-      loadedCount: targetBreakpoints.length,
-      healedCount,
-      enrichedCount,
-      healedBreakpoints: healedCount > 0 || enrichedCount > 0 ? bpsToLoad : void 0,
-      unmatchedBreakpoints
-    };
-  } finally {
-    setTimeout(() => {
-      sceneStateManager.setApplyingState(false);
-    }, 150);
+    return { healedLine: targetLine, isHealed: false, status: "unmatched", confidence: confidenceRatio };
   }
-}
-async function applySingleBreakpointToEditor(workspaceRoot, sceneBp) {
-  if (!sceneBp) return false;
-  const currentBreakpoints = vscode2.debug.breakpoints;
-  const isEnabled = sceneBp.enabled ?? true;
-  if (sceneBp.type === "function") {
-    const funcItem = sceneBp;
-    const alreadyExists2 = currentBreakpoints.some(
-      (bp) => bp instanceof vscode2.FunctionBreakpoint && bp.functionName === funcItem.functionName
-    );
-    if (!alreadyExists2) {
-      const fbp = new vscode2.FunctionBreakpoint(
-        funcItem.functionName.trim(),
-        isEnabled,
-        funcItem.condition,
-        funcItem.hitCondition
-      );
-      sceneStateManager.setApplyingState(true);
-      try {
-        await vscode2.debug.addBreakpoints([fbp]);
-        return true;
-      } finally {
-        setTimeout(() => sceneStateManager.setApplyingState(false), 150);
-      }
+  /**
+   * 面向 ILineReader 端口读取并执行自愈 (零 fs 依赖，依赖倒置)
+   */
+  async healWithReader(reader, filePath, targetLine, fp) {
+    const lines = await reader.readLines(filePath);
+    if (!lines || lines.length === 0) {
+      return { healedLine: targetLine, isHealed: false, status: "unmatched" };
     }
-    return false;
+    return this.heal(lines, targetLine, fp);
   }
-  const srcItem = sceneBp;
-  const fullPath = path4.isAbsolute(srcItem.file) ? srcItem.file : path4.join(workspaceRoot, srcItem.file);
-  let targetUri;
-  if (fs3.existsSync(fullPath)) {
-    targetUri = vscode2.Uri.file(fullPath);
-  } else {
-    const found = await vscode2.workspace.findFiles(`**/${path4.basename(srcItem.file)}`, "**/node_modules/**", 1);
-    if (found.length > 0) targetUri = found[0];
+  // 静态快捷调用
+  static heal(lines, targetLine, fp) {
+    return defaultHealingEngine.heal(lines, targetLine, fp);
   }
-  if (!targetUri) return false;
-  const targetLineZeroBased = Math.max(0, srcItem.line - 1);
-  const normFullPath = path4.normalize(targetUri.fsPath).toLowerCase();
-  const alreadyExists = currentBreakpoints.some((bp) => {
-    if (!(bp instanceof vscode2.SourceBreakpoint)) return false;
-    return path4.normalize(bp.location.uri.fsPath).toLowerCase() === normFullPath && bp.location.range.start.line === targetLineZeroBased;
-  });
-  if (!alreadyExists) {
-    const location = new vscode2.Location(targetUri, new vscode2.Position(targetLineZeroBased, 0));
-    let bp;
-    switch (srcItem.type) {
-      case "condition":
-        bp = new vscode2.SourceBreakpoint(location, isEnabled, srcItem.condition);
-        break;
-      case "hitCount":
-        bp = new vscode2.SourceBreakpoint(location, isEnabled, void 0, srcItem.hitCondition);
-        break;
-      case "logpoint":
-        bp = new vscode2.SourceBreakpoint(location, isEnabled, void 0, void 0, srcItem.logMessage);
-        break;
-      case "line":
-      default:
-        bp = new vscode2.SourceBreakpoint(location, isEnabled);
-        break;
-    }
-    sceneStateManager.setApplyingState(true);
-    try {
-      await vscode2.debug.addBreakpoints([bp]);
-      return true;
-    } finally {
-      setTimeout(() => sceneStateManager.setApplyingState(false), 150);
-    }
-  }
-  return false;
-}
-var vscodeBreakpointBridge = {
-  applySceneBreakpoints,
-  collectCurrentBreakpoints,
-  clearAllBreakpoints,
-  applySingleBreakpointToEditor,
-  syncBreakpointEnabledToEditor
 };
-async function clearAllBreakpoints() {
-  sceneStateManager.clearLastAppliedTopologyHash();
-  await vscode2.debug.removeBreakpoints(vscode2.debug.breakpoints);
-  vscode2.window.showInformationMessage(vscode2.l10n.t("Cleared all breakpoints"));
-}
-async function collectCurrentBreakpoints(workspaceRoot) {
-  const currentBreakpoints = vscode2.debug.breakpoints;
-  const exportedBps = [];
-  for (const bp of currentBreakpoints) {
-    if (bp instanceof vscode2.FunctionBreakpoint) {
-      const funcBp = {
-        type: "function",
-        functionName: bp.functionName,
-        enabled: bp.enabled,
-        condition: bp.condition?.trim() || void 0,
-        hitCondition: bp.hitCondition?.trim() || void 0,
-        desc: void 0
-      };
-      exportedBps.push(funcBp);
-    } else if (bp instanceof vscode2.SourceBreakpoint) {
-      const fullPath = bp.location.uri.fsPath;
-      const relPath = path4.relative(workspaceRoot, fullPath).replace(/\\/g, "/");
-      const line = bp.location.range.start.line + 1;
-      let bpType = "line";
-      if (bp.logMessage) {
-        bpType = "logpoint";
-      } else if (bp.hitCondition) {
-        bpType = "hitCount";
-      } else if (bp.condition) {
-        bpType = "condition";
+var defaultHealingEngine = new HealingEngine();
+
+// src/application/sceneManager.ts
+var SceneManager = class {
+  constructor(queue = new SerialQueue()) {
+    this.queue = queue;
+  }
+  queue;
+  resolveDeps(opts) {
+    const defaultDeps = getDependencies();
+    return {
+      sceneRepository: opts?.sceneRepository || defaultDeps.sceneRepository,
+      breakpointBridge: opts?.breakpointBridge || defaultDeps.breakpointBridge,
+      loopGuard: opts?.loopGuard || defaultDeps.loopGuard,
+      fileLinesReader: opts?.fileLinesReader || defaultDeps.fileLinesReader
+    };
+  }
+  /**
+   * 获取当前工作区的场景配置纯数据结构 (只读查询门面)
+   */
+  loadScenesConfig(workspaceRoot, options) {
+    const { sceneRepository } = this.resolveDeps(options);
+    if (!sceneRepository) {
+      throw new Error("SceneService: sceneRepository must be configured");
+    }
+    return sceneRepository.loadScenesConfig(workspaceRoot);
+  }
+  /**
+   * 获取当前工作区的场景目录聚合根 (只读查询门面)
+   */
+  loadCatalog(workspaceRoot, options) {
+    return new SceneCatalog(this.loadScenesConfig(workspaceRoot, options));
+  }
+  /**
+   * 激活目标场景并执行多场景合并与自愈闭环
+   */
+  async activateScene(workspaceRoot, targetScenes, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard, fileLinesReader } = this.resolveDeps(options);
+      if (!sceneRepository || !breakpointBridge) {
+        throw new Error("SceneService: sceneRepository and breakpointBridge must be configured");
       }
-      let contextSnippet;
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const actResult = catalog.activate(targetScenes);
+      if (!actResult.success) {
+        return {
+          success: false,
+          validTargetScenes: [],
+          missingScenes: actResult.missingScenes,
+          loadedCount: 0,
+          healedCount: 0,
+          unmatchedCount: 0
+        };
+      }
+      const validTargetScenes = actResult.validTargetScenes;
+      const missingScenes = actResult.missingScenes;
+      const activeScenes = validTargetScenes.map((name) => catalog.getScene(name)).filter((s) => !!s);
+      const mergedBreakpoints = Scene.merge(activeScenes).getBreakpoints();
+      const {
+        healedCount: appHealedCount,
+        enrichedCount: appEnrichedCount,
+        unmatched: unmatchedBreakpoints
+      } = await this.enrichAndHealBreakpoints(workspaceRoot, mergedBreakpoints, fileLinesReader);
+      sceneStateManager.setUnmatchedBreakpoints(
+        unmatchedBreakpoints.map((bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`)
+      );
+      const bpsToLoad = mergedBreakpoints.map((b) => b.toJSON());
+      const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
+      const currentDiskActives = config.activeScenes;
+      const isSameActive = Array.isArray(currentDiskActives) && currentDiskActives.length === validTargetScenes.length && currentDiskActives.every((s, i) => s === validTargetScenes[i]);
+      if (!isSameActive) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      const applyResult = await breakpointBridge.applySceneBreakpoints(
+        workspaceRoot,
+        primarySceneLabel,
+        bpsToLoad
+      );
+      const loadedCount = applyResult.loadedCount;
+      const healedCount = appHealedCount + (applyResult.healedCount || 0);
+      const enrichedCount = appEnrichedCount + (applyResult.enrichedCount || 0);
+      const finalUnmatched = unmatchedBreakpoints.length > 0 ? unmatchedBreakpoints : applyResult.unmatchedBreakpoints;
+      const unmatchedCount = finalUnmatched?.length || 0;
+      sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
+      if (healedCount > 0 || enrichedCount > 0) {
+        const candidateInstances = applyResult.healedBreakpoints?.length ? applyResult.healedBreakpoints.map((b) => b instanceof Breakpoint ? b : new Breakpoint(b)) : mergedBreakpoints;
+        for (const sName of validTargetScenes) {
+          catalog.getScene(sName)?.backfillHealed(candidateInstances);
+        }
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      return {
+        success: true,
+        validTargetScenes,
+        missingScenes,
+        loadedCount,
+        healedCount,
+        enrichedCount,
+        unmatchedCount,
+        unmatchedBreakpoints: finalUnmatched
+      };
+    });
+  }
+  /**
+   * 清空全局断点与激活场景
+   */
+  async clearAll(workspaceRoot, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
+      if (!breakpointBridge) throw new Error("SceneService: breakpointBridge must be configured");
+      if (workspaceRoot && sceneRepository) {
+        const config = sceneRepository.loadScenesConfig(workspaceRoot);
+        const catalog = new SceneCatalog(config);
+        if (catalog.getActiveScenes().length > 0) {
+          catalog.clearActive();
+          loopGuard?.markInternalSaving();
+          sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+        }
+      }
+      await breakpointBridge.clearAllBreakpoints();
+      sceneStateManager.setActiveScene(void 0);
+    });
+  }
+  /**
+   * 从调试环境逆向导出活动断点并保存为场景
+   */
+  async exportScene(workspaceRoot, targetScene, mode, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
+      if (!sceneRepository || !breakpointBridge) {
+        throw new Error("SceneService: sceneRepository and breakpointBridge must be configured");
+      }
+      const exportedBps = await breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
+      if (exportedBps.length === 0) return { success: false, count: 0 };
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getOrCreateScene(targetScene);
+      if (mode === "append") {
+        for (const bp of exportedBps) scene.upsertBreakpoint(new Breakpoint(bp));
+      } else {
+        scene.setBreakpoints(exportedBps.map((b) => new Breakpoint(b)));
+      }
+      loopGuard?.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      return { success: true, count: exportedBps.length };
+    });
+  }
+  async mutateCatalog(workspaceRoot, options, action) {
+    const { sceneRepository, loopGuard } = this.resolveDeps(options);
+    if (!sceneRepository) throw new Error("SceneService: sceneRepository must be configured");
+    const config = sceneRepository.loadScenesConfig(workspaceRoot);
+    const catalog = new SceneCatalog(config);
+    const success = action(catalog);
+    if (success) {
+      loopGuard?.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+    }
+    return success;
+  }
+  /**
+   * 创建新空白场景
+   */
+  async createScene(workspaceRoot, sceneName, options) {
+    return this.queue.enqueue(async () => {
+      const target = (sceneName || "").trim();
+      if (!target) return false;
+      return this.mutateCatalog(workspaceRoot, options, (cat) => {
+        if (cat.hasScene(target)) return false;
+        cat.getOrCreateScene(target);
+        return true;
+      });
+    });
+  }
+  /**
+   * 重命名现有场景
+   */
+  async renameScene(workspaceRoot, oldName, newName, options) {
+    return this.queue.enqueue(
+      async () => this.mutateCatalog(workspaceRoot, options, (cat) => cat.renameScene(oldName, newName))
+    );
+  }
+  /**
+   * 删除指定场景
+   */
+  async deleteScene(workspaceRoot, sceneName, options) {
+    return this.queue.enqueue(
+      async () => this.mutateCatalog(workspaceRoot, options, (cat) => cat.deleteScene(sceneName))
+    );
+  }
+  /**
+   * 克隆场景副本
+   */
+  async duplicateScene(workspaceRoot, sourceName, targetName, options) {
+    return this.queue.enqueue(
+      async () => this.mutateCatalog(workspaceRoot, options, (cat) => cat.duplicateScene(sourceName, targetName))
+    );
+  }
+  /**
+   * 从外部断点列表导入场景（支持覆盖与追加合并）
+   */
+  async importScene(workspaceRoot, sceneName, breakpoints, mode = "overwrite", options) {
+    return this.queue.enqueue(async () => {
+      const target = (sceneName || "").trim();
+      if (!target) return false;
+      return this.mutateCatalog(workspaceRoot, options, (catalog) => {
+        const scene = catalog.getOrCreateScene(target);
+        if (mode === "append") {
+          for (const bp of breakpoints) scene.upsertBreakpoint(new Breakpoint(bp));
+        } else {
+          scene.setBreakpoints(breakpoints.map((b) => new Breakpoint(b)));
+        }
+        return true;
+      });
+    });
+  }
+  /**
+   * 获取场景配置文件物理路径
+   */
+  getScenesConfigPath(workspaceRoot, options) {
+    const { sceneRepository } = this.resolveDeps(options);
+    return sceneRepository.getScenesConfigPath(workspaceRoot);
+  }
+  /**
+   * 确保场景配置文件存在并返回其物理路径
+   */
+  ensureScenesConfigFile(workspaceRoot, options) {
+    const { sceneRepository } = this.resolveDeps(options);
+    const configPath = sceneRepository.getScenesConfigPath(workspaceRoot);
+    const config = sceneRepository.loadScenesConfig(workspaceRoot);
+    if (!config.scenes) {
+      sceneRepository.saveScenesConfig(workspaceRoot, { scenes: {} });
+    }
+    return configPath;
+  }
+  async enrichAndHealBreakpoints(workspaceRoot, breakpoints, fileLinesReader) {
+    let healedCount = 0;
+    let enrichedCount = 0;
+    const unmatched = [];
+    if (!fileLinesReader) return { healedCount, enrichedCount, unmatched };
+    for (const bp of breakpoints) {
+      if (bp.type === "function") continue;
+      const fullPath = bp.resolveFullPath(workspaceRoot);
+      if (!fullPath) continue;
       try {
-        const doc = await vscode2.workspace.openTextDocument(bp.location.uri);
-        contextSnippet = extractContextSnippet(doc, bp.location.range.start.line);
+        const lines = await fileLinesReader(fullPath);
+        if (!lines || lines.length === 0) continue;
+        if (bp.enrich(lines)) enrichedCount++;
+        const healResult = HealingEngine.heal(lines, bp.line, bp.contextSnippet);
+        if (healResult.isHealed) {
+          bp.updateLine(healResult.healedLine);
+          healedCount++;
+        } else if (healResult.status === "unmatched") {
+          unmatched.push(bp.toJSON());
+        }
       } catch {
       }
-      const srcBp = {
-        type: bpType,
-        file: relPath,
-        line,
-        enabled: bp.enabled,
-        condition: bp.condition?.trim() || void 0,
-        hitCondition: bp.hitCondition?.trim() || void 0,
-        logMessage: bp.logMessage?.trim() || void 0,
-        desc: void 0,
-        contextSnippet
-      };
-      exportedBps.push(srcBp);
     }
+    return { healedCount, enrichedCount, unmatched };
   }
-  return exportedBps;
-}
-async function syncBreakpointEnabledToEditor(workspaceRoot, sceneBp, targetEnabled) {
-  if (!sceneBp) return false;
-  const currentBreakpoints = vscode2.debug.breakpoints;
-  if (sceneBp.type === "function") {
-    const funcItem = sceneBp;
-    const matched2 = currentBreakpoints.find(
-      (bp) => bp instanceof vscode2.FunctionBreakpoint && bp.functionName === funcItem.functionName
-    );
-    if (matched2 && matched2.enabled !== targetEnabled) {
-      const updated = new vscode2.FunctionBreakpoint(
-        matched2.functionName,
-        targetEnabled,
-        matched2.condition,
-        matched2.hitCondition
-      );
-      sceneStateManager.setApplyingState(true);
-      try {
-        await vscode2.debug.removeBreakpoints([matched2]);
-        await vscode2.debug.addBreakpoints([updated]);
-        return true;
-      } finally {
-        setTimeout(() => {
-          sceneStateManager.setApplyingState(false);
-        }, 150);
+};
+var sceneManager = new SceneManager();
+
+// src/application/breakpointManager.ts
+var BreakpointManager = class {
+  constructor(queue = new SerialQueue()) {
+    this.queue = queue;
+  }
+  queue;
+  resolveDeps(opts) {
+    const defaultDeps = getDependencies();
+    return {
+      sceneRepository: opts?.sceneRepository || defaultDeps.sceneRepository,
+      breakpointBridge: opts?.breakpointBridge || defaultDeps.breakpointBridge,
+      loopGuard: opts?.loopGuard || defaultDeps.loopGuard
+    };
+  }
+  /**
+   * 向目标场景添加断点，并根据激活状态执行即刻点亮
+   */
+  async addBreakpoint(workspaceRoot, targetScene, breakpoint, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getOrCreateScene(targetScene);
+      scene.upsertBreakpoint(new Breakpoint(breakpoint));
+      loopGuard?.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      let isImmediatelyApplied = false;
+      const activeScenes = sceneStateManager.getActiveScenes();
+      if (activeScenes.includes(targetScene)) {
+        const isSuccess = await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
+        if (isSuccess !== false) {
+          sceneStateManager.incrementActiveBaseline();
+          isImmediatelyApplied = true;
+        }
       }
-    }
-    return false;
+      return {
+        success: true,
+        totalBreakpoints: scene.getBreakpoints().length,
+        isImmediatelyApplied
+      };
+    });
   }
-  const srcItem = sceneBp;
-  if (!srcItem.file || typeof srcItem.line !== "number") return false;
-  const targetFullPath = path4.isAbsolute(srcItem.file) ? path4.normalize(srcItem.file).toLowerCase() : path4.normalize(path4.join(workspaceRoot, srcItem.file)).toLowerCase();
-  const matched = currentBreakpoints.find((bp) => {
-    if (!(bp instanceof vscode2.SourceBreakpoint)) return false;
-    const bpPath = path4.normalize(bp.location.uri.fsPath).toLowerCase();
-    const bpLine = bp.location.range.start.line + 1;
-    return bpPath === targetFullPath && bpLine === srcItem.line;
-  });
-  if (matched && matched.enabled !== targetEnabled) {
-    const updated = new vscode2.SourceBreakpoint(
-      matched.location,
-      targetEnabled,
-      matched.condition,
-      matched.hitCondition,
-      matched.logMessage
-    );
-    sceneStateManager.setApplyingState(true);
-    try {
-      await vscode2.debug.removeBreakpoints([matched]);
-      await vscode2.debug.addBreakpoints([updated]);
+  /**
+   * 移除场景内指定索引断点
+   */
+  async removeBreakpoint(workspaceRoot, sceneName, index, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getScene(sceneName);
+      if (!scene) return false;
+      const success = scene.removeBreakpoint(index);
+      if (success) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      return success;
+    });
+  }
+  /**
+   * 切换场景内指定断点的启用/禁用状态，并同步刷新编辑器
+   */
+  async toggleBreakpoint(workspaceRoot, sceneName, index, targetEnabled, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getScene(sceneName);
+      if (!scene) {
+        return { success: false };
+      }
+      const bp = scene.getBreakpoint(index);
+      if (!bp) {
+        return { success: false };
+      }
+      const newEnabled = targetEnabled !== void 0 ? targetEnabled : !bp.enabled;
+      bp.enabled = newEnabled;
+      loopGuard?.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      if (breakpointBridge) {
+        const activeScenes = sceneStateManager.getActiveScenes();
+        if (activeScenes.includes(sceneName)) {
+          await breakpointBridge.syncBreakpointEnabledToEditor(
+            workspaceRoot,
+            bp.toJSON(),
+            newEnabled
+          );
+        }
+      }
+      return {
+        success: true,
+        newEnabled
+      };
+    });
+  }
+  /**
+   * 批量启用或禁用场景内的所有断点
+   */
+  async setAllEnabled(workspaceRoot, sceneName, enabled, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getScene(sceneName);
+      if (!scene) return false;
+      scene.setAllEnabled(enabled);
+      loopGuard?.markInternalSaving();
+      sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      if (breakpointBridge) {
+        const activeScenes = sceneStateManager.getActiveScenes();
+        if (activeScenes.includes(sceneName)) {
+          for (const bp of scene.getBreakpoints()) {
+            await breakpointBridge.syncBreakpointEnabledToEditor(
+              workspaceRoot,
+              bp.toJSON(),
+              enabled
+            );
+          }
+        }
+      }
       return true;
-    } finally {
-      setTimeout(() => {
-        sceneStateManager.setApplyingState(false);
-      }, 150);
-    }
+    });
   }
-  return false;
+  /**
+   * 上移/下移单步微调或置顶/置底断点顺序
+   */
+  async moveBreakpoint(workspaceRoot, sceneName, index, direction, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getScene(sceneName);
+      if (!scene) return false;
+      const success = scene.moveBreakpoint(index, direction);
+      if (success) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      return success;
+    });
+  }
+  /**
+   * 任意索引拖拽或置顶/置底重排断点顺序
+   */
+  async reorderBreakpoint(workspaceRoot, sceneName, sourceIndex, targetIndex, options) {
+    return this.queue.enqueue(async () => {
+      const { sceneRepository, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scene = catalog.getScene(sceneName);
+      if (!scene) return false;
+      const success = scene.reorderBreakpoint(sourceIndex, targetIndex);
+      if (success) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      return success;
+    });
+  }
+  /**
+   * 同步外部编辑器断点启闭状态至当前激活场景并写盘
+   */
+  async syncBreakpointChanges(workspaceRoot, changes, activeScenes, options) {
+    return this.queue.enqueue(async () => {
+      if (!changes || changes.length === 0) return false;
+      const { sceneRepository, loopGuard } = this.resolveDeps(options);
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const scenesToSync = activeScenes || catalog.getActiveScenes();
+      if (scenesToSync.length === 0) return false;
+      let hasChanged = false;
+      for (const sName of scenesToSync) {
+        const scene = catalog.getScene(sName);
+        if (!scene) continue;
+        for (const change of changes) {
+          if (scene.syncBreakpointEnabled(change)) {
+            hasChanged = true;
+          }
+        }
+      }
+      if (hasChanged) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+      }
+      return hasChanged;
+    });
+  }
+};
+var breakpointManager = new BreakpointManager();
+
+// src/shared/utils/arrayUtils.ts
+function uniqueStrings(raw) {
+  if (!raw) return [];
+  let arr = [];
+  if (typeof raw === "string") {
+    arr = raw.split(",");
+  } else if (Array.isArray(raw)) {
+    arr = raw.flatMap((item) => typeof item === "string" ? item.split(",") : []);
+  }
+  const cleaned = arr.map((s) => s.trim()).filter((s) => s.length > 0);
+  return Array.from(new Set(cleaned));
+}
+function arrayEqualsIgnoreOrder(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((val, idx) => val === sortedB[idx]);
 }
 
-// src/infra/vscode/sceneTreeProvider.ts
-var path5 = __toESM(require("node:path"));
+// src/domain/services/activeScenesDiffResolver.ts
+var ActiveScenesDiffResolver = class _ActiveScenesDiffResolver {
+  /**
+   * 计算断点集合的核心拓扑指纹 Hash (Core Topology Hash)
+   * 仅比对真正影响 DAP 运行时的核心字段，排除 desc 等纯说明元数据
+   */
+  static computeTopologyHash(breakpoints) {
+    if (!Array.isArray(breakpoints) || breakpoints.length === 0) {
+      return "";
+    }
+    const tokens = breakpoints.map((bp) => {
+      const isEnabled = bp.enabled ?? true;
+      if (bp.type === "function") {
+        const fn = bp;
+        return `fn:${fn.functionName || ""}:${fn.condition || ""}:${fn.hitCondition || ""}:${isEnabled}`;
+      }
+      const src = bp;
+      const normFile = (src.file || "").replace(/\\/g, "/").toLowerCase();
+      return `src:${normFile}:${src.line}:${src.type}:${src.condition || ""}:${src.hitCondition || ""}:${src.logMessage || ""}:${isEnabled}`;
+    });
+    return tokens.sort().join("|");
+  }
+  computeTopologyHash(breakpoints) {
+    return _ActiveScenesDiffResolver.computeTopologyHash(breakpoints);
+  }
+  /**
+   * 容错清洗并装箱目标激活场景配置
+   */
+  static extractTargetActiveScenes(raw) {
+    return uniqueStrings(raw);
+  }
+  static extractTargetScenes(raw) {
+    return uniqueStrings(raw);
+  }
+  /**
+   * 过滤幽灵场景，确保请求的场景在配置文件中真实存在 (大小写容错)
+   */
+  static filterGhostScenes(targetScenes, scenesDict) {
+    if (!scenesDict || targetScenes.length === 0) return [];
+    const existingNames = Object.keys(scenesDict);
+    const validScenes = [];
+    for (const target of targetScenes) {
+      const matched = existingNames.find((name) => name.toLowerCase() === target.toLowerCase());
+      if (matched && !validScenes.includes(matched)) {
+        validScenes.push(matched);
+      }
+    }
+    return validScenes;
+  }
+  /**
+   * 计算激活场景变更 Diff 并推导调度决策
+   */
+  static resolveActiveScenesDiff(params) {
+    const { allowAiActivation = true, currentActiveScenes, rawActiveScenes, scenesDict } = params;
+    if (!allowAiActivation) {
+      return { shouldApply: false, action: "noop", targetScenes: currentActiveScenes };
+    }
+    const targetScenes = _ActiveScenesDiffResolver.filterGhostScenes(
+      uniqueStrings(rawActiveScenes),
+      scenesDict
+    );
+    const isSame = arrayEqualsIgnoreOrder(targetScenes, currentActiveScenes);
+    if (isSame) {
+      return { shouldApply: false, action: "noop", targetScenes: currentActiveScenes };
+    }
+    if (targetScenes.length === 0) {
+      return { shouldApply: true, action: "clear", targetScenes: [] };
+    }
+    return { shouldApply: true, action: "apply", targetScenes };
+  }
+};
+var computeTopologyHash = ActiveScenesDiffResolver.computeTopologyHash;
+var extractTargetActiveScenes = ActiveScenesDiffResolver.extractTargetActiveScenes;
+var filterGhostScenes = ActiveScenesDiffResolver.filterGhostScenes;
+var resolveActiveScenesDiff = ActiveScenesDiffResolver.resolveActiveScenesDiff;
+
+// src/application/agentSyncService.ts
+var AgentSyncService = class {
+  constructor(queue = new SerialQueue()) {
+    this.queue = queue;
+  }
+  queue;
+  /**
+   * 全场景伴随指纹静默预加固
+   */
+  async enrichAllSceneFingerprints(workspaceRoot, options) {
+    return this.queue.enqueue(async () => {
+      const defaultDeps = getDependencies();
+      const sceneRepository = options?.sceneRepository || defaultDeps.sceneRepository;
+      const loopGuard = options?.loopGuard || defaultDeps.loopGuard;
+      const fileLinesReader = options?.fileLinesReader;
+      if (!sceneRepository) {
+        return { enrichedCount: 0, persisted: false };
+      }
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      if (!config || !config.scenes) {
+        return { enrichedCount: 0, persisted: false };
+      }
+      const catalog = new SceneCatalog(config);
+      const unfingerprintedBps = catalog.getAllScenes().flatMap((s) => s.getUnfingerprintedBreakpoints());
+      if (unfingerprintedBps.length === 0) {
+        return { enrichedCount: 0, persisted: false };
+      }
+      const fileCache = /* @__PURE__ */ new Map();
+      const readLines = async (filePath) => {
+        if (fileCache.has(filePath)) {
+          return fileCache.get(filePath);
+        }
+        const lines = fileLinesReader ? await fileLinesReader(filePath) : void 0;
+        fileCache.set(filePath, lines);
+        return lines;
+      };
+      let enrichedCount = 0;
+      for (const bp of unfingerprintedBps) {
+        if (bp.type === "function") continue;
+        const fullPath = bp.resolveFullPath(workspaceRoot);
+        const lines = await readLines(fullPath);
+        if (!lines || lines.length === 0) continue;
+        if (bp.enrich(lines)) {
+          enrichedCount++;
+        }
+      }
+      if (enrichedCount > 0) {
+        loopGuard?.markInternalSaving();
+        sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+        return { enrichedCount, persisted: true };
+      }
+      return { enrichedCount: 0, persisted: false };
+    });
+  }
+  /**
+   * 处理外部 debug-scenes.json 磁盘文件变更与 AI 声明式场景激活
+   */
+  async handleExternalChange(workspaceRoot, options) {
+    return this.queue.enqueue(async () => {
+      const defaultDeps = getDependencies();
+      const sceneRepository = options?.sceneRepository || defaultDeps.sceneRepository;
+      const breakpointBridge = options?.breakpointBridge || defaultDeps.breakpointBridge;
+      const loopGuard = options?.loopGuard || defaultDeps.loopGuard;
+      const allowAiActivation = options?.allowAiActivation ?? false;
+      const isDebuggingActive = options?.isDebuggingActive ?? false;
+      const fileLinesReader = options?.fileLinesReader;
+      const onPendingMessage = options?.onPendingMessage;
+      if (!sceneRepository || !breakpointBridge) {
+        return { action: "noop" };
+      }
+      if (fileLinesReader) {
+        try {
+          const configForEnrich = sceneRepository.loadScenesConfig(workspaceRoot);
+          const catalogForEnrich = new SceneCatalog(configForEnrich);
+          const unfingerprintedBps = catalogForEnrich.getAllScenes().flatMap((s) => s.getUnfingerprintedBreakpoints());
+          if (unfingerprintedBps.length > 0) {
+            let enriched = false;
+            for (const bp of unfingerprintedBps) {
+              if (bp.type === "function") continue;
+              const fullPath = bp.resolveFullPath(workspaceRoot);
+              const lines = await fileLinesReader(fullPath);
+              if (lines && lines.length > 0) {
+                if (bp.enrich(lines)) {
+                  enriched = true;
+                }
+              }
+            }
+            if (enriched) {
+              loopGuard?.markInternalSaving();
+              sceneRepository.saveScenesConfig(workspaceRoot, catalogForEnrich.toJSON());
+            }
+          }
+        } catch (err) {
+          console.warn("[AgentSyncService] Failed to auto-enrich empty fingerprints:", err);
+        }
+      }
+      const config = sceneRepository.loadScenesConfig(workspaceRoot);
+      const catalog = new SceneCatalog(config);
+      const currentActives = sceneStateManager.getActiveScenes();
+      const diff = ActiveScenesDiffResolver.resolveActiveScenesDiff({
+        currentActiveScenes: currentActives,
+        rawActiveScenes: config.activeScenes,
+        allowAiActivation,
+        scenesDict: config.scenes
+      });
+      if (diff.shouldApply) {
+        if (diff.action === "apply" && diff.targetScenes && diff.targetScenes.length > 0) {
+          await sceneManager.activateScene(
+            workspaceRoot,
+            diff.targetScenes,
+            { sceneRepository, breakpointBridge, loopGuard }
+          );
+          return { action: "applied", targetScenes: diff.targetScenes };
+        } else if (diff.action === "clear") {
+          await sceneManager.clearAll(
+            workspaceRoot,
+            { sceneRepository, breakpointBridge, loopGuard }
+          );
+          return { action: "cleared" };
+        }
+      } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
+        const activeScenes = currentActives.map((name) => catalog.getScene(name)).filter((s) => !!s);
+        const merged = Scene.merge(activeScenes).getBreakpoints().map((bp) => bp.toJSON());
+        const newTopologyHash = ActiveScenesDiffResolver.computeTopologyHash(merged);
+        if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
+          return { action: "noop" };
+        }
+        if (isDebuggingActive) {
+          sceneStateManager.setPendingTopologyUpdate(true);
+          if (onPendingMessage) {
+            onPendingMessage();
+          }
+          return { action: "pending" };
+        }
+        await breakpointBridge.applySceneBreakpoints(
+          workspaceRoot,
+          currentActives.join("+"),
+          merged
+        );
+        sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
+        return { action: "applied", targetScenes: currentActives };
+      }
+      return { action: "noop" };
+    });
+  }
+};
+var agentSyncService = new AgentSyncService();
+
+// src/ui/views/sceneTreeProvider.ts
+var path2 = __toESM(require("node:path"));
 var vscode3 = __toESM(require("vscode"));
-var SceneNode = class _SceneNode extends vscode3.TreeItem {
+
+// src/ui/utils/workspaceRoot.ts
+var vscode = __toESM(require("vscode"));
+function getWorkspaceRoot(showPrompt = false) {
+  const folders = vscode.workspace.workspaceFolders;
+  if (folders && folders.length > 0) {
+    return folders[0].uri.fsPath;
+  }
+  if (showPrompt) {
+    vscode.window.showWarningMessage(
+      vscode.l10n.t("Please open a workspace folder to use Scene Breakpoints.")
+    );
+  }
+  return void 0;
+}
+
+// src/ui/views/treeNodes.ts
+var path = __toESM(require("node:path"));
+var vscode2 = __toESM(require("vscode"));
+var SceneNode = class _SceneNode extends vscode2.TreeItem {
   constructor(sceneName, breakpointCount, isActive, isDirty) {
     const isExpanded = _SceneNode.expandedScenes.has(sceneName) || isActive;
     super(
       sceneName,
-      isExpanded ? vscode3.TreeItemCollapsibleState.Expanded : vscode3.TreeItemCollapsibleState.Collapsed
+      isExpanded ? vscode2.TreeItemCollapsibleState.Expanded : vscode2.TreeItemCollapsibleState.Collapsed
     );
     this.sceneName = sceneName;
     this.breakpointCount = breakpointCount;
     this.isActive = isActive;
     this.isDirty = isDirty;
-    let desc = vscode3.l10n.t("{0} breakpoint(s)", breakpointCount);
+    let desc = vscode2.l10n.t("{0} breakpoint(s)", breakpointCount);
     if (isActive) {
-      desc = isDirty ? `${desc}  \u2022  ${vscode3.l10n.t("(Active - Unsaved*)")}` : `${desc}  \u2022  ${vscode3.l10n.t("(Active)")}`;
+      desc = isDirty ? `${desc}  \u2022  ${vscode2.l10n.t("(Active - Unsaved*)")}` : `${desc}  \u2022  ${vscode2.l10n.t("(Active)")}`;
     }
     this.description = desc;
     if (isActive) {
-      this.iconPath = new vscode3.ThemeIcon("debug-alt", new vscode3.ThemeColor("charts.green"));
+      this.iconPath = new vscode2.ThemeIcon("debug-alt", new vscode2.ThemeColor("charts.green"));
       this.contextValue = "activeSceneItem";
     } else {
-      this.iconPath = new vscode3.ThemeIcon("symbol-event");
+      this.iconPath = new vscode2.ThemeIcon("symbol-event");
       this.contextValue = "sceneItem";
     }
     this.id = `scene:${sceneName}`;
-    this.tooltip = vscode3.l10n.t("Scene: [{0}] ({1} breakpoints)", sceneName, breakpointCount);
+    this.tooltip = vscode2.l10n.t("Scene: [{0}] ({1} breakpoints)", sceneName, breakpointCount);
   }
   sceneName;
   breakpointCount;
@@ -1555,11 +2107,11 @@ var SceneNode = class _SceneNode extends vscode3.TreeItem {
   isDirty;
   static expandedScenes = /* @__PURE__ */ new Set();
 };
-var BreakpointNode = class extends vscode3.TreeItem {
+var BreakpointNode = class extends vscode2.TreeItem {
   constructor(sceneName, index, breakpoint, workspaceRoot, extensionPath, pausedLocation = null) {
     const isFunc = breakpoint.type === "function";
-    const label = isFunc ? `\u0192 ${breakpoint.functionName}()` : `${path5.basename(breakpoint.file || "")}:${breakpoint.line}`;
-    super(label, vscode3.TreeItemCollapsibleState.None);
+    const label = isFunc ? `\u0192 ${breakpoint.functionName}()` : `${path.basename(breakpoint.file || "")}:${breakpoint.line}`;
+    super(label, vscode2.TreeItemCollapsibleState.None);
     this.sceneName = sceneName;
     this.index = index;
     this.breakpoint = breakpoint;
@@ -1570,15 +2122,15 @@ var BreakpointNode = class extends vscode3.TreeItem {
     this.id = `bp:${sceneName}:${index}:${bpIdentifier}`;
     if (!isFunc) {
       const srcBp = breakpoint;
-      const fullFilePath = path5.isAbsolute(srcBp.file) ? srcBp.file : path5.join(workspaceRoot, srcBp.file);
+      const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(workspaceRoot, srcBp.file);
       const targetLine = Math.max(0, srcBp.line - 1);
       this.command = {
         command: "vscode.open",
-        title: vscode3.l10n.t("Open File"),
+        title: vscode2.l10n.t("Open File"),
         arguments: [
-          vscode3.Uri.file(fullFilePath),
+          vscode2.Uri.file(fullFilePath),
           {
-            selection: new vscode3.Range(targetLine, 0, targetLine, 0),
+            selection: new vscode2.Range(targetLine, 0, targetLine, 0),
             preview: true
           }
         ]
@@ -1604,7 +2156,7 @@ var BreakpointNode = class extends vscode3.TreeItem {
     if (Number(srcBp.line) !== Number(this.pausedLocation.line)) {
       return false;
     }
-    const fullFilePath = path5.isAbsolute(srcBp.file) ? srcBp.file : path5.join(this.workspaceRoot, srcBp.file);
+    const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(this.workspaceRoot, srcBp.file);
     if (isSamePath(fullFilePath, this.pausedLocation.file)) {
       return true;
     }
@@ -1614,77 +2166,76 @@ var BreakpointNode = class extends vscode3.TreeItem {
   }
   updateAppearance() {
     const isEnabled = this.breakpoint.enabled ?? true;
-    this.checkboxState = isEnabled ? vscode3.TreeItemCheckboxState.Checked : vscode3.TreeItemCheckboxState.Unchecked;
+    this.checkboxState = isEnabled ? vscode2.TreeItemCheckboxState.Checked : vscode2.TreeItemCheckboxState.Unchecked;
     const isPaused = this.isPausedAtBreakpoint();
-    const hintText = vscode3.l10n.t("Tip: Drag to reorder, or use Alt+\u2191 / Alt+\u2193 to move");
+    const hintText = vscode2.l10n.t("Tip: Drag to reorder, or use Alt+\u2191 / Alt+\u2193 to move");
+    this.buildDescriptionAndTooltip(isPaused, hintText);
+    const iconFileName = this.resolveIconFileName(isEnabled, isPaused);
+    this.iconPath = vscode2.Uri.file(path.join(this.extensionPath, "media", "icons", iconFileName));
+    this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+  }
+  buildDescriptionAndTooltip(isPaused, hintText) {
     if (this.breakpoint.type === "function") {
       const funcBp = this.breakpoint;
       this.description = funcBp.desc || funcBp.condition || funcBp.hitCondition;
-      const md = new vscode3.MarkdownString();
-      md.appendMarkdown(`**${vscode3.l10n.t("Function Breakpoint: {0}", funcBp.functionName)}**`);
-      if (funcBp.desc) md.appendMarkdown(`
+      const md2 = new vscode2.MarkdownString();
+      md2.appendMarkdown(`**${vscode2.l10n.t("Function Breakpoint: {0}", funcBp.functionName)}**`);
+      if (funcBp.desc) md2.appendMarkdown(`
 
 ${funcBp.desc}`);
-      md.appendMarkdown(`
+      md2.appendMarkdown(`
 
 ---
 *\u{1F4A1} ${hintText}*`);
-      this.tooltip = md;
-    } else {
-      const srcBp = this.breakpoint;
-      const isUnmatched2 = sceneStateManager.isSceneActive(this.sceneName) && sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
-      let extra = srcBp.desc;
-      if (!extra) {
-        if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
-        else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
-        else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
-      }
-      if (isUnmatched2) {
-        const unmatchTag = `[${vscode3.l10n.t("Unmatched")}]`;
-        extra = extra ? `${unmatchTag}  \u2022  ${extra}` : unmatchTag;
-      }
-      if (isPaused) {
-        const pausedTag = `\u25B6 ${vscode3.l10n.t("[PAUSED]")}`;
-        extra = extra ? `${pausedTag}  \u2022  ${extra}` : pausedTag;
-      }
-      this.description = extra;
-      const md = new vscode3.MarkdownString();
-      if (isPaused) {
-        md.appendMarkdown(`\u25B6 **[${vscode3.l10n.t("Currently Paused Here")}]**
-
-`);
-      }
-      if (isUnmatched2) {
-        md.appendMarkdown(`\u26A0\uFE0F **[${vscode3.l10n.t("Unmatched")}]** ${vscode3.l10n.t("Could not match current code (fell back to original line)")}
-
-`);
-      }
-      md.appendMarkdown(`\`${srcBp.file}:${srcBp.line}\``);
-      if (srcBp.desc) {
-        md.appendMarkdown(`
-
-${srcBp.desc}`);
-      }
-      md.appendMarkdown(`
-
----
-*\u{1F4A1} ${hintText}*`);
-      this.tooltip = md;
-    }
-    if (isPaused) {
-      this.iconPath = vscode3.Uri.file(path5.join(this.extensionPath, "media", "icons", "bp-paused.svg"));
-      this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+      this.tooltip = md2;
       return;
     }
+    const srcBp = this.breakpoint;
+    const isUnmatched = sceneStateManager.isSceneActive(this.sceneName) && sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
+    let extra = srcBp.desc;
+    if (!extra) {
+      if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
+      else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
+      else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
+    }
+    if (isUnmatched) {
+      const unmatchTag = `[${vscode2.l10n.t("Unmatched")}]`;
+      extra = extra ? `${unmatchTag}  \u2022  ${extra}` : unmatchTag;
+    }
+    if (isPaused) {
+      const pausedTag = `\u25B6 ${vscode2.l10n.t("[PAUSED]")}`;
+      extra = extra ? `${pausedTag}  \u2022  ${extra}` : pausedTag;
+    }
+    this.description = extra;
+    const md = new vscode2.MarkdownString();
+    if (isPaused) {
+      md.appendMarkdown(`\u25B6 **[${vscode2.l10n.t("Currently Paused Here")}]**
+
+`);
+    }
+    if (isUnmatched) {
+      md.appendMarkdown(`\u26A0\uFE0F **[${vscode2.l10n.t("Unmatched")}]** ${vscode2.l10n.t("Could not match current code (fell back to original line)")}
+
+`);
+    }
+    md.appendMarkdown(`\`${srcBp.file}:${srcBp.line}\``);
+    if (srcBp.desc) md.appendMarkdown(`
+
+${srcBp.desc}`);
+    md.appendMarkdown(`
+
+---
+*\u{1F4A1} ${hintText}*`);
+    this.tooltip = md;
+  }
+  resolveIconFileName(isEnabled, isPaused) {
+    if (isPaused) return "bp-paused.svg";
     const isUnmatched = this.breakpoint.type !== "function" && sceneStateManager.isSceneActive(this.sceneName) && sceneStateManager.isBreakpointUnmatched(
       this.breakpoint.file,
       this.breakpoint.line
     );
     if (isUnmatched) {
-      const iconFileName2 = isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
-      this.iconPath = vscode3.Uri.file(path5.join(this.extensionPath, "media", "icons", iconFileName2));
-      this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
-      return;
+      return isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
     }
     let iconBase = "bp-line";
     if (this.breakpoint.type === "function") {
@@ -1701,29 +2252,28 @@ ${srcBp.desc}`);
         case "logpoint":
           iconBase = "bp-log";
           break;
-        case "line":
         default:
           iconBase = "bp-line";
           break;
       }
     }
-    const iconFileName = `${iconBase}-${isEnabled ? "enabled" : "disabled"}.svg`;
-    this.iconPath = vscode3.Uri.file(path5.join(this.extensionPath, "media", "icons", iconFileName));
-    this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+    return `${iconBase}-${isEnabled ? "enabled" : "disabled"}.svg`;
   }
 };
 function isSamePath(p1, p2) {
-  const n1 = path5.normalize(p1).toLowerCase();
-  const n2 = path5.normalize(p2).toLowerCase();
+  const n1 = path.normalize(p1).toLowerCase();
+  const n2 = path.normalize(p2).toLowerCase();
   return n1 === n2;
 }
-var PlaceholderNode = class extends vscode3.TreeItem {
+var PlaceholderNode = class extends vscode2.TreeItem {
   constructor(message, icon = "info") {
-    super(message, vscode3.TreeItemCollapsibleState.None);
-    this.iconPath = new vscode3.ThemeIcon(icon);
+    super(message, vscode2.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode2.ThemeIcon(icon);
     this.contextValue = "placeholderItem";
   }
 };
+
+// src/ui/views/sceneTreeProvider.ts
 var SceneTreeDataProvider = class {
   constructor(extensionPath = "") {
     this.extensionPath = extensionPath;
@@ -1766,11 +2316,13 @@ var SceneTreeDataProvider = class {
     }
     const workspaceRoot = getWorkspaceRoot(true);
     if (!workspaceRoot) return;
-    const config = loadScenesConfig(workspaceRoot);
-    const reordered = reorderBreakpointInScene(config, targetSceneName, sourceNode.index, targetIndex);
+    const reordered = await breakpointManager.reorderBreakpoint(
+      workspaceRoot,
+      targetSceneName,
+      sourceNode.index,
+      targetIndex
+    );
     if (reordered) {
-      saveLoopGuard.markInternalSaving();
-      saveScenesConfig(workspaceRoot, config);
       this.refresh();
     }
   }
@@ -1820,7 +2372,7 @@ var SceneTreeDataProvider = class {
       return [new PlaceholderNode(vscode3.l10n.t("Open a workspace folder to view scenes"))];
     }
     if (!element) {
-      const config = loadScenesConfig(workspaceRoot);
+      const config = sceneManager.loadScenesConfig(workspaceRoot);
       const sceneNames = Object.keys(config.scenes || {});
       if (sceneNames.length === 0) {
         return [
@@ -1842,7 +2394,7 @@ var SceneTreeDataProvider = class {
       });
     }
     if (element instanceof SceneNode) {
-      const config = loadScenesConfig(workspaceRoot);
+      const config = sceneManager.loadScenesConfig(workspaceRoot);
       const list = config.scenes && Array.isArray(config.scenes[element.sceneName]) ? config.scenes[element.sceneName] : [];
       if (list.length === 0) {
         return [new PlaceholderNode(vscode3.l10n.t("No breakpoints in this scene"))];
@@ -1864,10 +2416,10 @@ var SceneTreeDataProvider = class {
       this.setPausedLocation(file, line);
       return;
     }
-    const config = loadScenesConfig(workspaceRoot);
+    const config = sceneManager.loadScenesConfig(workspaceRoot);
     const activeScenes = sceneStateManager.getActiveScenes();
     if (activeScenes.length === 0) return;
-    const fullTarget = path5.normalize(file).toLowerCase();
+    const fullTarget = path2.normalize(file).toLowerCase();
     let isHit = false;
     let hitSceneName;
     for (const sceneName of activeScenes) {
@@ -1876,10 +2428,10 @@ var SceneTreeDataProvider = class {
         if (b.type === "function") return false;
         const src = b;
         if (Number(src.line) !== line) return false;
-        const fp = path5.normalize(
-          path5.isAbsolute(src.file) ? src.file : path5.join(workspaceRoot, src.file)
+        const fp = path2.normalize(
+          path2.isAbsolute(src.file) ? src.file : path2.join(workspaceRoot, src.file)
         ).toLowerCase();
-        const rawSrc = path5.normalize(src.file).toLowerCase().replace(/\\/g, "/");
+        const rawSrc = path2.normalize(src.file).toLowerCase().replace(/\\/g, "/");
         const targetNorm = fullTarget.replace(/\\/g, "/");
         return fp === fullTarget || targetNorm.endsWith("/" + rawSrc) || targetNorm.endsWith(rawSrc);
       });
@@ -1913,74 +2465,14 @@ var SceneTreeDataProvider = class {
   }
 };
 
-// src/infra/vscode/sceneCodeLensProvider.ts
+// src/ui/views/statusBarView.ts
 var vscode4 = __toESM(require("vscode"));
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-var SceneCodeLensProvider = class {
-  provideCodeLenses(document) {
-    if (!document.fileName.endsWith("debug-scenes.json")) {
-      return [];
-    }
-    const lenses = [];
-    try {
-      const cleaned = stripJsonComments(document.getText());
-      const parsed = JSON.parse(cleaned);
-      const scenes = parsed && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes) ? parsed.scenes : parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-      const sceneNames = Object.keys(scenes).filter((k) => k !== "$schema" && Array.isArray(scenes[k]));
-      for (const sceneName of sceneNames) {
-        const count = Array.isArray(scenes[sceneName]) ? scenes[sceneName].length : 0;
-        const keyPattern = new RegExp(`^\\s*"${escapeRegex(sceneName)}"\\s*:`);
-        const isActive = sceneStateManager.isSceneActive(sceneName);
-        for (let i = 0; i < document.lineCount; i++) {
-          const lineText = document.lineAt(i).text;
-          if (keyPattern.test(lineText)) {
-            const range = new vscode4.Range(i, 0, i, 0);
-            const title = isActive ? vscode4.l10n.t("\u2714 Active ({0} bps)", count) : vscode4.l10n.t("\u25B6 Apply Scene ({0} bps)", count);
-            lenses.push(
-              new vscode4.CodeLens(range, {
-                title,
-                tooltip: vscode4.l10n.t("Click to activate this scene and clean other breakpoints"),
-                command: "sceneBreakpoints.applyScene",
-                arguments: [sceneName]
-              })
-            );
-            break;
-          }
-        }
-      }
-    } catch {
-    }
-    return lenses;
-  }
-};
-
-// src/infra/vscode/templateContentProvider.ts
-var vscode5 = __toESM(require("vscode"));
-var TemplateContentProvider = class {
-  static scheme = "scene-breakpoints-template";
-  templateCache = /* @__PURE__ */ new Map();
-  onDidChangeEmitter = new vscode5.EventEmitter();
-  onDidChange = this.onDidChangeEmitter.event;
-  setTemplateContent(key, content) {
-    this.templateCache.set(key, content);
-  }
-  provideTextDocumentContent(uri) {
-    const key = uri.path.replace(/^\//, "");
-    return this.templateCache.get(key) || "";
-  }
-};
-var templateContentProvider = new TemplateContentProvider();
-
-// src/infra/vscode/statusBarView.ts
-var vscode6 = __toESM(require("vscode"));
 var statusBarItem;
 function getStatusBarItem() {
   return statusBarItem;
 }
 function initStatusBarItem(context) {
-  statusBarItem = vscode6.window.createStatusBarItem(vscode6.StatusBarAlignment.Left, 10);
+  statusBarItem = vscode4.window.createStatusBarItem(vscode4.StatusBarAlignment.Left, 10);
   statusBarItem.command = "sceneBreakpoints.showMenu";
   renderStatusBar(sceneStateManager.getActiveScenes(), sceneStateManager.getIsDirty());
   statusBarItem.show();
@@ -2013,14 +2505,14 @@ function renderStatusBar(activeScenes, isDirty = false) {
     if (isDirty) {
       statusBarItem.text = `$(circle-filled) Scene: ${label}*`;
       statusBarItem.color = "#cca700";
-      statusBarItem.tooltip = vscode6.l10n.t(
+      statusBarItem.tooltip = vscode4.l10n.t(
         "Current Scene: [{0}] (Unsaved temporary breakpoints present. Click or Ctrl+Alt+S to open Menu)",
         fullNames
       );
     } else {
       statusBarItem.text = `$(circle-filled) Scene: ${label}`;
       statusBarItem.color = "#49c998";
-      statusBarItem.tooltip = vscode6.l10n.t(
+      statusBarItem.tooltip = vscode4.l10n.t(
         "Current Scene: [{0}] (Click or Ctrl+Alt+S to open Scene Menu)",
         fullNames
       );
@@ -2028,734 +2520,252 @@ function renderStatusBar(activeScenes, isDirty = false) {
   } else {
     statusBarItem.text = `$(circle-outline) Scene: (None)`;
     statusBarItem.color = void 0;
-    statusBarItem.tooltip = vscode6.l10n.t("No scene active (Click or Ctrl+Alt+S to open Scene Menu)");
+    statusBarItem.tooltip = vscode4.l10n.t("No scene active (Click or Ctrl+Alt+S to open Scene Menu)");
   }
 }
 
-// src/infra/vscode/commands/index.ts
-var vscode11 = __toESM(require("vscode"));
-
-// src/infra/vscode/commands/sceneCommands.ts
-var fs4 = __toESM(require("node:fs"));
-var path6 = __toESM(require("node:path"));
-var vscode8 = __toESM(require("vscode"));
-
-// src/application/sceneService.ts
-var SerialQueue = class {
-  currentQueue = Promise.resolve();
-  run(task) {
-    const result = this.currentQueue.then(task, task);
-    this.currentQueue = result.catch(() => {
-    });
-    return result;
-  }
-};
-var queue = new SerialQueue();
-async function doActivateScene(params) {
-  const {
-    workspaceRoot,
-    targetScenes: rawTargetScenes,
-    sceneRepository = jsonFileSceneRepository,
-    breakpointBridge = vscodeBreakpointBridge,
-    loopGuard = saveLoopGuard
-  } = params;
-  const config = sceneRepository.loadScenesConfig(workspaceRoot);
-  const sceneNames = Object.keys(config.scenes || {});
-  const validTargetScenes = [];
-  const missingScenes = [];
-  for (const target of rawTargetScenes) {
-    const matched = sceneNames.find((s) => s.toLowerCase() === target.toLowerCase());
-    if (matched) {
-      validTargetScenes.push(matched);
-    } else {
-      missingScenes.push(target);
+// src/ui/views/sceneCodeLensProvider.ts
+var vscode5 = __toESM(require("vscode"));
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+var SceneCodeLensProvider = class {
+  provideCodeLenses(document) {
+    if (!document.fileName.endsWith("debug-scenes.json")) {
+      return [];
     }
-  }
-  if (validTargetScenes.length === 0) {
-    return {
-      success: false,
-      validTargetScenes: [],
-      missingScenes,
-      loadedCount: 0,
-      healedCount: 0,
-      unmatchedCount: 0
-    };
-  }
-  const bpsToLoad = mergeScenesBreakpoints(config, validTargetScenes);
-  const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
-  const currentDiskActives = config.activeScenes;
-  const isSameActive = Array.isArray(currentDiskActives) && currentDiskActives.length === validTargetScenes.length && currentDiskActives.every((s, i) => s === validTargetScenes[i]);
-  if (!isSameActive) {
-    config.activeScenes = validTargetScenes;
-    loopGuard.markInternalSaving();
-    sceneRepository.saveScenesConfig(workspaceRoot, config);
-  }
-  const applyResult = await breakpointBridge.applySceneBreakpoints(
-    workspaceRoot,
-    primarySceneLabel,
-    bpsToLoad
-  );
-  const { loadedCount, healedCount } = applyResult;
-  const enrichedCount = applyResult.enrichedCount || 0;
-  const healedBreakpoints = applyResult.healedBreakpoints;
-  const unmatchedCount = applyResult.unmatchedBreakpoints?.length || 0;
-  sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
-  if ((healedCount > 0 || enrichedCount > 0) && healedBreakpoints) {
-    let hasPersisted = false;
-    if (validTargetScenes.length === 1) {
-      config.scenes[validTargetScenes[0]] = healedBreakpoints;
-      hasPersisted = true;
-    } else {
-      for (const sceneName of validTargetScenes) {
-        const sceneList = config.scenes[sceneName];
-        if (!Array.isArray(sceneList)) continue;
-        for (const item of sceneList) {
-          if (item.type === "function") continue;
-          const srcItem = item;
-          const normSrcFile = srcItem.file ? srcItem.file.replace(/\\/g, "/") : "";
-          const matched = healedBreakpoints.find(
-            (h) => {
-              if (h.type === "function") return false;
-              const normHFile = h.file ? h.file.replace(/\\/g, "/") : "";
-              if (normHFile !== normSrcFile) return false;
-              if (srcItem.contextSnippet?.current) {
-                return h.contextSnippet?.current === srcItem.contextSnippet.current;
-              }
-              return h.line === srcItem.line;
-            }
-          );
-          if (matched) {
-            if (srcItem.line !== matched.line) {
-              srcItem.line = matched.line;
-              hasPersisted = true;
-            }
-            if (!srcItem.contextSnippet && matched.contextSnippet) {
-              srcItem.contextSnippet = matched.contextSnippet;
-              hasPersisted = true;
-            }
-          }
-        }
-      }
-    }
-    if (hasPersisted) {
-      loopGuard.markInternalSaving();
-      sceneRepository.saveScenesConfig(workspaceRoot, config);
-    }
-  }
-  return {
-    success: true,
-    validTargetScenes,
-    missingScenes,
-    loadedCount,
-    healedCount,
-    enrichedCount,
-    unmatchedCount,
-    unmatchedBreakpoints: applyResult.unmatchedBreakpoints
-  };
-}
-async function activateScene(params) {
-  return queue.run(() => doActivateScene(params));
-}
-async function doAddBreakpoint(params) {
-  const {
-    workspaceRoot,
-    targetScene,
-    breakpoint,
-    sceneRepository = jsonFileSceneRepository,
-    breakpointBridge = vscodeBreakpointBridge,
-    loopGuard = saveLoopGuard
-  } = params;
-  const config = sceneRepository.loadScenesConfig(workspaceRoot);
-  if (!config.scenes) {
-    config.scenes = {};
-  }
-  upsertBreakpointToScene(config, targetScene, breakpoint);
-  loopGuard.markInternalSaving();
-  sceneRepository.saveScenesConfig(workspaceRoot, config);
-  let isImmediatelyApplied = false;
-  if (sceneStateManager.isSceneActive(targetScene)) {
-    await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint);
-    sceneStateManager.setBaselineBreakpointCount(sceneStateManager.getBaselineBreakpointCount() + 1);
-    isImmediatelyApplied = true;
-  }
-  return {
-    success: true,
-    isImmediatelyApplied
-  };
-}
-async function addBreakpoint(params) {
-  return queue.run(() => doAddBreakpoint(params));
-}
-async function doClearAll(params = {}) {
-  const {
-    workspaceRoot,
-    sceneRepository = jsonFileSceneRepository,
-    breakpointBridge = vscodeBreakpointBridge,
-    loopGuard = saveLoopGuard
-  } = params;
-  if (workspaceRoot) {
-    const config = sceneRepository.loadScenesConfig(workspaceRoot);
-    if (config.activeScenes && config.activeScenes.length > 0) {
-      config.activeScenes = [];
-      loopGuard.markInternalSaving();
-      sceneRepository.saveScenesConfig(workspaceRoot, config);
-    }
-  }
-  await breakpointBridge.clearAllBreakpoints();
-  sceneStateManager.setActiveScene(void 0);
-}
-async function clearAll(params = {}) {
-  return queue.run(() => doClearAll(params));
-}
-async function doExportScene(params) {
-  const {
-    workspaceRoot,
-    targetScene,
-    mode,
-    sceneRepository = jsonFileSceneRepository,
-    breakpointBridge = vscodeBreakpointBridge,
-    loopGuard = saveLoopGuard
-  } = params;
-  const exportedBps = await breakpointBridge.collectCurrentBreakpoints(workspaceRoot);
-  if (exportedBps.length === 0) {
-    return { success: false, count: 0 };
-  }
-  const config = sceneRepository.loadScenesConfig(workspaceRoot);
-  if (!config.scenes) {
-    config.scenes = {};
-  }
-  if (mode === "overwrite" || !config.scenes[targetScene]) {
-    config.scenes[targetScene] = exportedBps;
-  } else {
-    for (const bp of exportedBps) {
-      upsertBreakpointToScene(config, targetScene, bp);
-    }
-  }
-  loopGuard.markInternalSaving();
-  sceneRepository.saveScenesConfig(workspaceRoot, config);
-  return {
-    success: true,
-    count: exportedBps.length
-  };
-}
-async function exportScene(params) {
-  return queue.run(() => doExportScene(params));
-}
-async function doHandleExternalChange(params) {
-  const {
-    workspaceRoot,
-    allowAiActivation,
-    isDebuggingActive,
-    sceneRepository = jsonFileSceneRepository,
-    breakpointBridge = vscodeBreakpointBridge,
-    onPendingMessage
-  } = params;
-  const config = sceneRepository.loadScenesConfig(workspaceRoot);
-  const currentActives = sceneStateManager.getActiveScenes();
-  const diff = resolveActiveScenesDiff({
-    allowAiActivation,
-    currentActiveScenes: currentActives,
-    rawActiveScenes: config.activeScenes,
-    scenesDict: config.scenes
-  });
-  if (diff.shouldApply) {
-    if (diff.action === "apply") {
-      await doActivateScene({
-        workspaceRoot,
-        targetScenes: diff.targetScenes,
-        sceneRepository,
-        breakpointBridge
-      });
-      return { action: "applied", targetScenes: diff.targetScenes };
-    } else if (diff.action === "clear") {
-      await doClearAll({
-        workspaceRoot,
-        sceneRepository,
-        breakpointBridge
-      });
-      return { action: "cleared" };
-    }
-  } else if (currentActives.length > 0 && !sceneStateManager.isApplyingScene()) {
-    const merged = mergeScenesBreakpoints(config, currentActives);
-    const newTopologyHash = computeBreakpointsTopologyHash(merged);
-    if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
-      return { action: "noop" };
-    }
-    if (isDebuggingActive) {
-      sceneStateManager.setPendingTopologyUpdate(true);
-      if (onPendingMessage) {
-        onPendingMessage();
-      }
-      return { action: "pending" };
-    }
-    await breakpointBridge.applySceneBreakpoints(
-      workspaceRoot,
-      currentActives.join("+"),
-      merged
-    );
-    sceneStateManager.setLastAppliedTopologyHash(newTopologyHash);
-    return { action: "applied", targetScenes: currentActives };
-  }
-  return { action: "noop" };
-}
-async function handleExternalChange(params) {
-  return queue.run(() => doHandleExternalChange(params));
-}
-
-// src/infra/vscode/commands/clipboardCommands.ts
-var vscode7 = __toESM(require("vscode"));
-
-// src/application/payloadSerializer.ts
-function generateScenePayload(sceneName, breakpoints) {
-  const payload = {
-    $schema: "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
-    version: "1.0",
-    sceneName: sceneName.trim(),
-    exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    breakpoints: breakpoints.map((bp) => {
-      if (bp.type !== "function") {
-        return {
-          ...bp,
-          file: bp.file.replace(/\\/g, "/")
-        };
-      }
-      return bp;
-    })
-  };
-  return JSON.stringify(payload, null, 2);
-}
-var serializeScenePayload = generateScenePayload;
-function stripMarkdownCodeBlocks(text) {
-  const trimmed = text.trim();
-  const blockMatch = trimmed.match(/^```(?:json|jsonc)?[\r\n]+([\s\S]*?)[\r\n]+```$/i);
-  if (blockMatch) {
-    return blockMatch[1].trim();
-  }
-  return trimmed;
-}
-function getSupportedFormatsTemplate(titles = {}) {
-  const title = titles.title || "Scene Breakpoints: Supported Clipboard Formats";
-  const format1Title = titles.format1Title || "Format 1: Standard Scene Payload (Recommended)";
-  const format2Title = titles.format2Title || "Format 2: scenes dictionary (debug-scenes.json snippet)";
-  const format3Title = titles.format3Title || "Format 3: Raw breakpoint array";
-  return `// ========================================================
-// ${title}
-// ========================================================
-
-// ${format1Title}
-{
-  "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
-  "version": "1.0",
-  "sceneName": "order-debug",
-  "breakpoints": [
-    {
-      "type": "line",
-      "file": "src/order.ts",
-      "line": 42,
-      "enabled": true,
-      "condition": "order.total > 100",
-      "desc": "Check order total"
-    },
-    {
-      "type": "function",
-      "functionName": "handleOrderPayment",
-      "enabled": true
-    }
-  ]
-}
-
-// ${format2Title}
-{
-  "scenes": {
-    "order-debug": [
-      {
-        "file": "src/order.ts",
-        "line": 42,
-        "enabled": true
-      }
-    ]
-  }
-}
-
-// ${format3Title}
-[
-  {
-    "file": "src/order.ts",
-    "line": 42,
-    "enabled": true
-  },
-  {
-    "type": "function",
-    "functionName": "handleOrderPayment"
-  }
-]
-`;
-}
-function parseScenePayload(rawText, defaultSceneName) {
-  if (!rawText || !rawText.trim()) {
-    return { success: false, error: "Empty content" };
-  }
-  if (rawText.length > 1024 * 1024) {
-    return { success: false, error: "Content exceeds maximum size limit (1MB)" };
-  }
-  let parsed;
-  try {
-    const unmarshalled = stripMarkdownCodeBlocks(rawText);
-    const sanitized = stripJsonComments(unmarshalled);
-    parsed = JSON.parse(sanitized);
-  } catch (e) {
-    return { success: false, error: `Invalid JSON format: ${e.message}` };
-  }
-  if (!parsed || typeof parsed !== "object") {
-    return { success: false, error: "Payload must be a JSON object or array" };
-  }
-  let targetSceneName = (defaultSceneName || "imported-scene").trim();
-  let candidateBreakpoints = [];
-  if (Array.isArray(parsed)) {
-    candidateBreakpoints = parsed;
-  } else if (parsed.sceneName && Array.isArray(parsed.breakpoints)) {
-    targetSceneName = String(parsed.sceneName).trim() || targetSceneName;
-    candidateBreakpoints = parsed.breakpoints;
-  } else if (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes)) {
-    const keys = Object.keys(parsed.scenes);
-    if (keys.length > 0) {
-      targetSceneName = keys[0];
-      candidateBreakpoints = Array.isArray(parsed.scenes[targetSceneName]) ? parsed.scenes[targetSceneName] : [];
-    }
-  } else {
-    const keys = Object.keys(parsed).filter((k) => k !== "$schema" && k !== "version" && k !== "exportedAt");
-    if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
-      targetSceneName = keys[0];
-      candidateBreakpoints = parsed[keys[0]];
-    }
-  }
-  const validBreakpoints = [];
-  for (const item of candidateBreakpoints) {
-    if (!item || typeof item !== "object") continue;
-    if (item.type === "function") {
-      if (typeof item.functionName === "string" && item.functionName.trim()) {
-        validBreakpoints.push({
-          type: "function",
-          functionName: item.functionName.trim(),
-          condition: item.condition?.trim() || void 0,
-          hitCondition: item.hitCondition?.trim() || void 0,
-          enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-          desc: item.desc?.trim() || void 0
-        });
-      }
-      continue;
-    }
-    if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
-      const type = ["condition", "hitCount", "logpoint", "line"].includes(item.type) ? item.type : "line";
-      validBreakpoints.push({
-        type,
-        file: item.file.trim().replace(/\\/g, "/"),
-        line: Math.floor(item.line),
-        condition: item.condition?.trim() || void 0,
-        hitCondition: item.hitCondition?.trim() || void 0,
-        logMessage: item.logMessage?.trim() || void 0,
-        enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-        desc: item.desc?.trim() || void 0,
-        contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0
-      });
-    }
-  }
-  if (validBreakpoints.length === 0) {
-    return { success: false, error: "No valid breakpoints found in the payload" };
-  }
-  return {
-    success: true,
-    sceneName: targetSceneName,
-    breakpoints: validBreakpoints
-  };
-}
-
-// src/infra/vscode/commands/clipboardCommands.ts
-async function copySceneToClipboardCommand(target) {
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) return;
-  const config = loadScenesConfig(workspaceRoot);
-  const sceneNames = Object.keys(config.scenes || {});
-  if (sceneNames.length === 0) {
-    vscode7.window.showWarningMessage(vscode7.l10n.t("No scenes configured in debug-scenes.json yet"));
-    return;
-  }
-  let targetScene;
-  if (target) {
-    if (typeof target === "string") {
-      targetScene = target.trim();
-    } else if (target.sceneName) {
-      targetScene = target.sceneName;
-    }
-  }
-  if (!targetScene) {
-    const picked = await vscode7.window.showQuickPick(
-      sceneNames.map((name) => ({
-        label: `$(symbol-event) ${name}`,
-        description: vscode7.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
-        sceneName: name
-      })),
-      {
-        placeHolder: vscode7.l10n.t("Select a scene to copy to clipboard")
-      }
-    );
-    if (!picked) return;
-    targetScene = picked.sceneName;
-  }
-  const breakpoints = config.scenes[targetScene] || [];
-  if (breakpoints.length === 0) {
-    vscode7.window.showWarningMessage(
-      vscode7.l10n.t("Scene [{0}] has no breakpoints to copy.", targetScene)
-    );
-    return;
-  }
-  const payloadStr = serializeScenePayload(targetScene, breakpoints);
-  await vscode7.env.clipboard.writeText(payloadStr);
-  vscode7.window.showInformationMessage(
-    vscode7.l10n.t("Scene [{0}] copied to clipboard ({1} breakpoint(s))!", targetScene, breakpoints.length)
-  );
-}
-async function importSceneFromClipboardCommand() {
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) return;
-  const clipboardText = await vscode7.env.clipboard.readText();
-  if (!clipboardText || !clipboardText.trim()) {
-    vscode7.window.showWarningMessage(
-      vscode7.l10n.t("Clipboard is empty or does not contain valid text.")
-    );
-    return;
-  }
-  const parseResult = parseScenePayload(clipboardText);
-  if (!parseResult.success) {
-    const viewFormatAction = vscode7.l10n.t("View Supported Formats");
-    const action = await vscode7.window.showErrorMessage(
-      vscode7.l10n.t("Failed to import scene from clipboard: {0}", parseResult.error),
-      viewFormatAction
-    );
-    if (action === viewFormatAction) {
-      const doc = await vscode7.workspace.openTextDocument({
-        language: "jsonc",
-        content: getSupportedFormatsTemplate()
-      });
-      await vscode7.window.showTextDocument(doc, { preview: true });
-    }
-    return;
-  }
-  const config = loadScenesConfig(workspaceRoot);
-  let finalSceneName = parseResult.sceneName;
-  const importedBreakpoints = parseResult.breakpoints;
-  if (config.scenes[finalSceneName] && config.scenes[finalSceneName].length > 0) {
-    const action = await vscode7.window.showQuickPick(
-      [
-        {
-          label: vscode7.l10n.t("Overwrite Existing Scene"),
-          description: vscode7.l10n.t("Replace existing [{0}] completely", finalSceneName),
-          value: "overwrite"
-        },
-        {
-          label: vscode7.l10n.t("Append & Merge Breakpoints"),
-          description: vscode7.l10n.t("Keep existing breakpoints and upsert imported ones", finalSceneName),
-          value: "append"
-        },
-        {
-          label: vscode7.l10n.t("Rename Imported Scene"),
-          description: vscode7.l10n.t("Save under a new scene name", finalSceneName),
-          value: "rename"
-        }
-      ],
-      {
-        placeHolder: vscode7.l10n.t("Scene [{0}] already exists. Choose action:", finalSceneName)
-      }
-    );
-    if (!action) return;
-    if (action.value === "rename") {
-      const newName = await vscode7.window.showInputBox({
-        prompt: vscode7.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
-        value: `${finalSceneName}-copy`,
-        validateInput: (val) => {
-          if (!val || !val.trim()) return vscode7.l10n.t("Scene name cannot be empty");
-          return null;
-        }
-      });
-      if (!newName || !newName.trim()) return;
-      finalSceneName = newName.trim();
-      config.scenes[finalSceneName] = importedBreakpoints;
-    } else if (action.value === "append") {
-      for (const bp of importedBreakpoints) {
-        upsertBreakpointToScene(config, finalSceneName, bp);
-      }
-    } else {
-      config.scenes[finalSceneName] = importedBreakpoints;
-    }
-  } else {
-    config.scenes[finalSceneName] = importedBreakpoints;
-  }
-  SceneNode.expandedScenes.add(finalSceneName);
-  saveScenesConfig(workspaceRoot, config);
-  await vscode7.commands.executeCommand("sceneBreakpoints.refreshView");
-  if (sceneStateManager.isSceneActive(finalSceneName)) {
-    const activeScenes = sceneStateManager.getActiveScenes();
-    const merged = mergeScenesBreakpoints(config, activeScenes);
-    await applySceneBreakpoints(workspaceRoot, activeScenes.join("+"), merged);
-    sceneStateManager.setActiveScenes(activeScenes, merged.length);
-  }
-  const activateAction = vscode7.l10n.t("Activate Scene");
-  const choice = await vscode7.window.showInformationMessage(
-    vscode7.l10n.t(
-      "Successfully imported scene [{0}] with {1} breakpoint(s)!",
-      finalSceneName,
-      config.scenes[finalSceneName].length
-    ),
-    activateAction
-  );
-  if (choice === activateAction) {
-    await applySceneCommand(finalSceneName);
-  }
-}
-
-// src/infra/vscode/commands/sceneCommands.ts
-async function clearAllCommand() {
-  const workspaceRoot = getWorkspaceRoot(false);
-  await clearAll({ workspaceRoot });
-}
-async function applySceneCommand(sceneParam) {
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) return;
-  const config = loadScenesConfig(workspaceRoot);
-  const sceneNames = Object.keys(config.scenes || {});
-  if (sceneNames.length === 0) {
-    vscode8.window.showWarningMessage(vscode8.l10n.t("No scenes configured in debug-scenes.json yet"));
-    return;
-  }
-  let targetScenes;
-  if (Array.isArray(sceneParam)) {
-    targetScenes = sceneParam.map((s) => String(s).trim()).filter(Boolean);
-  } else if (typeof sceneParam === "string" && sceneParam.trim()) {
-    if (sceneParam.includes(",")) {
-      targetScenes = sceneParam.split(",").map((s) => s.trim()).filter(Boolean);
-    } else {
-      targetScenes = [sceneParam.trim()];
-    }
-  }
-  if (!targetScenes) {
-    const activeEditor = vscode8.window.activeTextEditor;
-    if (activeEditor && activeEditor.document.fileName.endsWith("debug-scenes.json")) {
-      const currentLine = activeEditor.selection.active.line;
-      for (let i = currentLine; i >= 0; i--) {
-        const lineText = activeEditor.document.lineAt(i).text;
-        for (const sName of sceneNames) {
-          if (lineText.includes(`"${sName}"`) && lineText.includes(":")) {
-            targetScenes = [sName];
+    const lenses = [];
+    try {
+      const cleaned = stripComments(document.getText());
+      const parsed = JSON.parse(cleaned);
+      const scenes = parsed && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes) ? parsed.scenes : parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      const sceneNames = Object.keys(scenes).filter((k) => k !== "$schema" && Array.isArray(scenes[k]));
+      for (const sceneName of sceneNames) {
+        const count = Array.isArray(scenes[sceneName]) ? scenes[sceneName].length : 0;
+        const keyPattern = new RegExp(`^\\s*"${escapeRegex(sceneName)}"\\s*:`);
+        const isActive = sceneStateManager.isSceneActive(sceneName);
+        for (let i = 0; i < document.lineCount; i++) {
+          const lineText = document.lineAt(i).text;
+          if (keyPattern.test(lineText)) {
+            const range = new vscode5.Range(i, 0, i, 0);
+            const title = isActive ? vscode5.l10n.t("\u2714 Active ({0} bps)", count) : vscode5.l10n.t("\u25B6 Apply Scene ({0} bps)", count);
+            lenses.push(
+              new vscode5.CodeLens(range, {
+                title,
+                tooltip: vscode5.l10n.t("Click to activate this scene and clean other breakpoints"),
+                command: "sceneBreakpoints.applyScene",
+                arguments: [sceneName]
+              })
+            );
             break;
           }
         }
-        if (targetScenes) break;
       }
+    } catch {
     }
+    return lenses;
   }
-  if (!targetScenes) {
-    const currentActiveScenes = sceneStateManager.getActiveScenes();
-    const items = sceneNames.map((name) => ({
-      label: name,
-      description: vscode8.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
-      picked: currentActiveScenes.includes(name)
-    }));
-    const picked = await vscode8.window.showQuickPick(items, {
-      canPickMany: true,
-      placeHolder: vscode8.l10n.t("Select one or more debug scenes to activate (check to layer breakpoints)")
+};
+
+// src/ui/views/sceneInlayHintsProvider.ts
+var path3 = __toESM(require("node:path"));
+var vscode6 = __toESM(require("vscode"));
+var SceneInlayHintsProvider = class {
+  _onDidChangeInlayHints = new vscode6.EventEmitter();
+  onDidChangeInlayHints = this._onDidChangeInlayHints.event;
+  disposables = [];
+  configLoader;
+  workspaceRootGetter;
+  enabledGetter;
+  constructor(configLoader, workspaceRootGetter, enabledGetter) {
+    this.workspaceRootGetter = workspaceRootGetter ?? (() => getWorkspaceRoot(false));
+    this.configLoader = configLoader ?? (() => {
+      const ws = this.workspaceRootGetter();
+      return ws ? sceneManager.loadScenesConfig(ws) : { scenes: {} };
     });
-    if (picked === void 0) return;
-    targetScenes = picked.map((it) => it.label);
-  }
-  if (targetScenes.length === 0) {
-    await clearAllCommand();
-    return;
-  }
-  const currentActive = sceneStateManager.getActiveScene();
-  const isDirty = sceneStateManager.getIsDirty();
-  if (currentActive && isDirty) {
-    const actionAppend = vscode8.l10n.t("Save & Append to [{0}]", currentActive);
-    const actionDiscard = vscode8.l10n.t("Discard Temporary Breakpoints");
-    const chosen = await vscode8.window.showWarningMessage(
-      vscode8.l10n.t(
-        "Workspace has unsaved temporary breakpoints in scene [{0}]. What would you like to do before switching/reloading?",
-        currentActive
-      ),
-      { modal: true },
-      actionAppend,
-      actionDiscard
+    this.enabledGetter = enabledGetter ?? (() => {
+      const conf = vscode6.workspace.getConfiguration("sceneBreakpoints");
+      const val = conf.get("inlayHints.enabled");
+      return val !== false;
+    });
+    this.disposables.push(
+      sceneStateManager.onDidChangeState(() => {
+        this.refresh();
+      })
     );
-    if (!chosen) return;
-    if (chosen === actionAppend) {
-      const currentBps = vscodeBreakpointBridge.collectCurrentBreakpoints(workspaceRoot);
-      config.scenes[currentActive] = currentBps;
-      saveScenesConfig(workspaceRoot, config);
+    if (vscode6.workspace.onDidChangeConfiguration) {
+      this.disposables.push(
+        vscode6.workspace.onDidChangeConfiguration((e) => {
+          if (e.affectsConfiguration("sceneBreakpoints.inlayHints")) {
+            this.refresh();
+          }
+        })
+      );
     }
   }
-  const result = await activateScene({
-    workspaceRoot,
-    targetScenes
-  });
-  if (!result.success) {
-    vscode8.window.showErrorMessage(
-      vscode8.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", "))
-    );
-    return;
+  refresh() {
+    this._onDidChangeInlayHints.fire();
   }
-  if (result.missingScenes.length > 0) {
-    vscode8.window.showWarningMessage(
-      vscode8.l10n.t("Scene(s) [{0}] not found and skipped", result.missingScenes.join(", "))
-    );
-  }
-  const primarySceneLabel = result.validTargetScenes.length === 1 ? result.validTargetScenes[0] : result.validTargetScenes.join(" + ");
-  if (result.unmatchedCount > 0) {
-    const count = result.unmatchedCount;
-    const unmatches = result.unmatchedBreakpoints || [];
-    const firstItem = unmatches[0];
-    const summary = unmatches.slice(0, 3).map((bp) => `${path6.basename(bp.file)}:${bp.line}`).join(", ");
-    const more = count > 3 ? ` \u7B49 ${count} \u5904` : "";
-    const viewAction = vscode8.l10n.t("Locate Code");
-    vscode8.window.showWarningMessage(
-      vscode8.l10n.t(
-        "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}",
-        primarySceneLabel,
-        count,
-        summary,
-        more
-      ),
-      viewAction
-    ).then(async (selected) => {
-      if (selected === viewAction && firstItem) {
-        const fullPath = path6.isAbsolute(firstItem.file) ? firstItem.file : path6.join(workspaceRoot, firstItem.file);
-        try {
-          const doc = await vscode8.workspace.openTextDocument(fullPath);
-          const editor = await vscode8.window.showTextDocument(doc);
-          const pos = new vscode8.Position(Math.max(0, firstItem.line - 1), 0);
-          editor.selection = new vscode8.Selection(pos, pos);
-          editor.revealRange(new vscode8.Range(pos, pos), vscode8.TextEditorRevealType.InCenter);
-        } catch {
+  provideInlayHints(document, _range, _token) {
+    if (!this.enabledGetter()) {
+      return [];
+    }
+    const config = this.configLoader();
+    if (!config || !config.scenes) {
+      return [];
+    }
+    let activeScenes = sceneStateManager.getActiveScenes();
+    if (activeScenes.length === 0 && Array.isArray(config.activeScenes) && config.activeScenes.length > 0) {
+      activeScenes = config.activeScenes;
+    }
+    if (activeScenes.length === 0) {
+      return [];
+    }
+    const wsRoot = this.workspaceRootGetter();
+    const docFsPath = path3.normalize(document.uri.fsPath).toLowerCase().replace(/\\/g, "/");
+    const lineToStepsMap = /* @__PURE__ */ new Map();
+    for (const sceneName of activeScenes) {
+      const sceneBps = config.scenes[sceneName];
+      if (!Array.isArray(sceneBps)) continue;
+      let stepIndex = 0;
+      for (const bp of sceneBps) {
+        if (!bp || typeof bp !== "object") continue;
+        stepIndex++;
+        if (bp.type === "function") continue;
+        const srcBp = bp;
+        if (!srcBp.file || typeof srcBp.line !== "number" || srcBp.line <= 0) continue;
+        const bpRelative = srcBp.file.trim().replace(/\\/g, "/").toLowerCase();
+        const bpFullPath = wsRoot ? path3.isAbsolute(srcBp.file) ? path3.normalize(srcBp.file).toLowerCase().replace(/\\/g, "/") : path3.normalize(path3.join(wsRoot, srcBp.file)).toLowerCase().replace(/\\/g, "/") : bpRelative;
+        const matches = bpFullPath === docFsPath || docFsPath.endsWith("/" + bpRelative) || docFsPath.endsWith(bpRelative);
+        if (matches) {
+          const existing = lineToStepsMap.get(srcBp.line) || [];
+          existing.push({ sceneName, stepIndex, breakpoint: srcBp });
+          lineToStepsMap.set(srcBp.line, existing);
         }
       }
-    });
-  } else if (result.healedCount > 0) {
-    vscode8.window.showInformationMessage(
-      vscode8.l10n.t(
-        "Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
-        primarySceneLabel,
-        result.loadedCount,
-        result.healedCount
-      )
+    }
+    if (lineToStepsMap.size === 0) {
+      return [];
+    }
+    const hints = [];
+    for (const [bpLine, stepItems] of lineToStepsMap.entries()) {
+      const zeroBasedLine = bpLine - 1;
+      if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) continue;
+      const lineLength = document.lineAt(zeroBasedLine).text.length;
+      const position = new vscode6.Position(zeroBasedLine, lineLength);
+      const labelParts = stepItems.map((item) => {
+        const base = `[${item.sceneName} #${item.stepIndex}]`;
+        const desc = item.breakpoint.desc?.trim();
+        return desc ? `${base} ${desc}` : base;
+      });
+      const labelText = `\u{1F4A1} ${labelParts.join(" | ")}`;
+      const hint = new vscode6.InlayHint(position, labelText);
+      hint.paddingLeft = true;
+      const tooltipMarkdown = new vscode6.MarkdownString("", true);
+      tooltipMarkdown.isTrusted = true;
+      for (let i = 0; i < stepItems.length; i++) {
+        const item = stepItems[i];
+        const bp = item.breakpoint;
+        const isUnmatched = sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
+        if (i > 0) {
+          tooltipMarkdown.appendMarkdown("\n\n---\n\n");
+        }
+        tooltipMarkdown.appendMarkdown(
+          `### \u{1F4A1} ${vscode6.l10n.t("Scene Breakpoint: {0}", item.sceneName)}
+
+`
+        );
+        tooltipMarkdown.appendMarkdown(`- **${vscode6.l10n.t("Step")}**: #${item.stepIndex}
+`);
+        tooltipMarkdown.appendMarkdown(`- **${vscode6.l10n.t("Type")}**: \`${bp.type}\`
+`);
+        if (bp.desc) {
+          tooltipMarkdown.appendMarkdown(
+            `- **${vscode6.l10n.t("Description")}**: ${bp.desc}
+`
+          );
+        }
+        if (bp.condition) {
+          tooltipMarkdown.appendMarkdown(
+            `- **${vscode6.l10n.t("Condition")}**: \`${bp.condition}\`
+`
+          );
+        }
+        if (bp.hitCondition) {
+          tooltipMarkdown.appendMarkdown(
+            `- **${vscode6.l10n.t("Hit Condition")}**: \`${bp.hitCondition}\`
+`
+          );
+        }
+        if (bp.logMessage) {
+          tooltipMarkdown.appendMarkdown(
+            `- **${vscode6.l10n.t("Log Message")}**: \`${bp.logMessage}\`
+`
+          );
+        }
+        if (isUnmatched) {
+          tooltipMarkdown.appendMarkdown(
+            `- **${vscode6.l10n.t("Status")}**: \u26A0\uFE0F ${vscode6.l10n.t("Unmatched (Code Drift Detected)")}
+`
+          );
+        }
+      }
+      hint.tooltip = tooltipMarkdown;
+      hints.push(hint);
+    }
+    return hints;
+  }
+  dispose() {
+    this._onDidChangeInlayHints.dispose();
+    for (const d of this.disposables) {
+      d.dispose();
+    }
+    this.disposables.length = 0;
+  }
+};
+
+// src/ui/views/inlayHintsPrompt.ts
+var vscode7 = __toESM(require("vscode"));
+async function promptInlayHintsModeIfFirstTime(globalState) {
+  try {
+    const currentInlay = vscode7.workspace.getConfiguration("editor.inlayHints").get("enabled");
+    if (currentInlay === "on") return;
+    const STATE_KEY = "sceneBreakpoints.inlayHintsPromptDismissed";
+    if (globalState && globalState.get(STATE_KEY)) return;
+    const btnEnable = vscode7.l10n.t("Enable Always-On");
+    const btnKeep = vscode7.l10n.t("Hold Ctrl+Alt is Fine");
+    const btnNever = vscode7.l10n.t("Don't Ask Again");
+    const selected = await vscode7.window.showInformationMessage(
+      vscode7.l10n.t(
+        "Scene Breakpoints: Line annotations are currently in shortcut mode. Would you like to enable always-on display?"
+      ),
+      btnEnable,
+      btnKeep,
+      btnNever
     );
-  } else {
-    vscode8.window.showInformationMessage(
-      vscode8.l10n.t(
-        "Scene(s) [{0}] activated! Set {1} target breakpoint(s) and cleaned others.",
-        primarySceneLabel,
-        result.loadedCount
-      )
-    );
+    if (globalState) {
+      await globalState.update(STATE_KEY, true);
+    }
+    if (selected === btnEnable) {
+      await vscode7.workspace.getConfiguration("editor.inlayHints").update("enabled", "on", vscode7.ConfigurationTarget.Global);
+      vscode7.window.showInformationMessage(
+        vscode7.l10n.t("Line Annotations (Inlay Hints) are now Always-On.")
+      );
+    }
+  } catch {
   }
 }
+
+// src/ui/commands/index.ts
+var vscode16 = __toESM(require("vscode"));
+
+// src/ui/commands/sceneCommands.ts
+var path5 = __toESM(require("node:path"));
+var vscode9 = __toESM(require("vscode"));
+
+// src/ui/commands/addBreakpointCommand.ts
+var path4 = __toESM(require("node:path"));
+var vscode8 = __toESM(require("vscode"));
 async function addBreakpointCommand() {
   const editor = vscode8.window.activeTextEditor;
   if (!editor) {
@@ -2764,11 +2774,11 @@ async function addBreakpointCommand() {
   }
   const fullFilePath = editor.document.fileName;
   const workspaceFolder = vscode8.workspace.getWorkspaceFolder(editor.document.uri);
-  const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : path6.dirname(editor.document.fileName);
-  const relativeFilePath = path6.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
-  const fileNameOnly = path6.basename(fullFilePath);
+  const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : path4.dirname(editor.document.fileName);
+  const relativeFilePath = path4.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
+  const fileNameOnly = path4.basename(fullFilePath);
   const currentLine = editor.selection.active.line + 1;
-  const config = loadScenesConfig(workspaceRoot);
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
   const existingScenes = Object.keys(config.scenes || {});
   const sceneQuickPickItems = [
     ...existingScenes.map((s) => ({ label: `$(symbol-event) ${s}`, sceneName: s })),
@@ -2881,100 +2891,630 @@ async function addBreakpointCommand() {
       contextSnippet
     };
   }
-  await addBreakpoint({
+  await breakpointManager.addBreakpoint(
     workspaceRoot,
     targetScene,
-    breakpoint: newEntry
-  });
+    newEntry
+  );
   const summaryLabel = bpType === "function" ? functionName : `${fileNameOnly}:${currentLine}`;
   vscode8.window.showInformationMessage(
     vscode8.l10n.t("Saved breakpoint to scene [{0}]: {1}:{2} {3}", targetScene, summaryLabel, bpType, newEntry.desc ? `("${newEntry.desc}")` : "")
   );
 }
+
+// src/ui/commands/sceneCommands.ts
+var extensionGlobalState;
+function setExtensionGlobalState(state) {
+  extensionGlobalState = state;
+}
+async function clearAllCommand() {
+  const workspaceRoot = getWorkspaceRoot(false);
+  await sceneManager.clearAll(workspaceRoot);
+}
+async function applySceneCommand(sceneParam) {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
+  const sceneNames = Object.keys(config.scenes || {});
+  if (sceneNames.length === 0) {
+    vscode9.window.showWarningMessage(vscode9.l10n.t("No scenes configured in debug-scenes.json yet"));
+    return;
+  }
+  let targetScenes;
+  if (Array.isArray(sceneParam)) {
+    targetScenes = sceneParam.map((s) => String(s).trim()).filter(Boolean);
+  } else if (typeof sceneParam === "string" && sceneParam.trim()) {
+    if (sceneParam.includes(",")) {
+      targetScenes = sceneParam.split(",").map((s) => s.trim()).filter(Boolean);
+    } else {
+      targetScenes = [sceneParam.trim()];
+    }
+  }
+  if (!targetScenes) {
+    const activeEditor = vscode9.window.activeTextEditor;
+    if (activeEditor && activeEditor.document.fileName.endsWith("debug-scenes.json")) {
+      const currentLine = activeEditor.selection.active.line;
+      for (let i = currentLine; i >= 0; i--) {
+        const lineText = activeEditor.document.lineAt(i).text;
+        for (const sName of sceneNames) {
+          if (lineText.includes(`"${sName}"`) && lineText.includes(":")) {
+            targetScenes = [sName];
+            break;
+          }
+        }
+        if (targetScenes) break;
+      }
+    }
+  }
+  if (!targetScenes) {
+    const currentActiveScenes = sceneStateManager.getActiveScenes();
+    const items = sceneNames.map((name) => ({
+      label: name,
+      description: vscode9.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
+      picked: currentActiveScenes.includes(name)
+    }));
+    const picked = await vscode9.window.showQuickPick(items, {
+      canPickMany: true,
+      placeHolder: vscode9.l10n.t("Select one or more debug scenes to activate (check to layer breakpoints)")
+    });
+    if (picked === void 0) return;
+    targetScenes = picked.map((it) => it.label);
+  }
+  if (targetScenes.length === 0) {
+    await clearAllCommand();
+    return;
+  }
+  const currentActive = sceneStateManager.getActiveScene();
+  const isDirty = sceneStateManager.getIsDirty();
+  if (currentActive && isDirty) {
+    const actionAppend = vscode9.l10n.t("Save & Append to [{0}]", currentActive);
+    const actionDiscard = vscode9.l10n.t("Discard Temporary Breakpoints");
+    const chosen = await vscode9.window.showWarningMessage(
+      vscode9.l10n.t(
+        "Workspace has unsaved temporary breakpoints in scene [{0}]. What would you like to do before switching/reloading?",
+        currentActive
+      ),
+      { modal: true },
+      actionAppend,
+      actionDiscard
+    );
+    if (!chosen) return;
+    if (chosen === actionAppend) {
+      await sceneManager.exportScene(
+        workspaceRoot,
+        currentActive,
+        "overwrite"
+      );
+    }
+  }
+  const result = await sceneManager.activateScene(
+    workspaceRoot,
+    targetScenes
+  );
+  if (!result.success) {
+    vscode9.window.showErrorMessage(
+      vscode9.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", "))
+    );
+    return;
+  }
+  if (result.missingScenes.length > 0) {
+    vscode9.window.showWarningMessage(
+      vscode9.l10n.t("Scene(s) [{0}] not found and skipped", result.missingScenes.join(", "))
+    );
+  }
+  const primarySceneLabel = result.validTargetScenes.length === 1 ? result.validTargetScenes[0] : result.validTargetScenes.join(" + ");
+  if (result.unmatchedCount > 0) {
+    const count = result.unmatchedCount;
+    const unmatches = result.unmatchedBreakpoints || [];
+    const firstItem = unmatches[0];
+    const summary = unmatches.slice(0, 3).map((bp) => `${path5.basename(bp.file)}:${bp.line}`).join(", ");
+    const more = count > 3 ? ` \u7B49 ${count} \u5904` : "";
+    const viewAction = vscode9.l10n.t("Locate Code");
+    vscode9.window.showWarningMessage(
+      vscode9.l10n.t(
+        "Scene [{0}] activated, but {1} breakpoint(s) could not match code (fell back to original lines): {2}{3}",
+        primarySceneLabel,
+        count,
+        summary,
+        more
+      ),
+      viewAction
+    ).then(async (selected) => {
+      if (selected === viewAction && firstItem) {
+        const fullPath = path5.isAbsolute(firstItem.file) ? firstItem.file : path5.join(workspaceRoot, firstItem.file);
+        try {
+          const doc = await vscode9.workspace.openTextDocument(fullPath);
+          const editor = await vscode9.window.showTextDocument(doc);
+          const pos = new vscode9.Position(Math.max(0, firstItem.line - 1), 0);
+          editor.selection = new vscode9.Selection(pos, pos);
+          editor.revealRange(new vscode9.Range(pos, pos), vscode9.TextEditorRevealType.InCenter);
+        } catch {
+        }
+      }
+    });
+  } else if (result.healedCount > 0) {
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t(
+        "Scene(s) [{0}] activated! Loaded {1} breakpoint(s) (Auto-healed {2} drifted line(s)).",
+        primarySceneLabel,
+        result.loadedCount,
+        result.healedCount
+      )
+    );
+  } else {
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t(
+        "Scene(s) [{0}] activated! Set {1} target breakpoint(s) and cleaned others.",
+        primarySceneLabel,
+        result.loadedCount
+      )
+    );
+  }
+  promptInlayHintsModeIfFirstTime(extensionGlobalState).catch(() => {
+  });
+}
 async function exportSceneCommand() {
-  const currentBreakpoints = vscode8.debug.breakpoints;
+  const currentBreakpoints = vscode9.debug.breakpoints;
   if (!currentBreakpoints || currentBreakpoints.length === 0) {
-    vscode8.window.showWarningMessage(vscode8.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."));
+    vscode9.window.showWarningMessage(vscode9.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."));
     return;
   }
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
-  const sceneName = await vscode8.window.showInputBox({
-    prompt: vscode8.l10n.t("Enter scene identifier to export current breakpoints to (e.g. order-flow-debug)"),
+  const sceneName = await vscode9.window.showInputBox({
+    prompt: vscode9.l10n.t("Enter scene identifier to export current breakpoints to (e.g. order-flow-debug)"),
     placeHolder: "order-flow-debug",
     validateInput: (value) => {
-      if (!value || !value.trim()) return vscode8.l10n.t("Scene name cannot be empty");
+      if (!value || !value.trim()) return vscode9.l10n.t("Scene name cannot be empty");
       return null;
     }
   });
   if (!sceneName || !sceneName.trim()) return;
   const targetScene = sceneName.trim();
-  const config = loadScenesConfig(workspaceRoot);
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
   let mode = "overwrite";
   if (config.scenes[targetScene] && config.scenes[targetScene].length > 0) {
-    const action = await vscode8.window.showQuickPick(
+    const action = await vscode9.window.showQuickPick(
       [
-        { label: vscode8.l10n.t("Overwrite Existing Scene"), value: "overwrite" },
-        { label: vscode8.l10n.t("Append to Existing Scene"), value: "append" }
+        { label: vscode9.l10n.t("Overwrite Existing Scene"), value: "overwrite" },
+        { label: vscode9.l10n.t("Append to Existing Scene"), value: "append" }
       ],
       {
-        placeHolder: vscode8.l10n.t("Scene [{0}] already exists. Choose action:", targetScene)
+        placeHolder: vscode9.l10n.t("Scene [{0}] already exists. Choose action:", targetScene)
       }
     );
     if (!action) return;
     mode = action.value;
   }
-  const result = await exportScene({
+  const result = await sceneManager.exportScene(
     workspaceRoot,
     targetScene,
     mode
-  });
+  );
   if (result.success) {
     sceneStateManager.setActiveScene(targetScene, result.count);
-    await vscode8.commands.executeCommand("sceneBreakpoints.refreshView");
-    vscode8.window.showInformationMessage(
-      vscode8.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene)
+    await vscode9.commands.executeCommand("sceneBreakpoints.refreshView");
+    vscode9.window.showInformationMessage(
+      vscode9.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene)
     );
   }
 }
+
+// src/ui/commands/menuCommands.ts
+var vscode11 = __toESM(require("vscode"));
+
+// src/ui/commands/clipboardCommands.ts
+var vscode10 = __toESM(require("vscode"));
+
+// src/domain/services/scenePayloadCodec.ts
+var ScenePayloadCodec = class _ScenePayloadCodec {
+  static SCHEMA_URL = "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json";
+  static MAX_PAYLOAD_SIZE = 1024 * 1024;
+  // 1MB
+  /**
+   * 将指定场景或断点列表编码（序列化）为标准格式文本
+   */
+  encode(sceneOrName, breakpoints) {
+    let name;
+    let bps;
+    if (sceneOrName instanceof Scene) {
+      name = sceneOrName.name;
+      bps = sceneOrName.getBreakpoints().map((b) => b.raw);
+    } else {
+      name = sceneOrName;
+      bps = breakpoints || [];
+    }
+    const payload = {
+      $schema: _ScenePayloadCodec.SCHEMA_URL,
+      version: "1.0",
+      sceneName: name.trim(),
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      breakpoints: bps.map((bp) => {
+        if (bp.type !== "function") {
+          return {
+            ...bp,
+            file: bp.file.replace(/\\/g, "/")
+          };
+        }
+        return bp;
+      })
+    };
+    return JSON.stringify(payload, null, 2);
+  }
+  /** 历史兼容方法：serialize 映射至 encode */
+  serialize(sceneOrName, breakpoints) {
+    return this.encode(sceneOrName, breakpoints);
+  }
+  /**
+   * 自动剥离外层的 Markdown 代码块包裹（如 ```json ... ```）
+   */
+  stripMarkdown(text) {
+    return stripMarkdown(text);
+  }
+  /**
+   * 清洗 JSON 字符串中的注释（单行 // 与多行 /* *\/）以及行尾悬挂逗号
+   */
+  stripComments(jsonStr) {
+    return stripComments(jsonStr);
+  }
+  /**
+   * 获取支持的外部传输格式示例模板 (纯文本协议，无特定硬件依赖)
+   */
+  getTemplate(titles = {}) {
+    const title = titles.title || "Scene Breakpoints: Supported Payload Formats";
+    const format1Title = titles.format1Title || "Format 1: Standard Scene Payload (Recommended)";
+    const format2Title = titles.format2Title || "Format 2: scenes dictionary (debug-scenes.json snippet)";
+    const format3Title = titles.format3Title || "Format 3: Raw breakpoint array";
+    return `// ========================================================
+// ${title}
+// ========================================================
+
+// ${format1Title}
+{
+  "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
+  "version": "1.0",
+  "sceneName": "order-debug",
+  "breakpoints": [
+    {
+      "type": "line",
+      "file": "src/order.ts",
+      "line": 42,
+      "enabled": true,
+      "condition": "order.total > 100",
+      "desc": "Check order total"
+    },
+    {
+      "type": "function",
+      "functionName": "handleOrderPayment",
+      "enabled": true
+    }
+  ]
+}
+
+// ${format2Title}
+{
+  "scenes": {
+    "order-debug": [
+      {
+        "file": "src/order.ts",
+        "line": 42,
+        "enabled": true
+      }
+    ]
+  }
+}
+
+// ${format3Title}
+[
+  {
+    "file": "src/order.ts",
+    "line": 42,
+    "enabled": true
+  },
+  {
+    "type": "function",
+    "functionName": "handleOrderPayment"
+  }
+]
+`;
+  }
+  /**
+   * 解码并清洗外部传入的 Payload 字符串，兼容多种结构（标准 Payload、scenes 字典、裸数组等）
+   */
+  decode(rawText, defaultSceneName) {
+    if (!rawText || !rawText.trim()) {
+      return { success: false, error: "Empty content" };
+    }
+    if (rawText.length > _ScenePayloadCodec.MAX_PAYLOAD_SIZE) {
+      return { success: false, error: "Content exceeds maximum size limit (1MB)" };
+    }
+    let parsed;
+    try {
+      const unmarshalled = stripMarkdown(rawText);
+      const sanitized = stripComments(unmarshalled);
+      parsed = JSON.parse(sanitized);
+    } catch (e) {
+      return { success: false, error: `Invalid JSON format: ${e.message}` };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { success: false, error: "Payload must be a JSON object or array" };
+    }
+    const { targetSceneName, candidateBreakpoints } = this.resolveCandidatePayload(parsed, defaultSceneName);
+    const validBreakpoints = this.sanitizeBreakpoints(candidateBreakpoints);
+    if (validBreakpoints.length === 0) {
+      return { success: false, error: "No valid breakpoints found in the payload" };
+    }
+    return {
+      success: true,
+      sceneName: targetSceneName,
+      breakpoints: validBreakpoints
+    };
+  }
+  resolveCandidatePayload(parsed, defaultSceneName) {
+    let targetSceneName = (defaultSceneName || "imported-scene").trim();
+    let candidateBreakpoints = [];
+    if (Array.isArray(parsed)) {
+      candidateBreakpoints = parsed;
+    } else if (parsed.sceneName && Array.isArray(parsed.breakpoints)) {
+      targetSceneName = String(parsed.sceneName).trim() || targetSceneName;
+      candidateBreakpoints = parsed.breakpoints;
+    } else if (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes)) {
+      const keys = Object.keys(parsed.scenes);
+      if (keys.length > 0) {
+        targetSceneName = keys[0];
+        candidateBreakpoints = Array.isArray(parsed.scenes[targetSceneName]) ? parsed.scenes[targetSceneName] : [];
+      }
+    } else {
+      const keys = Object.keys(parsed).filter((k) => k !== "$schema" && k !== "version" && k !== "exportedAt");
+      if (keys.length > 0 && Array.isArray(parsed[keys[0]])) {
+        targetSceneName = keys[0];
+        candidateBreakpoints = parsed[keys[0]];
+      }
+    }
+    return { targetSceneName, candidateBreakpoints };
+  }
+  sanitizeBreakpoints(candidates) {
+    const validBreakpoints = [];
+    for (const item of candidates) {
+      if (!item || typeof item !== "object") continue;
+      if (item.type === "function") {
+        if (typeof item.functionName === "string" && item.functionName.trim()) {
+          validBreakpoints.push({
+            type: "function",
+            functionName: item.functionName.trim(),
+            condition: item.condition?.trim() || void 0,
+            hitCondition: item.hitCondition?.trim() || void 0,
+            enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+            desc: item.desc?.trim() || void 0
+          });
+        }
+        continue;
+      }
+      if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
+        const type = ["condition", "hitCount", "logpoint", "line"].includes(item.type) ? item.type : "line";
+        validBreakpoints.push({
+          type,
+          file: item.file.trim().replace(/\\/g, "/"),
+          line: Math.floor(item.line),
+          condition: item.condition?.trim() || void 0,
+          hitCondition: item.hitCondition?.trim() || void 0,
+          logMessage: item.logMessage?.trim() || void 0,
+          enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+          desc: item.desc?.trim() || void 0,
+          contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0
+        });
+      }
+    }
+    return validBreakpoints;
+  }
+  /** 历史兼容方法：parse 映射至 decode */
+  parse(rawText, defaultSceneName) {
+    return this.decode(rawText, defaultSceneName);
+  }
+  // 静态快捷方式
+  static encode(sceneOrName, breakpoints) {
+    return defaultScenePayloadCodec.encode(sceneOrName, breakpoints);
+  }
+  static serialize(sceneOrName, breakpoints) {
+    return defaultScenePayloadCodec.encode(sceneOrName, breakpoints);
+  }
+  static decode(rawText, defaultSceneName) {
+    return defaultScenePayloadCodec.decode(rawText, defaultSceneName);
+  }
+  static parse(rawText, defaultSceneName) {
+    return defaultScenePayloadCodec.decode(rawText, defaultSceneName);
+  }
+  static stripMarkdown(text) {
+    return stripMarkdown(text);
+  }
+};
+var defaultScenePayloadCodec = new ScenePayloadCodec();
+var encodeScenePayload = (sceneOrName, breakpoints) => defaultScenePayloadCodec.encode(sceneOrName, breakpoints);
+var decodeScenePayload = (rawText, defaultSceneName) => defaultScenePayloadCodec.decode(rawText, defaultSceneName);
+var getSupportedFormatsTemplate = (titles) => defaultScenePayloadCodec.getTemplate(titles);
+
+// src/ui/commands/clipboardCommands.ts
+async function copySceneToClipboardCommand(target) {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
+  const sceneNames = Object.keys(config.scenes || {});
+  if (sceneNames.length === 0) {
+    vscode10.window.showWarningMessage(vscode10.l10n.t("No scenes configured in debug-scenes.json yet"));
+    return;
+  }
+  let targetScene;
+  if (target) {
+    if (typeof target === "string") {
+      targetScene = target.trim();
+    } else if (target.sceneName) {
+      targetScene = target.sceneName;
+    }
+  }
+  if (!targetScene) {
+    const picked = await vscode10.window.showQuickPick(
+      sceneNames.map((name) => ({
+        label: `$(symbol-event) ${name}`,
+        description: vscode10.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
+        sceneName: name
+      })),
+      {
+        placeHolder: vscode10.l10n.t("Select a scene to copy to clipboard")
+      }
+    );
+    if (!picked) return;
+    targetScene = picked.sceneName;
+  }
+  const breakpoints = config.scenes[targetScene] || [];
+  if (breakpoints.length === 0) {
+    vscode10.window.showWarningMessage(
+      vscode10.l10n.t("Scene [{0}] has no breakpoints to copy.", targetScene)
+    );
+    return;
+  }
+  const payloadStr = encodeScenePayload(targetScene, breakpoints);
+  await vscode10.env.clipboard.writeText(payloadStr);
+  vscode10.window.showInformationMessage(
+    vscode10.l10n.t("Scene [{0}] copied to clipboard ({1} breakpoint(s))!", targetScene, breakpoints.length)
+  );
+}
+async function importSceneFromClipboardCommand() {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) return;
+  const clipboardText = await vscode10.env.clipboard.readText();
+  if (!clipboardText || !clipboardText.trim()) {
+    vscode10.window.showWarningMessage(
+      vscode10.l10n.t("Clipboard is empty or does not contain valid text.")
+    );
+    return;
+  }
+  const parseResult = decodeScenePayload(clipboardText);
+  if (!parseResult.success) {
+    const errorMsg = parseResult.error;
+    const viewFormatAction = vscode10.l10n.t("View Supported Formats");
+    const action = await vscode10.window.showErrorMessage(
+      vscode10.l10n.t("Failed to import scene from clipboard: {0}", errorMsg),
+      viewFormatAction
+    );
+    if (action === viewFormatAction) {
+      const doc = await vscode10.workspace.openTextDocument({
+        language: "jsonc",
+        content: getSupportedFormatsTemplate()
+      });
+      await vscode10.window.showTextDocument(doc, { preview: true });
+    }
+    return;
+  }
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
+  const target = await resolveImportTargetScene(config.scenes || {}, parseResult.sceneName);
+  if (!target) return;
+  const { sceneName: finalSceneName, mode } = target;
+  const importedBreakpoints = parseResult.breakpoints;
+  await sceneManager.importScene(workspaceRoot, finalSceneName, importedBreakpoints, mode);
+  SceneNode.expandedScenes.add(finalSceneName);
+  await vscode10.commands.executeCommand("sceneBreakpoints.refreshView");
+  if (sceneStateManager.isSceneActive(finalSceneName)) {
+    await applySceneCommand(sceneStateManager.getActiveScenes());
+  }
+  const activateAction = vscode10.l10n.t("Activate Scene");
+  const choice = await vscode10.window.showInformationMessage(
+    vscode10.l10n.t(
+      "Successfully imported scene [{0}] with {1} breakpoint(s)!",
+      finalSceneName,
+      importedBreakpoints.length
+    ),
+    activateAction
+  );
+  if (choice === activateAction) {
+    await applySceneCommand(finalSceneName);
+  }
+}
+async function resolveImportTargetScene(scenes, initialName) {
+  const existing = scenes[initialName];
+  if (!existing || Array.isArray(existing) && existing.length === 0) {
+    return { sceneName: initialName, mode: "overwrite" };
+  }
+  const action = await vscode10.window.showQuickPick(
+    [
+      {
+        label: vscode10.l10n.t("Overwrite Existing Scene"),
+        description: vscode10.l10n.t("Replace existing [{0}] completely", initialName),
+        value: "overwrite"
+      },
+      {
+        label: vscode10.l10n.t("Append & Merge Breakpoints"),
+        description: vscode10.l10n.t("Keep existing breakpoints and upsert imported ones", initialName),
+        value: "append"
+      },
+      {
+        label: vscode10.l10n.t("Rename Imported Scene"),
+        description: vscode10.l10n.t("Save under a new scene name", initialName),
+        value: "rename"
+      }
+    ],
+    { placeHolder: vscode10.l10n.t("Scene [{0}] already exists. Choose action:", initialName) }
+  );
+  if (!action) return null;
+  if (action.value === "rename") {
+    const newName = await vscode10.window.showInputBox({
+      prompt: vscode10.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
+      value: `${initialName}-copy`,
+      validateInput: (val) => !val || !val.trim() ? vscode10.l10n.t("Scene name cannot be empty") : null
+    });
+    if (!newName || !newName.trim()) return null;
+    return { sceneName: newName.trim(), mode: "overwrite" };
+  }
+  return { sceneName: initialName, mode: action.value };
+}
+
+// src/ui/commands/menuCommands.ts
 async function showMenuCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) return;
-  const config = loadScenesConfig(workspaceRoot);
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
   const sceneNames = Object.keys(config.scenes || {});
   const activeScenes = sceneStateManager.getActiveScenes();
   const isDirty = sceneStateManager.getIsDirty();
   const items = [];
   items.push(
     {
-      label: `$(clear-all) ${vscode8.l10n.t("Clear All Breakpoints")}`,
-      description: vscode8.l10n.t("Clear all breakpoints from current workspace"),
+      label: `$(clear-all) ${vscode11.l10n.t("Clear All Breakpoints")}`,
+      description: vscode11.l10n.t("Clear all breakpoints from current workspace"),
       action: "clear"
     },
     {
-      label: `$(checklist) ${vscode8.l10n.t("Multi-Select Scenes to Activate...")}`,
-      description: vscode8.l10n.t("Check multiple scenes to layer breakpoints together"),
+      label: `$(checklist) ${vscode11.l10n.t("Multi-Select Scenes to Activate...")}`,
+      description: vscode11.l10n.t("Check multiple scenes to layer breakpoints together"),
       action: "multiSelect"
     },
     {
-      label: `$(cloud-upload) ${vscode8.l10n.t("Export Active Breakpoints as Scene...")}`,
-      description: vscode8.l10n.t("Save current editor breakpoints into debug-scenes.json"),
+      label: `$(cloud-upload) ${vscode11.l10n.t("Export Active Breakpoints as Scene...")}`,
+      description: vscode11.l10n.t("Save current editor breakpoints into debug-scenes.json"),
       action: "export"
     },
     {
-      label: `$(cloud-download) ${vscode8.l10n.t("Import Scene from Clipboard...")}`,
-      description: vscode8.l10n.t("Parse and import scene breakpoints from clipboard"),
+      label: `$(cloud-download) ${vscode11.l10n.t("Import Scene from Clipboard...")}`,
+      description: vscode11.l10n.t("Parse and import scene breakpoints from clipboard"),
       action: "importClipboard"
     },
     {
-      label: `$(file-code) ${vscode8.l10n.t("Open debug-scenes.json")}`,
-      description: vscode8.l10n.t("Edit configuration file directly"),
+      label: `$(file-code) ${vscode11.l10n.t("Open debug-scenes.json")}`,
+      description: vscode11.l10n.t("Edit configuration file directly"),
       action: "openConfig"
-    }
+    },
+    (() => {
+      const currentInlay = vscode11.workspace.getConfiguration("editor.inlayHints").get("enabled");
+      const isAlwaysOn = currentInlay === "on";
+      return {
+        label: isAlwaysOn ? `$(eye-closed) ${vscode11.l10n.t("Line Annotations: Switch to Press Mode (Ctrl+Alt)")}` : `$(eye) ${vscode11.l10n.t("Line Annotations: Switch to Always-On")}`,
+        description: isAlwaysOn ? vscode11.l10n.t("Currently always shown. Click to show only on holding Ctrl+Alt") : vscode11.l10n.t("Currently shown on holding Ctrl+Alt. Click to keep always visible"),
+        action: "toggleInlayHintsMode"
+      };
+    })()
   );
   items.push({
-    label: vscode8.l10n.t("Scenes"),
-    kind: vscode8.QuickPickItemKind.Separator
+    label: vscode11.l10n.t("Scenes"),
+    kind: vscode11.QuickPickItemKind.Separator
   });
   if (sceneNames.length > 0) {
     for (const name of sceneNames) {
@@ -2986,25 +3526,25 @@ async function showMenuCommand() {
       }
       let description;
       if (isActive) {
-        description = isDirty ? vscode8.l10n.t("(Active - Unsaved)") : vscode8.l10n.t("(Active)");
+        description = isDirty ? vscode11.l10n.t("(Active - Unsaved)") : vscode11.l10n.t("(Active)");
       }
       items.push({
         label,
         description,
-        detail: vscode8.l10n.t("{0} breakpoint(s)", bps.length),
+        detail: vscode11.l10n.t("{0} breakpoint(s)", bps.length),
         action: "switch",
         sceneName: name
       });
     }
   } else {
     items.push({
-      label: `$(info) ${vscode8.l10n.t("No scenes configured yet")}`,
-      description: vscode8.l10n.t("Add breakpoints or export active ones to create a scene")
+      label: `$(info) ${vscode11.l10n.t("No scenes configured yet")}`,
+      description: vscode11.l10n.t("Add breakpoints or export active ones to create a scene")
     });
   }
-  const quickPick = vscode8.window.createQuickPick();
+  const quickPick = vscode11.window.createQuickPick();
   quickPick.items = items;
-  quickPick.placeholder = vscode8.l10n.t("Select a scene to activate, or choose a management action");
+  quickPick.placeholder = vscode11.l10n.t("Select a scene to activate, or choose a management action");
   quickPick.matchOnDescription = true;
   quickPick.matchOnDetail = true;
   const firstActive = activeScenes[0];
@@ -3037,12 +3577,18 @@ async function showMenuCommand() {
         await clearAllCommand();
         break;
       case "openConfig": {
-        const configPath = getScenesConfigPath(workspaceRoot);
-        if (!fs4.existsSync(configPath)) {
-          saveScenesConfig(workspaceRoot, { scenes: {} });
-        }
-        const doc = await vscode8.workspace.openTextDocument(configPath);
-        await vscode8.window.showTextDocument(doc);
+        const configPath = sceneManager.ensureScenesConfigFile(workspaceRoot);
+        const doc = await vscode11.workspace.openTextDocument(configPath);
+        await vscode11.window.showTextDocument(doc);
+        break;
+      }
+      case "toggleInlayHintsMode": {
+        const conf = vscode11.workspace.getConfiguration("editor.inlayHints");
+        const cur = conf.get("enabled");
+        const next = cur === "on" ? "offUnlessPressed" : "on";
+        await conf.update("enabled", next, vscode11.ConfigurationTarget.Global);
+        const msg = next === "on" ? vscode11.l10n.t("Line Annotations (Inlay Hints) are now Always-On.") : vscode11.l10n.t("Line Annotations (Inlay Hints) now show on holding Ctrl+Alt.");
+        vscode11.window.showInformationMessage(msg);
         break;
       }
     }
@@ -3051,10 +3597,163 @@ async function showMenuCommand() {
   quickPick.show();
 }
 
-// src/infra/vscode/commands/skillCommands.ts
-var fs5 = __toESM(require("node:fs"));
-var path7 = __toESM(require("node:path"));
-var vscode9 = __toESM(require("vscode"));
+// src/ui/commands/skillCommands.ts
+var fs = __toESM(require("node:fs"));
+var path6 = __toESM(require("node:path"));
+var vscode13 = __toESM(require("vscode"));
+
+// src/domain/models/agentRuleAsset.ts
+function pureSha256(ascii) {
+  function rightRotate(value, amount) {
+    return value >>> amount | value << 32 - amount;
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  let i, j;
+  let result = "";
+  const words = [];
+  const asciiBitLength = ascii.length * 8;
+  let hash = [];
+  const k = [];
+  let primeCounter = 0;
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 300; i += candidate) {
+        isComposite[i] = candidate;
+      }
+      hash[primeCounter] = mathPow(candidate, 0.5) * maxWord | 0;
+      k[primeCounter++] = mathPow(candidate, 1 / 3) * maxWord | 0;
+    }
+  }
+  ascii += "\x80";
+  while (ascii.length % 64 !== 56) ascii += "\0";
+  for (i = 0; i < ascii.length; i++) {
+    j = ascii.charCodeAt(i);
+    if (j >> 8) return "";
+    words[i >> 2] |= j << (3 - i) % 4 * 8;
+  }
+  words[words.length] = asciiBitLength / maxWord | 0;
+  words[words.length] = asciiBitLength;
+  for (j = 0; j < words.length; ) {
+    const w = words.slice(j, j += 16);
+    const oldHash = hash;
+    hash = hash.slice(0, 8);
+    for (i = 0; i < 64; i++) {
+      const w15 = w[i - 15], w2 = w[i - 2];
+      const s0 = rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ w15 >>> 3;
+      const s1 = rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ w2 >>> 10;
+      w[i] = (i < 16 ? w[i] : w[i - 16] + s0 + w[i - 7] + s1 | 0) | 0;
+      const s1_ = rightRotate(hash[4], 6) ^ rightRotate(hash[4], 11) ^ rightRotate(hash[4], 25);
+      const ch = hash[4] & hash[5] ^ ~hash[4] & hash[6];
+      const temp1 = hash[7] + s1_ + ch + k[i] + w[i] | 0;
+      const s0_ = rightRotate(hash[0], 2) ^ rightRotate(hash[0], 13) ^ rightRotate(hash[0], 22);
+      const maj = hash[0] & hash[1] ^ hash[0] & hash[2] ^ hash[1] & hash[2];
+      const temp2 = s0_ + maj | 0;
+      hash = [temp1 + temp2 | 0, hash[0], hash[1], hash[2], hash[3] + temp1 | 0, hash[4], hash[5], hash[6]];
+    }
+    for (i = 0; i < 8; i++) {
+      hash[i] = hash[i] + oldHash[i] | 0;
+    }
+  }
+  for (i = 0; i < 8; i++) {
+    for (j = 3; j + 1; j--) {
+      const b = hash[i] >> j * 8 & 255;
+      result += (b < 16 ? 0 : "") + b.toString(16);
+    }
+  }
+  return result;
+}
+var LATEST_SKILL_VERSION = "1.0.8";
+var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
+var OFFICIAL_SKILL_HISTORY = {
+  "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
+  "36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8"
+};
+var OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
+var AgentRuleAsset = class _AgentRuleAsset {
+  targetPath;
+  rawContent;
+  constructor(targetPath, rawContent) {
+    this.targetPath = targetPath;
+    this.rawContent = rawContent || "";
+  }
+  /**
+   * 剥离开头的 YAML / MDC Frontmatter 元数据头，提取纯 Markdown 规则正文
+   */
+  getCoreBody() {
+    return this.rawContent.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n\r?\n?/, "");
+  }
+  /**
+   * 跨操作系统归一化文本（消除 CRLF/LF 与行末空格干扰，严格保障指纹一致性）
+   */
+  getNormalizedBody() {
+    return this.getCoreBody().replace(/\r\n/g, "\n").split("\n").map((line) => line.trimEnd()).join("\n").trim();
+  }
+  /**
+   * 计算规范化核心正文的 SHA-256 唯一指纹
+   * 默认使用纯 TS 实现，亦可通过 hasher 端口注入外部实现
+   */
+  computeFingerprint(hasher) {
+    const normalized = this.getNormalizedBody();
+    if (hasher && typeof hasher.sha256 === "function") {
+      return hasher.sha256(normalized);
+    }
+    const utf8Str = unescape(encodeURIComponent(normalized));
+    return pureSha256(utf8Str);
+  }
+  /**
+   * 评估规则文件在工作区中的生命周期状态
+   */
+  evaluateLifecycle(latestTemplate, hasherOrVersion, hasher) {
+    const targetVersion = typeof hasherOrVersion === "string" ? hasherOrVersion : LATEST_RULE_VERSION;
+    const actualHasher = typeof hasherOrVersion === "object" && hasherOrVersion !== null && "sha256" in hasherOrVersion ? hasherOrVersion : hasher;
+    const localHash = this.computeFingerprint(actualHasher);
+    const latestAsset = new _AgentRuleAsset("builtin-template", latestTemplate);
+    const latestHash = latestAsset.computeFingerprint(actualHasher);
+    if (localHash === latestHash) {
+      return {
+        status: "UpToDate",
+        detectedVersion: targetVersion,
+        localHash,
+        latestHash
+      };
+    }
+    if (OFFICIAL_RULE_HISTORY[localHash]) {
+      return {
+        status: "CleanOutdated",
+        detectedVersion: OFFICIAL_RULE_HISTORY[localHash],
+        localHash,
+        latestHash
+      };
+    }
+    return {
+      status: "CustomModified",
+      localHash,
+      latestHash
+    };
+  }
+};
+var SkillAsset = AgentRuleAsset;
+
+// src/ui/views/templateContentProvider.ts
+var vscode12 = __toESM(require("vscode"));
+var TemplateContentProvider = class {
+  static scheme = "scene-breakpoints-template";
+  templateCache = /* @__PURE__ */ new Map();
+  onDidChangeEmitter = new vscode12.EventEmitter();
+  onDidChange = this.onDidChangeEmitter.event;
+  setTemplateContent(key, content) {
+    this.templateCache.set(key, content);
+  }
+  provideTextDocumentContent(uri) {
+    const key = uri.path.replace(/^\//, "");
+    return this.templateCache.get(key) || "";
+  }
+};
+var templateContentProvider = new TemplateContentProvider();
+
+// src/ui/commands/skillCommands.ts
 function formatSkillContent(baseContent, target) {
   if (target.customHeader) {
     let baseStr = Buffer.from(baseContent).toString("utf-8");
@@ -3066,11 +3765,11 @@ function formatSkillContent(baseContent, target) {
 function backupSkillFile(targetFilePath) {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const backupPath = `${targetFilePath}.${timestamp}.bak`;
-  fs5.copyFileSync(targetFilePath, backupPath);
+  fs.copyFileSync(targetFilePath, backupPath);
   return backupPath;
 }
 async function writeSkillToTarget(context, workspaceRoot, target) {
-  const skillSourceUri = vscode9.Uri.joinPath(
+  const skillSourceUri = vscode13.Uri.joinPath(
     context.extensionUri,
     "skills",
     "scene-breakpoints",
@@ -3078,23 +3777,23 @@ async function writeSkillToTarget(context, workspaceRoot, target) {
   );
   let content;
   try {
-    content = await vscode9.workspace.fs.readFile(skillSourceUri);
+    content = await vscode13.workspace.fs.readFile(skillSourceUri);
   } catch (error) {
-    vscode9.window.showErrorMessage(
-      vscode9.l10n.t("Failed to read built-in Skill template: {0}", String(error))
+    vscode13.window.showErrorMessage(
+      vscode13.l10n.t("Failed to read built-in Skill template: {0}", String(error))
     );
     return false;
   }
-  const targetDirUri = vscode9.Uri.file(path7.join(workspaceRoot, target.dir));
-  const targetFileUri = vscode9.Uri.file(path7.join(workspaceRoot, target.dir, target.file));
+  const targetDirUri = vscode13.Uri.file(path6.join(workspaceRoot, target.dir));
+  const targetFileUri = vscode13.Uri.file(path6.join(workspaceRoot, target.dir, target.file));
   const targetContent = formatSkillContent(content, target);
   try {
-    await vscode9.workspace.fs.createDirectory(targetDirUri);
-    await vscode9.workspace.fs.writeFile(targetFileUri, targetContent);
+    await vscode13.workspace.fs.createDirectory(targetDirUri);
+    await vscode13.workspace.fs.writeFile(targetFileUri, targetContent);
     return true;
   } catch (error) {
-    vscode9.window.showErrorMessage(
-      vscode9.l10n.t("Failed to write Skill file: {0}", String(error))
+    vscode13.window.showErrorMessage(
+      vscode13.l10n.t("Failed to write Skill file: {0}", String(error))
     );
     return false;
   }
@@ -3102,13 +3801,13 @@ async function writeSkillToTarget(context, workspaceRoot, target) {
 async function installSkillCommand(context) {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot) {
-    vscode9.window.showErrorMessage(vscode9.l10n.t("Please open a workspace folder first."));
+    vscode13.window.showErrorMessage(vscode13.l10n.t("Please open a workspace folder first."));
     return;
   }
   const targets = await pickSkillTargets(workspaceRoot);
   if (!targets || targets.length === 0) {
-    vscode9.window.showInformationMessage(
-      vscode9.l10n.t("No target AI environments selected. Installation cancelled.")
+    vscode13.window.showInformationMessage(
+      vscode13.l10n.t("No target AI environments selected. Installation cancelled.")
     );
     return;
   }
@@ -3116,190 +3815,9 @@ async function installSkillCommand(context) {
     const success = await writeSkillToTarget(context, workspaceRoot, target);
     if (!success) return;
   }
-  vscode9.window.showInformationMessage(
-    vscode9.l10n.t("Scene Breakpoints Skill successfully deployed to target directory.")
+  vscode13.window.showInformationMessage(
+    vscode13.l10n.t("Scene Breakpoints Skill successfully deployed to target directory.")
   );
-}
-async function diagnoseAiIntegrationCommand(context) {
-  const workspaceRoot = getWorkspaceRoot(true);
-  if (!workspaceRoot) {
-    vscode9.window.showErrorMessage(vscode9.l10n.t("Please open a workspace folder first."));
-    return;
-  }
-  const config = vscode9.workspace.getConfiguration("sceneBreakpoints");
-  const allowAiActivation = config.get("allowAiFileActivation", false);
-  const activeScenes = sceneStateManager.getActiveScenes();
-  const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;
-  const skillSourceUri = vscode9.Uri.joinPath(
-    context.extensionUri,
-    "skills",
-    "scene-breakpoints",
-    "SKILL.md"
-  );
-  let rawOfficialTemplate = "";
-  try {
-    const rawBytes = await vscode9.workspace.fs.readFile(skillSourceUri);
-    rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
-  } catch {
-  }
-  const targetItems = getSupportedSkillTargets();
-  const diagnostics = [];
-  diagnostics.push({
-    label: allowAiActivation ? `$(pass) ${vscode9.l10n.t("AI File Activation: Enabled")}` : `$(warning) ${vscode9.l10n.t("AI File Activation: Disabled (Click to Enable)")}`,
-    description: allowAiActivation ? vscode9.l10n.t("AI Agent can declaratively activate scenes via activeScenes") : vscode9.l10n.t("External activeScenes modifications are currently ignored"),
-    action: async () => {
-      if (!allowAiActivation) {
-        await config.update("allowAiFileActivation", true, vscode9.ConfigurationTarget.Workspace);
-        vscode9.window.showInformationMessage(
-          vscode9.l10n.t("AI File Activation has been enabled for this workspace.")
-        );
-      }
-    }
-  });
-  diagnostics.push({
-    label: `$(symbol-event) ${vscode9.l10n.t("Active Scenes: [{0}]", activeScenes.length > 0 ? activeScenes.join(", ") : "None")}`,
-    description: vscode9.l10n.t("Current effective breakpoint scenes")
-  });
-  diagnostics.push({
-    label: vscode9.l10n.t("Skill Deployment & Version Status across Platforms:"),
-    kind: vscode9.QuickPickItemKind.Separator
-  });
-  const hostAppName = (vscode9.env.appName || "").toLowerCase();
-  const isTargetHost = (target) => {
-    if (target.hostKeywords && target.hostKeywords.some((k) => hostAppName.includes(k))) {
-      return true;
-    }
-    const baseName = target.label.split(/[\s/]/)[0].toLowerCase();
-    if (baseName && hostAppName.includes(baseName)) {
-      return true;
-    }
-    return false;
-  };
-  const sortedTargetItems = [...targetItems].sort((a, b) => {
-    const existsA = fs5.existsSync(path7.join(workspaceRoot, a.dir, a.file));
-    const existsB = fs5.existsSync(path7.join(workspaceRoot, b.dir, b.file));
-    if (existsA && !existsB) return -1;
-    if (!existsA && existsB) return 1;
-    const matchHostA = isTargetHost(a);
-    const matchHostB = isTargetHost(b);
-    if (matchHostA && !matchHostB) return -1;
-    if (!matchHostA && matchHostB) return 1;
-    return 0;
-  });
-  for (const target of sortedTargetItems) {
-    const fullPath = path7.join(workspaceRoot, target.dir, target.file);
-    const exists = fs5.existsSync(fullPath);
-    if (!exists) {
-      diagnostics.push({
-        label: `$(add) ${target.label} (${vscode9.l10n.t("Not Installed - Click to Install")})`,
-        description: target.description,
-        detail: vscode9.l10n.t("Click to deploy v{0} Skill", currentVersion),
-        action: async () => {
-          const success = await writeSkillToTarget(context, workspaceRoot, target);
-          if (success) {
-            vscode9.window.showInformationMessage(
-              vscode9.l10n.t("Skill installed to {0}", target.label)
-            );
-          }
-        }
-      });
-      continue;
-    }
-    const localContent = fs5.readFileSync(fullPath, "utf-8");
-    const lifecycle = resolveSkillLifecycleState(localContent, rawOfficialTemplate, currentVersion);
-    if (lifecycle.status === "UpToDate") {
-      diagnostics.push({
-        label: `$(pass) ${target.label} (${vscode9.l10n.t("Up to Date: v{0}", currentVersion)})`,
-        description: target.description,
-        detail: vscode9.l10n.t("Installed: {0}", fullPath),
-        action: async () => {
-          const reInstall = await vscode9.window.showQuickPick(
-            [
-              { label: vscode9.l10n.t("Reinstall / Overwrite with latest template"), value: true },
-              { label: vscode9.l10n.t("Cancel"), value: false }
-            ],
-            { placeHolder: vscode9.l10n.t("Already up to date. Do you want to reinstall?") }
-          );
-          if (reInstall?.value) {
-            await writeSkillToTarget(context, workspaceRoot, target);
-            vscode9.window.showInformationMessage(
-              vscode9.l10n.t("Skill reinstalled to {0}", target.label)
-            );
-          }
-        }
-      });
-    } else if (lifecycle.status === "CleanOutdated") {
-      diagnostics.push({
-        label: `$(sync) ${target.label} (${vscode9.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", currentVersion)})`,
-        description: target.description,
-        detail: vscode9.l10n.t("Official template outdated. Click to update smoothly."),
-        action: async () => {
-          const success = await writeSkillToTarget(context, workspaceRoot, target);
-          if (success) {
-            vscode9.window.showInformationMessage(
-              vscode9.l10n.t("Skill successfully updated to v{0} ({1})", currentVersion, target.label)
-            );
-          }
-        }
-      });
-    } else {
-      diagnostics.push({
-        label: `$(diff) ${target.label} (${vscode9.l10n.t("Customized (Click to Diff / Update)")})`,
-        description: target.description,
-        detail: vscode9.l10n.t("Modified locally. Click to view diff or backup & update."),
-        action: async () => {
-          const choice = await vscode9.window.showQuickPick(
-            [
-              {
-                label: `$(diff) ${vscode9.l10n.t("View Side-by-Side Diff with Latest Official Version")}`,
-                value: "diff"
-              },
-              {
-                label: `$(save) ${vscode9.l10n.t("Backup & Overwrite with Latest Version")}`,
-                value: "backup"
-              },
-              {
-                label: `$(close) ${vscode9.l10n.t("Keep Current Changes")}`,
-                value: "cancel"
-              }
-            ],
-            {
-              placeHolder: vscode9.l10n.t("Local modifications detected in {0}. Choose action:", target.file)
-            }
-          );
-          if (choice?.value === "diff") {
-            const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
-            const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
-            templateContentProvider.setTemplateContent(target.file, expectedStr);
-            const localUri = vscode9.Uri.file(fullPath);
-            const virtualUri = vscode9.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
-            await vscode9.commands.executeCommand(
-              "vscode.diff",
-              localUri,
-              virtualUri,
-              `${target.label} (${vscode9.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`
-            );
-          } else if (choice?.value === "backup") {
-            const backupPath = backupSkillFile(fullPath);
-            await writeSkillToTarget(context, workspaceRoot, target);
-            vscode9.window.showInformationMessage(
-              vscode9.l10n.t(
-                "Skill updated to v{0}. Original backed up to: {1}",
-                LATEST_SKILL_VERSION,
-                path7.basename(backupPath)
-              )
-            );
-          }
-        }
-      });
-    }
-  }
-  const selected = await vscode9.window.showQuickPick(diagnostics, {
-    placeHolder: vscode9.l10n.t("Scene Breakpoints AI Integration Diagnostics")
-  });
-  if (selected?.action) {
-    await selected.action();
-  }
 }
 async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;
@@ -3307,7 +3825,7 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   if (lastNotifiedVer === currentVersion) {
     return;
   }
-  const skillSourceUri = vscode9.Uri.joinPath(
+  const skillSourceUri = vscode13.Uri.joinPath(
     context.extensionUri,
     "skills",
     "scene-breakpoints",
@@ -3315,77 +3833,63 @@ async function checkAndPromptSkillUpdates(context, workspaceRoot) {
   );
   let rawOfficialTemplate = "";
   try {
-    const rawBytes = await vscode9.workspace.fs.readFile(skillSourceUri);
+    const rawBytes = await vscode13.workspace.fs.readFile(skillSourceUri);
     rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
   } catch {
     return;
   }
-  const targetItems = getSupportedSkillTargets();
-  const outdatedTargets = [];
-  for (const target of targetItems) {
-    const fullPath = path7.join(workspaceRoot, target.dir, target.file);
-    if (fs5.existsSync(fullPath)) {
+  const outdatedTargets = findOutdatedSkillTargets(workspaceRoot, rawOfficialTemplate, currentVersion);
+  if (outdatedTargets.length === 0) return;
+  await context.workspaceState.update("lastNotifiedSkillVersion", currentVersion);
+  await promptAndHandleSkillUpdates(context, workspaceRoot, outdatedTargets, rawOfficialTemplate, currentVersion);
+}
+function findOutdatedSkillTargets(workspaceRoot, rawOfficialTemplate, currentVersion) {
+  const outdated = [];
+  for (const target of getSupportedSkillTargets()) {
+    const fullPath = path6.join(workspaceRoot, target.dir, target.file);
+    if (fs.existsSync(fullPath)) {
       try {
-        const localContent = fs5.readFileSync(fullPath, "utf-8");
-        const res = resolveSkillLifecycleState(localContent, rawOfficialTemplate, currentVersion);
+        const localContent = fs.readFileSync(fullPath, "utf-8");
+        const res = new SkillAsset("local", localContent).evaluateLifecycle(rawOfficialTemplate, currentVersion);
         if (res.status === "CleanOutdated" || res.status === "CustomModified") {
-          outdatedTargets.push({ target, status: res.status, fullPath });
+          outdated.push({ target, status: res.status, fullPath });
         }
       } catch {
       }
     }
   }
-  if (outdatedTargets.length === 0) {
-    return;
-  }
-  await context.workspaceState.update("lastNotifiedSkillVersion", currentVersion);
+  return outdated;
+}
+async function promptAndHandleSkillUpdates(context, workspaceRoot, outdatedTargets, rawOfficialTemplate, currentVersion) {
   const cleanOutdatedList = outdatedTargets.filter((t) => t.status === "CleanOutdated");
   const customModifiedList = outdatedTargets.filter((t) => t.status === "CustomModified");
   const actions = [];
-  const updateAction = cleanOutdatedList.length > 0 ? vscode9.l10n.t("Update Clean Skills") : void 0;
-  const diffAction = customModifiedList.length === 1 ? vscode9.l10n.t("View Diff") : void 0;
-  const diagnoseAction = vscode9.l10n.t("Open Diagnostics");
-  const dismissAction = vscode9.l10n.t("Later");
-  if (updateAction) {
-    actions.push(updateAction);
-  }
-  if (diffAction) {
-    actions.push(diffAction);
-  }
-  actions.push(diagnoseAction);
-  actions.push(dismissAction);
-  const promptMsg = customModifiedList.length > 0 ? vscode9.l10n.t(
-    "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).",
-    outdatedTargets.length,
-    currentVersion
-  ) : vscode9.l10n.t(
-    "Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).",
-    outdatedTargets.length,
-    currentVersion
-  );
-  const selected = await vscode9.window.showInformationMessage(promptMsg, ...actions);
+  const updateAction = cleanOutdatedList.length > 0 ? vscode13.l10n.t("Update Clean Skills") : void 0;
+  const diffAction = customModifiedList.length === 1 ? vscode13.l10n.t("View Diff") : void 0;
+  const diagnoseAction = vscode13.l10n.t("Open Diagnostics");
+  const dismissAction = vscode13.l10n.t("Later");
+  if (updateAction) actions.push(updateAction);
+  if (diffAction) actions.push(diffAction);
+  actions.push(diagnoseAction, dismissAction);
+  const promptMsg = customModifiedList.length > 0 ? vscode13.l10n.t("Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).", outdatedTargets.length, currentVersion) : vscode13.l10n.t("Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).", outdatedTargets.length, currentVersion);
+  const selected = await vscode13.window.showInformationMessage(promptMsg, ...actions);
   if (selected === updateAction) {
     for (const { target } of cleanOutdatedList) {
       await writeSkillToTarget(context, workspaceRoot, target);
     }
-    vscode9.window.showInformationMessage(
-      vscode9.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, currentVersion)
-    );
+    vscode13.window.showInformationMessage(vscode13.l10n.t("Successfully updated {0} Skill(s) to v{1}.", cleanOutdatedList.length, currentVersion));
   } else if (selected === diffAction && customModifiedList.length === 1) {
     const { target, fullPath } = customModifiedList[0];
     const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
-    const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
-    templateContentProvider.setTemplateContent(target.file, expectedStr);
-    const localUri = vscode9.Uri.file(fullPath);
-    const virtualUri = vscode9.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
-    await vscode9.commands.executeCommand(
+    templateContentProvider.setTemplateContent(target.file, Buffer.from(expectedBytes).toString("utf-8"));
+    await vscode13.commands.executeCommand(
       "vscode.diff",
-      localUri,
-      virtualUri,
-      `${target.label} (${vscode9.l10n.t("Local vs Official v{0}", currentVersion)})`
+      vscode13.Uri.file(fullPath),
+      vscode13.Uri.parse(`scene-breakpoints-template://template/${target.file}`),
+      `${target.label} (${vscode13.l10n.t("Local vs Official v{0}", currentVersion)})`
     );
   } else if (selected === diagnoseAction) {
-    await diagnoseAiIntegrationCommand(context);
+    await vscode13.commands.executeCommand("sceneBreakpoints.diagnoseAiIntegration");
   }
 }
 function getSupportedSkillTargets() {
@@ -3465,49 +3969,270 @@ globs: **
 async function pickSkillTargets(workspaceRoot) {
   const items = getSupportedSkillTargets();
   for (const item of items) {
-    const fullPath = path7.join(workspaceRoot, item.dir, item.file);
-    if (fs5.existsSync(fullPath)) {
-      item.description = `${item.description} (${vscode9.l10n.t("Installed")})`;
+    const fullPath = path6.join(workspaceRoot, item.dir, item.file);
+    if (fs.existsSync(fullPath)) {
+      item.description = `${item.description} (${vscode13.l10n.t("Installed")})`;
       item.picked = true;
     }
   }
-  return await vscode9.window.showQuickPick(items, {
+  return await vscode13.window.showQuickPick(items, {
     canPickMany: true,
-    placeHolder: vscode9.l10n.t("Select target AI Agent environments to install Skill")
+    placeHolder: vscode13.l10n.t("Select target AI Agent environments to install Skill")
   });
 }
 
-// src/infra/vscode/commands/treeCommands.ts
-var fs6 = __toESM(require("node:fs"));
-var path8 = __toESM(require("node:path"));
-var vscode10 = __toESM(require("vscode"));
-var syncCoordinator2 = saveLoopGuard;
-function registerTreeCommands(context, treeDataProvider, treeView) {
-  const refreshViewCmd = vscode10.commands.registerCommand("sceneBreakpoints.refreshView", () => {
-    treeDataProvider.refresh();
-  });
-  const createNewSceneCmd = vscode10.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
-    const workspaceRoot = getWorkspaceRoot(true);
-    if (!workspaceRoot) return;
-    const sceneName = await vscode10.window.showInputBox({
-      prompt: vscode10.l10n.t("Enter new scene identifier (e.g. auth-flow)"),
-      placeHolder: "auth-flow",
-      validateInput: (v) => !v || !v.trim() ? vscode10.l10n.t("Scene name cannot be empty") : null
-    });
-    if (!sceneName) return;
-    const config = loadScenesConfig(workspaceRoot);
-    const target = sceneName.trim();
-    if (!config.scenes[target]) {
-      config.scenes[target] = [];
-      syncCoordinator2.markInternalSaving();
-      saveScenesConfig(workspaceRoot, config);
-      treeDataProvider.refresh();
-      vscode10.window.showInformationMessage(vscode10.l10n.t("Created empty scene [{0}]", target));
-    } else {
-      vscode10.window.showWarningMessage(vscode10.l10n.t("Scene [{0}] already exists", target));
+// src/ui/commands/skillDiagnostic.ts
+var fs2 = __toESM(require("node:fs"));
+var path7 = __toESM(require("node:path"));
+var vscode14 = __toESM(require("vscode"));
+async function diagnoseAiIntegrationCommand(context) {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot) {
+    vscode14.window.showErrorMessage(vscode14.l10n.t("Please open a workspace folder first."));
+    return;
+  }
+  const config = vscode14.workspace.getConfiguration("sceneBreakpoints");
+  const allowAiActivation = config.get("allowAiFileActivation", false);
+  const activeScenes = sceneStateManager.getActiveScenes();
+  const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;
+  const skillSourceUri = vscode14.Uri.joinPath(
+    context.extensionUri,
+    "skills",
+    "scene-breakpoints",
+    "SKILL.md"
+  );
+  let rawOfficialTemplate = "";
+  try {
+    const rawBytes = await vscode14.workspace.fs.readFile(skillSourceUri);
+    rawOfficialTemplate = Buffer.from(rawBytes).toString("utf-8");
+  } catch {
+  }
+  const targetItems = getSupportedSkillTargets();
+  const diagnostics = [];
+  diagnostics.push({
+    label: allowAiActivation ? `$(pass) ${vscode14.l10n.t("AI File Activation: Enabled")}` : `$(warning) ${vscode14.l10n.t("AI File Activation: Disabled (Click to Enable)")}`,
+    description: allowAiActivation ? vscode14.l10n.t("AI Agent can declaratively activate scenes via activeScenes") : vscode14.l10n.t("External activeScenes modifications are currently ignored"),
+    action: async () => {
+      if (!allowAiActivation) {
+        await config.update("allowAiFileActivation", true, vscode14.ConfigurationTarget.Workspace);
+        vscode14.window.showInformationMessage(
+          vscode14.l10n.t("AI File Activation has been enabled for this workspace.")
+        );
+      }
     }
   });
-  const applySceneItemCmd = vscode10.commands.registerCommand(
+  diagnostics.push({
+    label: `$(symbol-event) ${vscode14.l10n.t("Active Scenes: [{0}]", activeScenes.length > 0 ? activeScenes.join(", ") : "None")}`,
+    description: vscode14.l10n.t("Current effective breakpoint scenes")
+  });
+  diagnostics.push({
+    label: vscode14.l10n.t("Skill Deployment & Version Status across Platforms:"),
+    kind: vscode14.QuickPickItemKind.Separator
+  });
+  const hostAppName = (vscode14.env.appName || "").toLowerCase();
+  const isTargetHost = (target) => {
+    if (target.hostKeywords && target.hostKeywords.some((k) => hostAppName.includes(k))) {
+      return true;
+    }
+    const baseName = target.label.split(/[\s/]/)[0].toLowerCase();
+    if (baseName && hostAppName.includes(baseName)) {
+      return true;
+    }
+    return false;
+  };
+  const sortedTargetItems = [...targetItems].sort((a, b) => {
+    const existsA = fs2.existsSync(path7.join(workspaceRoot, a.dir, a.file));
+    const existsB = fs2.existsSync(path7.join(workspaceRoot, b.dir, b.file));
+    if (existsA && !existsB) return -1;
+    if (!existsA && existsB) return 1;
+    const matchHostA = isTargetHost(a);
+    const matchHostB = isTargetHost(b);
+    if (matchHostA && !matchHostB) return -1;
+    if (!matchHostA && matchHostB) return 1;
+    return 0;
+  });
+  for (const target of sortedTargetItems) {
+    const fullPath = path7.join(workspaceRoot, target.dir, target.file);
+    const exists = fs2.existsSync(fullPath);
+    if (!exists) {
+      diagnostics.push({
+        label: `$(add) ${target.label} (${vscode14.l10n.t("Not Installed - Click to Install")})`,
+        description: target.description,
+        detail: vscode14.l10n.t("Click to deploy v{0} Skill", currentVersion),
+        action: async () => {
+          const success = await writeSkillToTarget(context, workspaceRoot, target);
+          if (success) {
+            vscode14.window.showInformationMessage(
+              vscode14.l10n.t("Skill installed to {0}", target.label)
+            );
+          }
+        }
+      });
+      continue;
+    }
+    const localContent = fs2.readFileSync(fullPath, "utf-8");
+    const lifecycle = new SkillAsset("local", localContent).evaluateLifecycle(rawOfficialTemplate, currentVersion);
+    if (lifecycle.status === "UpToDate") {
+      diagnostics.push({
+        label: `$(pass) ${target.label} (${vscode14.l10n.t("Up to Date: v{0}", currentVersion)})`,
+        description: target.description,
+        detail: vscode14.l10n.t("Installed: {0}", fullPath),
+        action: async () => {
+          const reInstall = await vscode14.window.showQuickPick(
+            [
+              { label: vscode14.l10n.t("Reinstall / Overwrite with latest template"), value: true },
+              { label: vscode14.l10n.t("Cancel"), value: false }
+            ],
+            { placeHolder: vscode14.l10n.t("Already up to date. Do you want to reinstall?") }
+          );
+          if (reInstall?.value) {
+            await writeSkillToTarget(context, workspaceRoot, target);
+            vscode14.window.showInformationMessage(
+              vscode14.l10n.t("Skill reinstalled to {0}", target.label)
+            );
+          }
+        }
+      });
+    } else if (lifecycle.status === "CleanOutdated") {
+      diagnostics.push({
+        label: `$(sync) ${target.label} (${vscode14.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", currentVersion)})`,
+        description: target.description,
+        detail: vscode14.l10n.t("Official template outdated. Click to update smoothly."),
+        action: async () => {
+          const success = await writeSkillToTarget(context, workspaceRoot, target);
+          if (success) {
+            vscode14.window.showInformationMessage(
+              vscode14.l10n.t("Skill successfully updated to v{0} ({1})", currentVersion, target.label)
+            );
+          }
+        }
+      });
+    } else {
+      diagnostics.push({
+        label: `$(diff) ${target.label} (${vscode14.l10n.t("Customized (Click to Diff / Update)")})`,
+        description: target.description,
+        detail: vscode14.l10n.t("Modified locally. Click to view diff or backup & update."),
+        action: async () => {
+          const choice = await vscode14.window.showQuickPick(
+            [
+              {
+                label: `$(diff) ${vscode14.l10n.t("View Side-by-Side Diff with Latest Official Version")}`,
+                value: "diff"
+              },
+              {
+                label: `$(save) ${vscode14.l10n.t("Backup & Overwrite with Latest Version")}`,
+                value: "backup"
+              },
+              {
+                label: `$(close) ${vscode14.l10n.t("Keep Current Changes")}`,
+                value: "cancel"
+              }
+            ],
+            {
+              placeHolder: vscode14.l10n.t("Local modifications detected in {0}. Choose action:", target.file)
+            }
+          );
+          if (choice?.value === "diff") {
+            const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
+            const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
+            templateContentProvider.setTemplateContent(target.file, expectedStr);
+            const localUri = vscode14.Uri.file(fullPath);
+            const virtualUri = vscode14.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
+            await vscode14.commands.executeCommand(
+              "vscode.diff",
+              localUri,
+              virtualUri,
+              `${target.label} (${vscode14.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`
+            );
+          } else if (choice?.value === "backup") {
+            const backupPath = backupSkillFile(fullPath);
+            await writeSkillToTarget(context, workspaceRoot, target);
+            vscode14.window.showInformationMessage(
+              vscode14.l10n.t(
+                "Skill updated to v{0}. Original backed up to: {1}",
+                LATEST_SKILL_VERSION,
+                path7.basename(backupPath)
+              )
+            );
+          }
+        }
+      });
+    }
+  }
+  const selected = await vscode14.window.showQuickPick(diagnostics, {
+    placeHolder: vscode14.l10n.t("Scene Breakpoints AI Integration Diagnostics")
+  });
+  if (selected?.action) {
+    await selected.action();
+  }
+}
+
+// src/ui/commands/treeCommands.ts
+var fs3 = __toESM(require("node:fs"));
+var path8 = __toESM(require("node:path"));
+var vscode15 = __toESM(require("vscode"));
+
+// src/ui/locators/treeviewLocator.ts
+function findBreakpointLineInJson(jsonContent, sceneName, bp) {
+  const lines = jsonContent.split(/\r?\n/);
+  let inTargetScene = false;
+  let sceneLine = 1;
+  let bracketDepth = 0;
+  const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (let i = 0; i < lines.length; i++) {
+    const lineText = lines[i];
+    if (!inTargetScene) {
+      const scenePattern = new RegExp(`"${escapeRegExp(sceneName)}"\\s*:`);
+      if (scenePattern.test(lineText)) {
+        inTargetScene = true;
+        sceneLine = i + 1;
+        bracketDepth = (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+      }
+      continue;
+    }
+    bracketDepth += (lineText.match(/\[/g) || []).length - (lineText.match(/\]/g) || []).length;
+    if (bracketDepth < 0 || bracketDepth === 0 && lineText.includes("]")) {
+      break;
+    }
+    if (bp.type === "function") {
+      if (bp.functionName && lineText.includes(`"${bp.functionName}"`)) {
+        return i + 1;
+      }
+    } else {
+      const targetFile = (bp.file || "").replace(/\\/g, "/");
+      const baseName = targetFile.split("/").pop() || targetFile;
+      if (lineText.includes(`"${targetFile}"`) || lineText.includes(`"${baseName}"`) || lineText.includes(`"line"`) && lineText.includes(String(bp.line))) {
+        return i + 1;
+      }
+    }
+  }
+  return sceneLine;
+}
+
+// src/ui/commands/treeCommands.ts
+function registerTreeCommands(context, treeDataProvider, treeView) {
+  const refreshViewCmd = vscode15.commands.registerCommand("sceneBreakpoints.refreshView", () => {
+    treeDataProvider.refresh();
+  });
+  const createNewSceneCmd = vscode15.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
+    const workspaceRoot = getWorkspaceRoot(true);
+    if (!workspaceRoot) return;
+    const sceneName = await vscode15.window.showInputBox({
+      prompt: vscode15.l10n.t("Enter new scene identifier (e.g. auth-flow)"),
+      placeHolder: "auth-flow",
+      validateInput: (v) => !v || !v.trim() ? vscode15.l10n.t("Scene name cannot be empty") : null
+    });
+    if (!sceneName) return;
+    const target = sceneName.trim();
+    const ok = await sceneManager.createScene(workspaceRoot, target);
+    if (ok) {
+      treeDataProvider.refresh();
+      vscode15.window.showInformationMessage(vscode15.l10n.t("Created empty scene [{0}]", target));
+    } else {
+      vscode15.window.showWarningMessage(vscode15.l10n.t("Scene [{0}] already exists", target));
+    }
+  });
+  const applySceneItemCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.applySceneItem",
     async (node) => {
       if (node && node.sceneName) {
@@ -3516,7 +4241,7 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
       }
     }
   );
-  const toggleSceneActivationCmd = vscode10.commands.registerCommand(
+  const toggleSceneActivationCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.toggleSceneActivation",
     async (node) => {
       if (node && node.sceneName) {
@@ -3525,201 +4250,177 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
       }
     }
   );
-  const renameSceneItemCmd = vscode10.commands.registerCommand(
+  const renameSceneItemCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.renameSceneItem",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const newName = await vscode10.window.showInputBox({
-        prompt: vscode10.l10n.t("Enter new identifier for scene [{0}]", node.sceneName),
+      const newName = await vscode15.window.showInputBox({
+        prompt: vscode15.l10n.t("Enter new identifier for scene [{0}]", node.sceneName),
         value: node.sceneName,
-        validateInput: (v) => !v || !v.trim() ? vscode10.l10n.t("Scene name cannot be empty") : null
+        validateInput: (v) => !v || !v.trim() ? vscode15.l10n.t("Scene name cannot be empty") : null
       });
       if (!newName || newName.trim() === node.sceneName) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const renamed = renameSceneInConfig(config, node.sceneName, newName.trim());
+      const renamed = await sceneManager.renameScene(
+        workspaceRoot,
+        node.sceneName,
+        newName.trim()
+      );
       if (renamed) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
-        const currentActives = sceneStateManager.getActiveScenes();
-        if (currentActives.includes(node.sceneName)) {
-          const updated = currentActives.map((s) => s === node.sceneName ? newName.trim() : s);
-          sceneStateManager.setActiveScenes(updated);
-        }
         treeDataProvider.refresh();
-        vscode10.window.showInformationMessage(
-          vscode10.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName.trim())
+        vscode15.window.showInformationMessage(
+          vscode15.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName.trim())
         );
       }
     }
   );
-  const deleteSceneItemCmd = vscode10.commands.registerCommand(
+  const deleteSceneItemCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.deleteSceneItem",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const confirmText = vscode10.l10n.t("Delete");
-      const choice = await vscode10.window.showWarningMessage(
-        vscode10.l10n.t("Are you sure you want to delete scene [{0}]? This action cannot be undone.", node.sceneName),
+      const confirmText = vscode15.l10n.t("Delete");
+      const choice = await vscode15.window.showWarningMessage(
+        vscode15.l10n.t("Are you sure you want to delete scene [{0}]? This action cannot be undone.", node.sceneName),
         { modal: true },
         confirmText
       );
       if (choice !== confirmText) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const deleted = deleteSceneFromConfig(config, node.sceneName);
+      const deleted = await sceneManager.deleteScene(
+        workspaceRoot,
+        node.sceneName
+      );
       if (deleted) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
-        const currentActives = sceneStateManager.getActiveScenes();
-        if (currentActives.includes(node.sceneName)) {
-          const remaining = currentActives.filter((s) => s !== node.sceneName);
-          sceneStateManager.setActiveScenes(remaining);
-        }
         treeDataProvider.refresh();
-        vscode10.window.showInformationMessage(vscode10.l10n.t("Deleted scene [{0}]", node.sceneName));
+        vscode15.window.showInformationMessage(vscode15.l10n.t("Deleted scene [{0}]", node.sceneName));
       }
     }
   );
-  const removeBpItemCmd = vscode10.commands.registerCommand(
+  const removeBpItemCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.removeBreakpointItem",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const removed = removeBreakpointFromConfig(config, node.sceneName, node.index);
+      const removed = await breakpointManager.removeBreakpoint(
+        workspaceRoot,
+        node.sceneName,
+        node.index
+      );
       if (removed) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
         treeDataProvider.refresh();
       }
     }
   );
-  const toggleBpItemCmd = vscode10.commands.registerCommand(
+  const toggleBpItemCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.toggleBreakpointItem",
     async (node) => {
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const toggled = toggleBreakpointEnabledInConfig(config, node.sceneName, node.index);
-      if (toggled) {
-        const updatedBp = config.scenes[node.sceneName]?.[node.index];
-        if (updatedBp) {
-          node.breakpoint.enabled = updatedBp.enabled;
-          node.updateAppearance(workspaceRoot);
-        }
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
+      const result = await breakpointManager.toggleBreakpoint(
+        workspaceRoot,
+        node.sceneName,
+        node.index
+      );
+      if (result.success) {
+        node.breakpoint.enabled = result.newEnabled;
+        node.updateAppearance();
         treeDataProvider.refresh(node);
-        if (updatedBp && sceneStateManager.isSceneActive(node.sceneName)) {
-          await syncBreakpointEnabledToEditor(workspaceRoot, updatedBp, updatedBp.enabled ?? true);
-        }
       }
     }
   );
-  const enableAllBreakpointsInSceneCmd = vscode10.commands.registerCommand(
+  const enableAllBreakpointsInSceneCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.enableAllBreakpointsInScene",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const changed = setAllBreakpointsEnabledInScene(config, node.sceneName, true);
+      const changed = await breakpointManager.setAllEnabled(
+        workspaceRoot,
+        node.sceneName,
+        true
+      );
       if (changed) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
         treeDataProvider.refresh(node);
-        if (sceneStateManager.isSceneActive(node.sceneName)) {
-          const list = config.scenes[node.sceneName] || [];
-          for (const bp of list) {
-            await syncBreakpointEnabledToEditor(workspaceRoot, bp, true);
-          }
-        }
-        vscode10.window.showInformationMessage(vscode10.l10n.t("Enabled all breakpoints in scene [{0}]", node.sceneName));
+        vscode15.window.showInformationMessage(vscode15.l10n.t("Enabled all breakpoints in scene [{0}]", node.sceneName));
       }
     }
   );
-  const disableAllBreakpointsInSceneCmd = vscode10.commands.registerCommand(
+  const disableAllBreakpointsInSceneCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.disableAllBreakpointsInScene",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const config = loadScenesConfig(workspaceRoot);
-      const changed = setAllBreakpointsEnabledInScene(config, node.sceneName, false);
+      const changed = await breakpointManager.setAllEnabled(
+        workspaceRoot,
+        node.sceneName,
+        false
+      );
       if (changed) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
         treeDataProvider.refresh(node);
-        if (sceneStateManager.isSceneActive(node.sceneName)) {
-          const list = config.scenes[node.sceneName] || [];
-          for (const bp of list) {
-            await syncBreakpointEnabledToEditor(workspaceRoot, bp, false);
-          }
-        }
-        vscode10.window.showInformationMessage(vscode10.l10n.t("Disabled all breakpoints in scene [{0}]", node.sceneName));
+        vscode15.window.showInformationMessage(vscode15.l10n.t("Disabled all breakpoints in scene [{0}]", node.sceneName));
       }
     }
   );
-  const duplicateSceneCmd = vscode10.commands.registerCommand(
+  const duplicateSceneCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.duplicateScene",
     async (node) => {
       if (!node || !node.sceneName) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
       const defaultTargetName = `${node.sceneName}-copy`;
-      const newName = await vscode10.window.showInputBox({
-        prompt: vscode10.l10n.t("Enter target identifier for duplicated scene"),
+      const newName = await vscode15.window.showInputBox({
+        prompt: vscode15.l10n.t("Enter target identifier for duplicated scene"),
         value: defaultTargetName,
-        validateInput: (v) => !v || !v.trim() ? vscode10.l10n.t("Scene name cannot be empty") : null
+        validateInput: (v) => !v || !v.trim() ? vscode15.l10n.t("Scene name cannot be empty") : null
       });
       if (!newName) return;
-      const config = loadScenesConfig(workspaceRoot);
       const target = newName.trim();
-      if (config.scenes[target]) {
-        vscode10.window.showWarningMessage(vscode10.l10n.t("Scene [{0}] already exists", target));
-        return;
-      }
-      const duplicated = duplicateSceneInConfig(config, node.sceneName, target);
+      const duplicated = await sceneManager.duplicateScene(
+        workspaceRoot,
+        node.sceneName,
+        target
+      );
       if (duplicated) {
-        syncCoordinator2.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
         treeDataProvider.refresh();
-        vscode10.window.showInformationMessage(
-          vscode10.l10n.t("Duplicated scene [{0}] as [{1}]", node.sceneName, target)
+        vscode15.window.showInformationMessage(
+          vscode15.l10n.t("Duplicated scene [{0}] as [{1}]", node.sceneName, target)
         );
+      } else {
+        vscode15.window.showWarningMessage(vscode15.l10n.t("Scene [{0}] already exists", target));
       }
     }
   );
-  const revealInConfigFileCmd = vscode10.commands.registerCommand(
+  const revealInConfigFileCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.revealInConfigFile",
     async (node) => {
       if (!node || !node.sceneName || !node.breakpoint) return;
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
       const configPath = path8.join(workspaceRoot, ".vscode", "debug-scenes.json");
-      if (!fs6.existsSync(configPath)) {
-        vscode10.window.showWarningMessage(
-          vscode10.l10n.t("Failed to read debug-scenes.json: {0}", vscode10.l10n.t("File does not exist"))
+      if (!fs3.existsSync(configPath)) {
+        vscode15.window.showWarningMessage(
+          vscode15.l10n.t("Failed to read debug-scenes.json: {0}", vscode15.l10n.t("File does not exist"))
         );
         return;
       }
       try {
-        const content = fs6.readFileSync(configPath, "utf-8");
+        const content = fs3.readFileSync(configPath, "utf-8");
         const targetLine = findBreakpointLineInJson(content, node.sceneName, node.breakpoint);
-        const doc = await vscode10.workspace.openTextDocument(vscode10.Uri.file(configPath));
-        const editor = await vscode10.window.showTextDocument(doc, { preview: false });
+        const doc = await vscode15.workspace.openTextDocument(vscode15.Uri.file(configPath));
+        const editor = await vscode15.window.showTextDocument(doc, { preview: false });
         const lineIdx = Math.max(0, targetLine - 1);
-        const pos = new vscode10.Position(lineIdx, 0);
-        const range = new vscode10.Range(pos, pos);
-        editor.selection = new vscode10.Selection(pos, pos);
-        editor.revealRange(range, vscode10.TextEditorRevealType.InCenter);
+        const pos = new vscode15.Position(lineIdx, 0);
+        const range = new vscode15.Range(pos, pos);
+        editor.selection = new vscode15.Selection(pos, pos);
+        editor.revealRange(range, vscode15.TextEditorRevealType.InCenter);
       } catch (err) {
-        vscode10.window.showErrorMessage(
-          vscode10.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err))
+        vscode15.window.showErrorMessage(
+          vscode15.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err))
         );
       }
     }
@@ -3735,13 +4436,16 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
     if (!node || typeof node.index !== "number" || !node.sceneName) return;
     const workspaceRoot = getWorkspaceRoot(true);
     if (!workspaceRoot) return;
-    const config = loadScenesConfig(workspaceRoot);
-    const moved = moveBreakpointInScene(config, node.sceneName, node.index, direction);
+    const moved = await breakpointManager.moveBreakpoint(
+      workspaceRoot,
+      node.sceneName,
+      node.index,
+      direction
+    );
     if (moved) {
-      syncCoordinator2.markInternalSaving();
-      saveScenesConfig(workspaceRoot, config);
       treeDataProvider.refresh();
       if (treeView) {
+        const config = sceneManager.loadScenesConfig(workspaceRoot);
         const list = config.scenes[node.sceneName] || [];
         let targetIndex = node.index;
         if (direction === "top") targetIndex = 0;
@@ -3763,25 +4467,25 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
       }
     }
   };
-  const moveBpUpCmd = vscode10.commands.registerCommand(
+  const moveBpUpCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointUp",
     async (node) => {
       await executeMove(node, "up");
     }
   );
-  const moveBpDownCmd = vscode10.commands.registerCommand(
+  const moveBpDownCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointDown",
     async (node) => {
       await executeMove(node, "down");
     }
   );
-  const moveBpToTopCmd = vscode10.commands.registerCommand(
+  const moveBpToTopCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointToTop",
     async (node) => {
       await executeMove(node, "top");
     }
   );
-  const moveBpToBottomCmd = vscode10.commands.registerCommand(
+  const moveBpToBottomCmd = vscode15.commands.registerCommand(
     "sceneBreakpoints.moveBreakpointToBottom",
     async (node) => {
       await executeMove(node, "bottom");
@@ -3807,9 +4511,10 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
   );
 }
 
-// src/infra/vscode/commands/index.ts
+// src/ui/commands/index.ts
 function registerAllCommands(context, deps) {
-  const commands6 = [
+  setExtensionGlobalState(context.globalState);
+  const commands8 = [
     // 核心场景断点命令
     ["sceneBreakpoints.addBreakpoint", addBreakpointCommand],
     ["sceneBreakpoints.applyScene", applySceneCommand],
@@ -3823,263 +4528,16 @@ function registerAllCommands(context, deps) {
     ["sceneBreakpoints.installSkill", () => installSkillCommand(context)],
     ["sceneBreakpoints.diagnoseAiIntegration", () => diagnoseAiIntegrationCommand(context)]
   ];
-  for (const [commandId, handler] of commands6) {
-    context.subscriptions.push(vscode11.commands.registerCommand(commandId, handler));
+  for (const [commandId, handler] of commands8) {
+    context.subscriptions.push(vscode16.commands.registerCommand(commandId, handler));
   }
   if (deps?.treeDataProvider) {
     registerTreeCommands(context, deps.treeDataProvider, deps.treeView);
   }
 }
 
-// src/infra/vscode/listeners/debugLifecycleListener.ts
-var path9 = __toESM(require("node:path"));
-var vscode13 = __toESM(require("vscode"));
-
-// src/infra/vscode/listeners/configFileWatcherListener.ts
-var fs7 = __toESM(require("node:fs"));
-var vscode12 = __toESM(require("vscode"));
-var syncCoordinator3 = saveLoopGuard;
-async function handleExternalScenesFileChange(workspaceRoot) {
-  const allowAiActivation = vscode12.workspace.getConfiguration("sceneBreakpoints").get("allowAiFileActivation", false);
-  await handleExternalChange({
-    workspaceRoot,
-    allowAiActivation,
-    isDebuggingActive: !!vscode12.debug.activeDebugSession,
-    onPendingMessage: () => {
-      vscode12.window.setStatusBarMessage(
-        vscode12.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
-        5e3
-      );
-    }
-  });
-}
-function registerConfigFileWatcherService(treeDataProvider) {
-  let fileChangeDebounceTimer;
-  const fileWatcher = vscode12.workspace.createFileSystemWatcher("**/debug-scenes.json");
-  fileWatcher.onDidChange((uri) => {
-    if (fileChangeDebounceTimer) {
-      clearTimeout(fileChangeDebounceTimer);
-    }
-    fileChangeDebounceTimer = setTimeout(async () => {
-      fileChangeDebounceTimer = void 0;
-      try {
-        if (fs7.existsSync(uri.fsPath)) {
-          const currentDiskContent = fs7.readFileSync(uri.fsPath, "utf-8");
-          if (isContentMatchingLastSaved(currentDiskContent)) {
-            return;
-          }
-        }
-      } catch {
-      }
-      if (syncCoordinator3.isInternalSaving()) {
-        return;
-      }
-      const workspaceRoot = getWorkspaceRoot(false);
-      if (workspaceRoot) {
-        await handleExternalScenesFileChange(workspaceRoot);
-      }
-      treeDataProvider.refresh();
-    }, 100);
-  });
-  fileWatcher.onDidCreate(() => treeDataProvider.refresh());
-  fileWatcher.onDidDelete(() => treeDataProvider.refresh());
-  return fileWatcher;
-}
-
-// src/infra/vscode/listeners/debugLifecycleListener.ts
-function registerDebugLaunchService() {
-  return vscode13.debug.registerDebugConfigurationProvider("*", {
-    async resolveDebugConfiguration(_folder, config) {
-      const autoActivate = vscode13.workspace.getConfiguration("sceneBreakpoints").get("autoActivateOnLaunch", true);
-      if (autoActivate && config) {
-        const workspaceRoot = getWorkspaceRoot(false);
-        if (workspaceRoot) {
-          const scenesConfig = loadScenesConfig(workspaceRoot);
-          const targetScenes = resolveLaunchBoundScenes(
-            scenesConfig,
-            config.name,
-            config.env?.DEBUG_SCENE
-          );
-          if (targetScenes.length > 0) {
-            const currentActives = sceneStateManager.getActiveScenes();
-            const isIdentical = currentActives.length === targetScenes.length && currentActives.every((s, idx) => s === targetScenes[idx]);
-            if (!isIdentical) {
-              await applySceneCommand(targetScenes);
-            }
-          }
-        }
-      }
-      return config;
-    }
-  });
-}
-function registerDebugPauseService(treeView, treeDataProvider) {
-  const disposables = [];
-  const revealPausedBreakpoint = async (file, line) => {
-    await treeDataProvider.revealPausedLocation(treeView, file, line);
-  };
-  const trackerFactory = vscode13.debug.registerDebugAdapterTrackerFactory("*", {
-    createDebugAdapterTracker(_session) {
-      let sessionPausedThreadId;
-      return {
-        onDidSendMessage(msg) {
-          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames && msg.body.stackFrames.length > 0) {
-            if (sessionPausedThreadId !== void 0) {
-              const topFrame = msg.body.stackFrames[0];
-              if (topFrame.source?.path && typeof topFrame.line === "number") {
-                revealPausedBreakpoint(topFrame.source.path, topFrame.line);
-              }
-            }
-          } else if (msg?.type === "event") {
-            if (msg.event === "stopped") {
-              if (typeof msg.body?.threadId === "number") {
-                sessionPausedThreadId = msg.body.threadId;
-              }
-            } else if (msg.event === "continued") {
-              const continuedThreadId = msg.body?.threadId;
-              const allContinued = msg.body?.allThreadsContinued === true;
-              if (allContinued || sessionPausedThreadId !== void 0 && continuedThreadId === sessionPausedThreadId) {
-                sessionPausedThreadId = void 0;
-                treeDataProvider.clearPausedLocation();
-              }
-            } else if (msg.event === "terminated") {
-              sessionPausedThreadId = void 0;
-              treeDataProvider.clearPausedLocation();
-            }
-          }
-        }
-      };
-    }
-  });
-  disposables.push(trackerFactory);
-  const checkEditorPausedBreakpoint = (editor) => {
-    if (!vscode13.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") {
-      return;
-    }
-    const workspaceRoot = getWorkspaceRoot(false);
-    if (!workspaceRoot) return;
-    const activeScenes = sceneStateManager.getActiveScenes();
-    if (activeScenes.length === 0) return;
-    const config = loadScenesConfig(workspaceRoot);
-    const currentFile = editor.document.uri.fsPath;
-    const currentLine = editor.selection.active.line + 1;
-    const isHitInScene = activeScenes.some((scene) => {
-      const list = config.scenes[scene] || [];
-      return list.some((bp) => {
-        if (bp.type === "function") return false;
-        const src = bp;
-        if (Number(src.line) !== currentLine) return false;
-        const full = path9.isAbsolute(src.file) ? src.file : path9.join(workspaceRoot, src.file);
-        const n1 = currentFile.replace(/\\/g, "/").toLowerCase();
-        const n2 = full.replace(/\\/g, "/").toLowerCase();
-        const n3 = src.file.replace(/\\/g, "/").toLowerCase();
-        return n1 === n2 || n1.endsWith("/" + n3) || n1.endsWith(n3);
-      });
-    });
-    if (isHitInScene) {
-      revealPausedBreakpoint(currentFile, currentLine);
-    }
-  };
-  disposables.push(
-    vscode13.window.onDidChangeActiveTextEditor((e) => checkEditorPausedBreakpoint(e)),
-    vscode13.window.onDidChangeTextEditorSelection((e) => checkEditorPausedBreakpoint(e.textEditor))
-  );
-  const stackItemListener = vscode13.debug.onDidChangeActiveStackItem?.(async (item) => {
-    if (item && item.source?.path && typeof item.line === "number") {
-      await revealPausedBreakpoint(item.source.path, item.line);
-    }
-  });
-  if (stackItemListener) {
-    disposables.push(stackItemListener);
-  }
-  disposables.push(
-    vscode13.debug.onDidTerminateDebugSession(() => {
-      treeDataProvider.clearPausedLocation();
-    })
-  );
-  return vscode13.Disposable.from(...disposables);
-}
-function registerSessionLifecycleService() {
-  return vscode13.debug.onDidTerminateDebugSession(async () => {
-    sceneStateManager.clearLastAppliedTopologyHash();
-    if (sceneStateManager.isPendingTopologyUpdate()) {
-      sceneStateManager.setPendingTopologyUpdate(false);
-      const workspaceRoot = getWorkspaceRoot(false);
-      if (workspaceRoot) {
-        await handleExternalScenesFileChange(workspaceRoot);
-      }
-    }
-  });
-}
-
-// src/infra/vscode/listeners/breakpointSyncListener.ts
-var vscode14 = __toESM(require("vscode"));
-var syncCoordinator4 = saveLoopGuard;
-function registerBreakpointSyncService(treeDataProvider) {
-  return vscode14.debug.onDidChangeBreakpoints(async (event) => {
-    if (sceneStateManager.isApplyingScene()) {
-      return;
-    }
-    const currentCount = vscode14.debug.breakpoints.length;
-    if (currentCount === 0) {
-      sceneStateManager.setActiveScene(void 0, 0);
-      return;
-    }
-    if (event.changed && event.changed.length > 0) {
-      const activeScenes = sceneStateManager.getActiveScenes();
-      if (activeScenes.length > 0) {
-        const workspaceRoot = getWorkspaceRoot(false);
-        if (workspaceRoot) {
-          const config = loadScenesConfig(workspaceRoot);
-          const hasUpdated = syncEditorBreakpointChangesToConfig(
-            config,
-            activeScenes,
-            event.changed,
-            workspaceRoot
-          );
-          if (hasUpdated) {
-            syncCoordinator4.markInternalSaving();
-            saveScenesConfig(workspaceRoot, config);
-            treeDataProvider.refresh();
-          }
-        }
-      }
-    }
-    sceneStateManager.checkDirtyWithCount(currentCount);
-  });
-}
-
-// src/infra/vscode/listeners/chatSkillListener.ts
-var vscode15 = __toESM(require("vscode"));
-function registerChatSkillService(context) {
-  if (typeof vscode15.chat?.registerSkillProvider === "function") {
-    const skillProvider = {
-      onDidChangeSkills: new vscode15.EventEmitter().event,
-      provideSkills() {
-        return [
-          {
-            uri: vscode15.Uri.joinPath(
-              context.extensionUri,
-              "skills",
-              "scene-breakpoints",
-              "SKILL.md"
-            )
-          }
-        ];
-      }
-    };
-    try {
-      return vscode15.chat.registerSkillProvider(skillProvider);
-    } catch {
-    }
-  }
-  return { dispose: () => {
-  } };
-}
-
-// src/infra/vscode/listeners/treeInteractionListener.ts
-var vscode16 = __toESM(require("vscode"));
-var syncCoordinator5 = saveLoopGuard;
+// src/ui/views/treeInteractionListener.ts
+var vscode17 = __toESM(require("vscode"));
 function registerTreeInteractionService(treeView, treeDataProvider) {
   const disposables = [];
   disposables.push(
@@ -4103,47 +4561,835 @@ function registerTreeInteractionService(treeView, treeDataProvider) {
     treeView.onDidChangeCheckboxState(async (e) => {
       const workspaceRoot = getWorkspaceRoot(true);
       if (!workspaceRoot) return;
-      const config = loadScenesConfig(workspaceRoot);
-      let hasChanges = false;
-      const affectedBreakpoints = [];
       for (const [item, state] of e.items) {
         if (item instanceof BreakpointNode && item.sceneName && typeof item.index === "number") {
-          const list = config.scenes[item.sceneName];
-          if (list && list[item.index]) {
-            const targetBp = list[item.index];
-            const newEnabled = state === vscode16.TreeItemCheckboxState.Checked;
-            if (targetBp.enabled !== newEnabled) {
-              targetBp.enabled = newEnabled;
-              item.breakpoint.enabled = newEnabled;
-              hasChanges = true;
-              affectedBreakpoints.push({ node: item, sceneName: item.sceneName, bp: targetBp });
-            }
-          }
-        }
-      }
-      if (hasChanges) {
-        syncCoordinator5.markInternalSaving();
-        saveScenesConfig(workspaceRoot, config);
-        for (const { node } of affectedBreakpoints) {
-          node.updateAppearance();
-          treeDataProvider.refresh(node);
-        }
-        for (const { sceneName, bp } of affectedBreakpoints) {
-          if (sceneStateManager.isSceneActive(sceneName)) {
-            await syncBreakpointEnabledToEditor(workspaceRoot, bp, bp.enabled ?? true);
+          const newEnabled = state === vscode17.TreeItemCheckboxState.Checked;
+          const result = await breakpointManager.toggleBreakpoint(
+            workspaceRoot,
+            item.sceneName,
+            item.index,
+            newEnabled
+          );
+          if (result.success) {
+            item.breakpoint.enabled = result.newEnabled;
+            item.updateAppearance();
+            treeDataProvider.refresh(item);
           }
         }
       }
     })
   );
-  return vscode16.Disposable.from(...disposables);
+  return vscode17.Disposable.from(...disposables);
+}
+
+// src/infra/storage/jsonFileSceneRepository.ts
+var fs4 = __toESM(require("node:fs"));
+var path9 = __toESM(require("node:path"));
+var vscode18 = __toESM(require("vscode"));
+
+// src/infra/storage/echoLoopGuard.ts
+var EchoLoopGuard = class {
+  internalSavingTimer;
+  _isInternalSaving = false;
+  lastSavedContent = "";
+  /**
+   * 当前是否正处于扩展内部写盘保护周期内
+   */
+  isInternalSaving() {
+    return this._isInternalSaving;
+  }
+  /**
+   * 显式标记内部写盘行为，并启动延时安全释放窗口
+   */
+  markInternalSaving(timeoutMs = 600) {
+    this._isInternalSaving = true;
+    if (this.internalSavingTimer) {
+      clearTimeout(this.internalSavingTimer);
+    }
+    this.internalSavingTimer = setTimeout(() => {
+      this._isInternalSaving = false;
+      this.internalSavingTimer = void 0;
+    }, timeoutMs);
+  }
+  /**
+   * 记录最新一次内部持久化写盘的文件内容指纹
+   */
+  setLastSavedContent(content) {
+    this.lastSavedContent = content;
+  }
+  getLastSavedContent() {
+    return this.lastSavedContent;
+  }
+  /**
+   * 比对磁盘传入内容是否与扩展最新内部写盘内容完全一致（用于拦截自身 fileWatcher 回环）
+   */
+  isContentMatchingLastSaved(content) {
+    if (!this.lastSavedContent || !content) return false;
+    try {
+      return JSON.stringify(JSON.parse(content)) === JSON.stringify(JSON.parse(this.lastSavedContent));
+    } catch {
+      return content.trim() === this.lastSavedContent.trim();
+    }
+  }
+  /**
+   * 事务化执行内部保存操作，自动包裹指纹记录与安全窗
+   */
+  async runWithSavingGuard(action) {
+    this.markInternalSaving();
+    try {
+      return await action();
+    } finally {
+      this.markInternalSaving();
+    }
+  }
+};
+var echoLoopGuard = new EchoLoopGuard();
+
+// src/infra/storage/jsonFileSceneRepository.ts
+function getWorkspaceRoot2(warnIfMissing = false) {
+  const folders = vscode18.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    if (warnIfMissing) {
+      vscode18.window.showWarningMessage(vscode18.l10n.t("Please open a workspace folder to use Scene Breakpoints."));
+    }
+    return void 0;
+  }
+  return folders[0].uri.fsPath;
+}
+function getScenesConfigPath(workspaceRoot) {
+  return path9.join(workspaceRoot, ".vscode", "debug-scenes.json");
+}
+function stripJsonComments(jsonStr) {
+  if (typeof jsonStr !== "string") return "{}";
+  const stripped = jsonStr.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, stringLiteral) => {
+    return stringLiteral ? stringLiteral : "";
+  }).replace(/,\s*([\]}])/g, "$1").trim();
+  return stripped.length > 0 ? stripped : "{}";
+}
+function hasGitConflictMarkers(text) {
+  if (typeof text !== "string") return false;
+  return /^[<]{7}\s|^[=]{7}$|^[>]{7}\s/m.test(text);
+}
+function loadScenesConfig(workspaceRoot) {
+  const configPath = getScenesConfigPath(workspaceRoot);
+  if (!fs4.existsSync(configPath)) {
+    return { scenes: {} };
+  }
+  try {
+    const content = fs4.readFileSync(configPath, "utf-8");
+    if (!content || !content.trim()) {
+      return { scenes: {} };
+    }
+    if (hasGitConflictMarkers(content)) {
+      vscode18.window.showErrorMessage(
+        vscode18.l10n.t("Git conflict detected in debug-scenes.json. Keeping existing breakpoint settings safe.")
+      );
+      return { scenes: {} };
+    }
+    const sanitized = stripJsonComments(content);
+    const parsed = JSON.parse(sanitized);
+    if (!parsed || typeof parsed !== "object") {
+      vscode18.window.showWarningMessage(vscode18.l10n.t("debug-scenes.json root must be an object"));
+      return { scenes: {} };
+    }
+    const candidateScenes = parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes) ? parsed.scenes : parsed;
+    const cleanScenes = {};
+    for (const [k, v] of Object.entries(candidateScenes)) {
+      if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
+        cleanScenes[k] = v.filter((it) => it && typeof it === "object");
+      }
+    }
+    let cleanBindings;
+    const rawBindings = parsed.bindings || candidateScenes.bindings;
+    if (rawBindings && typeof rawBindings === "object" && !Array.isArray(rawBindings)) {
+      cleanBindings = {};
+      for (const [bk, bv] of Object.entries(rawBindings)) {
+        if (typeof bv === "string" && bv.trim()) {
+          cleanBindings[bk] = bv.trim();
+        } else if (Array.isArray(bv)) {
+          cleanBindings[bk] = bv.map((it) => String(it).trim()).filter(Boolean);
+        }
+      }
+    }
+    const result = { scenes: cleanScenes };
+    if (cleanBindings && Object.keys(cleanBindings).length > 0) {
+      result.bindings = cleanBindings;
+    }
+    const rawActiveScenes = parsed.activeScenes ?? candidateScenes.activeScenes;
+    if (rawActiveScenes !== void 0) {
+      result.activeScenes = rawActiveScenes;
+    }
+    return result;
+  } catch (e) {
+    vscode18.window.showErrorMessage(vscode18.l10n.t("Failed to read debug-scenes.json: {0}", e.message));
+  }
+  return { scenes: {} };
+}
+var isWriting = false;
+var pendingSave;
+function saveScenesConfig(workspaceRoot, config) {
+  const configPath = getScenesConfigPath(workspaceRoot);
+  const vscodeDir = path9.dirname(configPath);
+  try {
+    echoLoopGuard.markInternalSaving();
+    if (!fs4.existsSync(vscodeDir)) {
+      fs4.mkdirSync(vscodeDir, { recursive: true });
+    }
+    const content = JSON.stringify(config, null, 2);
+    echoLoopGuard.setLastSavedContent(content);
+    if (isWriting) {
+      pendingSave = { workspaceRoot, config };
+      return;
+    }
+    isWriting = true;
+    try {
+      fs4.writeFileSync(configPath, content, "utf-8");
+    } finally {
+      isWriting = false;
+      echoLoopGuard.markInternalSaving();
+      if (pendingSave) {
+        const next = pendingSave;
+        pendingSave = void 0;
+        saveScenesConfig(next.workspaceRoot, next.config);
+      }
+    }
+  } catch (e) {
+    vscode18.window.showErrorMessage(vscode18.l10n.t("Failed to save debug-scenes.json: {0}", e.message));
+  }
+}
+function isContentMatchingLastSaved(content) {
+  return echoLoopGuard.isContentMatchingLastSaved(content);
+}
+var jsonFileSceneRepository = {
+  loadScenesConfig,
+  saveScenesConfig,
+  getScenesConfigPath
+};
+
+// src/infra/vscode/bridge/dapDiffApplier.ts
+var path11 = __toESM(require("node:path"));
+var vscode20 = __toESM(require("vscode"));
+
+// src/infra/vscode/bridge/dapHelpers.ts
+var fs5 = __toESM(require("node:fs"));
+var path10 = __toESM(require("node:path"));
+var vscode19 = __toESM(require("vscode"));
+async function withApplyingLock(action) {
+  sceneStateManager.setApplyingState(true);
+  try {
+    return await action();
+  } finally {
+    setTimeout(() => sceneStateManager.setApplyingState(false), 150);
+  }
+}
+async function resolveFileUri(workspaceRoot, filePath, cache) {
+  if (!filePath) return void 0;
+  if (cache?.has(filePath)) {
+    return cache.get(filePath) || void 0;
+  }
+  const fullPath = path10.isAbsolute(filePath) ? filePath : path10.join(workspaceRoot, filePath);
+  let targetUri;
+  if (fs5.existsSync(fullPath)) {
+    targetUri = vscode19.Uri.file(fullPath);
+  } else {
+    const found = await vscode19.workspace.findFiles(`**/${path10.basename(filePath)}`, "**/node_modules/**", 1);
+    targetUri = found.length > 0 ? found[0] : null;
+  }
+  cache?.set(filePath, targetUri);
+  return targetUri || void 0;
+}
+function createSourceBreakpoint(location, item, isEnabled = item.enabled ?? true) {
+  switch (item.type) {
+    case "condition":
+      return new vscode19.SourceBreakpoint(location, isEnabled, item.condition);
+    case "hitCount":
+      return new vscode19.SourceBreakpoint(location, isEnabled, void 0, item.hitCondition);
+    case "logpoint":
+      return new vscode19.SourceBreakpoint(location, isEnabled, void 0, void 0, item.logMessage);
+    case "line":
+    default:
+      return new vscode19.SourceBreakpoint(location, isEnabled);
+  }
+}
+function createFunctionBreakpoint(item, isEnabled = item.enabled ?? true) {
+  return new vscode19.FunctionBreakpoint(
+    item.functionName.trim(),
+    isEnabled,
+    item.condition,
+    item.hitCondition
+  );
+}
+function findMatchingDapBreakpoint(currentBreakpoints, sceneBp, targetUri) {
+  if (sceneBp.type === "function") {
+    const funcItem = sceneBp;
+    return currentBreakpoints.find(
+      (bp) => bp instanceof vscode19.FunctionBreakpoint && bp.functionName === funcItem.functionName
+    );
+  }
+  if (!targetUri) return void 0;
+  const srcItem = sceneBp;
+  const normFullPath = path10.normalize(targetUri.fsPath).toLowerCase();
+  const targetLineZeroBased = Math.max(0, srcItem.line - 1);
+  return currentBreakpoints.find((bp) => {
+    if (!(bp instanceof vscode19.SourceBreakpoint)) return false;
+    return path10.normalize(bp.location.uri.fsPath).toLowerCase() === normFullPath && bp.location.range.start.line === targetLineZeroBased;
+  });
+}
+function cloneDapBreakpointWithEnabled(bp, enabled) {
+  if (bp instanceof vscode19.FunctionBreakpoint) {
+    return new vscode19.FunctionBreakpoint(bp.functionName, enabled, bp.condition, bp.hitCondition);
+  }
+  const srcBp = bp;
+  return new vscode19.SourceBreakpoint(
+    srcBp.location,
+    enabled,
+    srcBp.condition,
+    srcBp.hitCondition,
+    srcBp.logMessage
+  );
+}
+
+// src/infra/vscode/bridge/dapDiffApplier.ts
+async function applySceneBreakpoints(workspaceRoot, _targetScene, bpsToLoad) {
+  return withApplyingLock(async () => {
+    const currentBreakpoints = vscode20.debug.breakpoints;
+    if (!bpsToLoad?.length) {
+      if (currentBreakpoints.length > 0) {
+        await vscode20.debug.removeBreakpoints(currentBreakpoints);
+      }
+      sceneStateManager.setLastAppliedTopologyHash(ActiveScenesDiffResolver.computeTopologyHash([]));
+      return { loadedCount: 0, healedCount: 0 };
+    }
+    const targetBreakpoints = await buildDapBreakpoints(workspaceRoot, bpsToLoad);
+    const { toRemove, toAdd } = computeDapDiff(currentBreakpoints, targetBreakpoints);
+    if (toRemove.length > 0) await vscode20.debug.removeBreakpoints(toRemove);
+    if (toAdd.length > 0) await vscode20.debug.addBreakpoints(toAdd);
+    sceneStateManager.setLastAppliedTopologyHash(ActiveScenesDiffResolver.computeTopologyHash(bpsToLoad));
+    return {
+      loadedCount: targetBreakpoints.length,
+      healedCount: 0
+    };
+  });
+}
+async function buildDapBreakpoints(workspaceRoot, bpsToLoad) {
+  const pathCache = /* @__PURE__ */ new Map();
+  const targetBreakpoints = [];
+  for (const item of bpsToLoad) {
+    if (!item || typeof item !== "object") continue;
+    if (item.type === "function") {
+      const funcItem = item;
+      if (funcItem.functionName?.trim()) {
+        targetBreakpoints.push(createFunctionBreakpoint(funcItem));
+      }
+      continue;
+    }
+    const srcItem = item;
+    if (!srcItem.file || typeof srcItem.line !== "number" || isNaN(srcItem.line) || srcItem.line <= 0) {
+      continue;
+    }
+    const targetUri = await resolveFileUri(workspaceRoot, srcItem.file, pathCache);
+    if (!targetUri) continue;
+    const pos = new vscode20.Position(Math.max(0, srcItem.line - 1), 0);
+    targetBreakpoints.push(createSourceBreakpoint(new vscode20.Location(targetUri, pos), srcItem));
+  }
+  return targetBreakpoints;
+}
+function computeDapDiff(currentBreakpoints, targetBreakpoints) {
+  const matchedCurrentIndices = /* @__PURE__ */ new Set();
+  const matchedTargetIndices = /* @__PURE__ */ new Set();
+  for (let cIdx = 0; cIdx < currentBreakpoints.length; cIdx++) {
+    const curr = currentBreakpoints[cIdx];
+    for (let tIdx = 0; tIdx < targetBreakpoints.length; tIdx++) {
+      if (matchedTargetIndices.has(tIdx)) continue;
+      const target = targetBreakpoints[tIdx];
+      if (isSameDapBreakpoint(curr, target)) {
+        matchedCurrentIndices.add(cIdx);
+        matchedTargetIndices.add(tIdx);
+        break;
+      }
+    }
+  }
+  return {
+    toRemove: currentBreakpoints.filter((_, idx) => !matchedCurrentIndices.has(idx)),
+    toAdd: targetBreakpoints.filter((_, idx) => !matchedTargetIndices.has(idx))
+  };
+}
+function isSameDapBreakpoint(a, b) {
+  if (a instanceof vscode20.FunctionBreakpoint && b instanceof vscode20.FunctionBreakpoint) {
+    return a.functionName === b.functionName && a.enabled === b.enabled && a.condition === b.condition && a.hitCondition === b.hitCondition;
+  }
+  if (a instanceof vscode20.SourceBreakpoint && b instanceof vscode20.SourceBreakpoint) {
+    return path11.normalize(a.location.uri.fsPath).toLowerCase() === path11.normalize(b.location.uri.fsPath).toLowerCase() && a.location.range.start.line === b.location.range.start.line && a.enabled === b.enabled && a.condition === b.condition && a.hitCondition === b.hitCondition && a.logMessage === b.logMessage;
+  }
+  return false;
+}
+
+// src/infra/vscode/bridge/dapBreakpointCollector.ts
+var path12 = __toESM(require("node:path"));
+var vscode21 = __toESM(require("vscode"));
+async function collectCurrentBreakpoints(workspaceRoot) {
+  const currentBreakpoints = vscode21.debug.breakpoints;
+  const exportedBps = [];
+  for (const bp of currentBreakpoints) {
+    if (bp instanceof vscode21.FunctionBreakpoint) {
+      const funcBp = {
+        type: "function",
+        functionName: bp.functionName,
+        enabled: bp.enabled,
+        condition: bp.condition?.trim() || void 0,
+        hitCondition: bp.hitCondition?.trim() || void 0,
+        desc: void 0
+      };
+      exportedBps.push(funcBp);
+    } else if (bp instanceof vscode21.SourceBreakpoint) {
+      const fullPath = bp.location.uri.fsPath;
+      const relPath = path12.relative(workspaceRoot, fullPath).replace(/\\/g, "/");
+      const line = bp.location.range.start.line + 1;
+      let bpType = "line";
+      if (bp.logMessage) {
+        bpType = "logpoint";
+      } else if (bp.hitCondition) {
+        bpType = "hitCount";
+      } else if (bp.condition) {
+        bpType = "condition";
+      }
+      let contextSnippet;
+      try {
+        const doc = await vscode21.workspace.openTextDocument(bp.location.uri);
+        contextSnippet = extractContextSnippet(doc, bp.location.range.start.line);
+      } catch {
+      }
+      const srcBp = {
+        type: bpType,
+        file: relPath,
+        line,
+        enabled: bp.enabled,
+        condition: bp.condition?.trim() || void 0,
+        hitCondition: bp.hitCondition?.trim() || void 0,
+        logMessage: bp.logMessage?.trim() || void 0,
+        desc: void 0,
+        contextSnippet
+      };
+      exportedBps.push(srcBp);
+    }
+  }
+  return exportedBps;
+}
+
+// src/infra/vscode/bridge/dapStateSynchronizer.ts
+var vscode22 = __toESM(require("vscode"));
+async function applySingleBreakpointToEditor(workspaceRoot, sceneBp) {
+  if (!sceneBp) return false;
+  const isFunction = sceneBp.type === "function";
+  const uri = !isFunction ? await resolveFileUri(workspaceRoot, sceneBp.file) : void 0;
+  if (!isFunction && !uri) return false;
+  if (findMatchingDapBreakpoint(vscode22.debug.breakpoints, sceneBp, uri)) {
+    return false;
+  }
+  const newBp = isFunction ? createFunctionBreakpoint(sceneBp) : createSourceBreakpoint(
+    new vscode22.Location(uri, new vscode22.Position(Math.max(0, sceneBp.line - 1), 0)),
+    sceneBp
+  );
+  return withApplyingLock(async () => {
+    await vscode22.debug.addBreakpoints([newBp]);
+    return true;
+  });
+}
+async function clearAllBreakpoints() {
+  sceneStateManager.clearLastAppliedTopologyHash();
+  await vscode22.debug.removeBreakpoints(vscode22.debug.breakpoints);
+  vscode22.window.showInformationMessage(vscode22.l10n.t("Cleared all breakpoints"));
+}
+async function syncBreakpointEnabledToEditor(workspaceRoot, sceneBp, targetEnabled) {
+  if (!sceneBp) return false;
+  const isFunction = sceneBp.type === "function";
+  const uri = !isFunction ? await resolveFileUri(workspaceRoot, sceneBp.file) : void 0;
+  const matched = findMatchingDapBreakpoint(vscode22.debug.breakpoints, sceneBp, uri);
+  if (!matched || matched.enabled === targetEnabled) {
+    return false;
+  }
+  const updated = cloneDapBreakpointWithEnabled(matched, targetEnabled);
+  return withApplyingLock(async () => {
+    await vscode22.debug.removeBreakpoints([matched]);
+    await vscode22.debug.addBreakpoints([updated]);
+    return true;
+  });
+}
+
+// src/infra/vscode/vscodeBreakpointBridge.ts
+var vscodeBreakpointBridge = {
+  applySceneBreakpoints,
+  collectCurrentBreakpoints,
+  clearAllBreakpoints,
+  applySingleBreakpointToEditor,
+  syncBreakpointEnabledToEditor
+};
+
+// src/infra/vscode/launchBindingResolver.ts
+var LaunchBindingResolver = class {
+  /**
+   * 根据 VS Code 调试配置名称或环境变量推导绑定的有效场景列表 (杜绝幽灵激活)
+   */
+  static resolveScenes(config, launchName, envScene) {
+    const sceneNames = Object.keys(config.scenes || {});
+    const matchSceneName = (candidate) => {
+      const trimmed = candidate.trim();
+      if (!trimmed) return void 0;
+      const lower = trimmed.toLowerCase();
+      return sceneNames.find((name) => name.toLowerCase() === lower);
+    };
+    if (envScene && envScene.trim()) {
+      const candidates = uniqueStrings(envScene);
+      const matched = [];
+      for (const cand of candidates) {
+        const found = matchSceneName(cand);
+        if (found && !matched.includes(found)) {
+          matched.push(found);
+        }
+      }
+      return matched;
+    }
+    if (launchName && config.bindings) {
+      const mapped = config.bindings[launchName];
+      if (mapped) {
+        const rawCandidates = uniqueStrings(mapped);
+        const matched = [];
+        for (const cand of rawCandidates) {
+          const found = matchSceneName(cand);
+          if (found && !matched.includes(found)) {
+            matched.push(found);
+          }
+        }
+        if (matched.length > 0) return matched;
+      }
+    }
+    if (launchName) {
+      const found = matchSceneName(launchName);
+      if (found) return [found];
+    }
+    return [];
+  }
+};
+var resolveLaunchBoundScenes = LaunchBindingResolver.resolveScenes;
+
+// src/infra/vscode/listeners/debugLifecycleListener.ts
+var path13 = __toESM(require("node:path"));
+var vscode24 = __toESM(require("vscode"));
+
+// src/infra/vscode/listeners/configFileWatcherListener.ts
+var fs6 = __toESM(require("node:fs"));
+var vscode23 = __toESM(require("vscode"));
+async function handleExternalScenesFileChange(workspaceRoot) {
+  const allowAiActivation = vscode23.workspace.getConfiguration("sceneBreakpoints").get("allowAiFileActivation", false);
+  await agentSyncService.handleExternalChange(workspaceRoot, {
+    allowAiActivation,
+    isDebuggingActive: !!vscode23.debug.activeDebugSession,
+    sceneRepository: jsonFileSceneRepository,
+    breakpointBridge: vscodeBreakpointBridge,
+    fileLinesReader: async (filePath) => {
+      try {
+        const uri = vscode23.Uri.file(filePath);
+        const doc = await vscode23.workspace.openTextDocument(uri);
+        const lines = [];
+        for (let i = 0; i < doc.lineCount; i++) {
+          lines.push(doc.lineAt(i).text);
+        }
+        return lines;
+      } catch {
+        try {
+          if (fs6.existsSync(filePath)) {
+            return fs6.readFileSync(filePath, "utf-8").split(/\r?\n/);
+          }
+        } catch (err) {
+          console.warn(`[ConfigFileWatcher] Failed fallback reading file ${filePath}:`, err);
+        }
+        return void 0;
+      }
+    },
+    onPendingMessage: () => {
+      vscode23.window.setStatusBarMessage(
+        vscode23.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
+        5e3
+      );
+    }
+  });
+}
+function registerConfigFileWatcherService(treeDataProvider) {
+  let fileChangeDebounceTimer;
+  const fileWatcher = vscode23.workspace.createFileSystemWatcher("**/debug-scenes.json");
+  fileWatcher.onDidChange((uri) => {
+    if (fileChangeDebounceTimer) {
+      clearTimeout(fileChangeDebounceTimer);
+    }
+    fileChangeDebounceTimer = setTimeout(async () => {
+      fileChangeDebounceTimer = void 0;
+      try {
+        if (fs6.existsSync(uri.fsPath)) {
+          const currentDiskContent = fs6.readFileSync(uri.fsPath, "utf-8");
+          if (isContentMatchingLastSaved(currentDiskContent)) {
+            return;
+          }
+        }
+      } catch {
+      }
+      if (echoLoopGuard.isInternalSaving()) {
+        return;
+      }
+      const workspaceRoot = getWorkspaceRoot2(false);
+      if (workspaceRoot) {
+        await handleExternalScenesFileChange(workspaceRoot);
+      }
+      treeDataProvider.refresh();
+    }, 100);
+  });
+  fileWatcher.onDidCreate(() => treeDataProvider.refresh());
+  fileWatcher.onDidDelete(() => treeDataProvider.refresh());
+  return fileWatcher;
+}
+
+// src/infra/vscode/listeners/debugLifecycleListener.ts
+function registerDebugLaunchService() {
+  return vscode24.debug.registerDebugConfigurationProvider("*", {
+    async resolveDebugConfiguration(_folder, config) {
+      const autoActivate = vscode24.workspace.getConfiguration("sceneBreakpoints").get("autoActivateOnLaunch", true);
+      if (autoActivate && config) {
+        const workspaceRoot = getWorkspaceRoot2(false);
+        if (workspaceRoot) {
+          const scenesConfig = loadScenesConfig(workspaceRoot);
+          const targetScenes = LaunchBindingResolver.resolveScenes(
+            scenesConfig,
+            config.name,
+            config.env?.DEBUG_SCENE
+          );
+          if (targetScenes.length > 0) {
+            const currentActives = sceneStateManager.getActiveScenes();
+            const isIdentical = currentActives.length === targetScenes.length && currentActives.every((s, idx) => s === targetScenes[idx]);
+            if (!isIdentical) {
+              await vscode24.commands.executeCommand("sceneBreakpoints.applyScene", targetScenes);
+            }
+          }
+        }
+      }
+      return config;
+    }
+  });
+}
+function registerDebugPauseService(param1, param2) {
+  const disposables = [];
+  const revealPausedBreakpoint = async (file, line) => {
+    if (typeof param1 === "function") {
+      await param1(file, line);
+    } else if (param1 && typeof param1.onPausedLocation === "function") {
+      await param1.onPausedLocation(file, line);
+    } else if (param2 && typeof param2.revealPausedLocation === "function") {
+      await param2.revealPausedLocation(param1, file, line);
+    } else if (param1 && typeof param1.revealPausedLocation === "function") {
+      await param1.revealPausedLocation(param2, file, line);
+    }
+  };
+  const clearPausedBreakpoint = () => {
+    if (param2 && typeof param2.clearPausedLocation === "function") {
+      param2.clearPausedLocation();
+    } else if (param1 && typeof param1.clearPausedLocation === "function") {
+      param1.clearPausedLocation();
+    }
+  };
+  const trackerFactory = vscode24.debug.registerDebugAdapterTrackerFactory("*", {
+    createDebugAdapterTracker(_session) {
+      let sessionPausedThreadId;
+      return {
+        onDidSendMessage(msg) {
+          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames && msg.body.stackFrames.length > 0) {
+            if (sessionPausedThreadId !== void 0) {
+              const topFrame = msg.body.stackFrames[0];
+              if (topFrame.source?.path && typeof topFrame.line === "number") {
+                revealPausedBreakpoint(topFrame.source.path, topFrame.line);
+              }
+            }
+          } else if (msg?.type === "event") {
+            if (msg.event === "stopped") {
+              if (typeof msg.body?.threadId === "number") {
+                sessionPausedThreadId = msg.body.threadId;
+              }
+            } else if (msg.event === "continued") {
+              const continuedThreadId = msg.body?.threadId;
+              const allContinued = msg.body?.allThreadsContinued === true;
+              if (allContinued || sessionPausedThreadId !== void 0 && continuedThreadId === sessionPausedThreadId) {
+                sessionPausedThreadId = void 0;
+                clearPausedBreakpoint();
+              }
+            } else if (msg.event === "terminated") {
+              sessionPausedThreadId = void 0;
+              clearPausedBreakpoint();
+            }
+          }
+        }
+      };
+    }
+  });
+  disposables.push(trackerFactory);
+  const checkEditorPausedBreakpoint = (editor) => {
+    if (!vscode24.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") {
+      return;
+    }
+    const workspaceRoot = getWorkspaceRoot2(false);
+    if (!workspaceRoot) return;
+    const activeScenes = sceneStateManager.getActiveScenes();
+    if (activeScenes.length === 0) return;
+    const config = loadScenesConfig(workspaceRoot);
+    const currentFile = editor.document.uri.fsPath;
+    const currentLine = editor.selection.active.line + 1;
+    const isHitInScene = activeScenes.some((scene) => {
+      const list = config.scenes[scene] || [];
+      return list.some((bp) => {
+        if (bp.type === "function") return false;
+        const src = bp;
+        if (Number(src.line) !== currentLine) return false;
+        const full = path13.isAbsolute(src.file) ? src.file : path13.join(workspaceRoot, src.file);
+        const n1 = currentFile.replace(/\\/g, "/").toLowerCase();
+        const n2 = full.replace(/\\/g, "/").toLowerCase();
+        const n3 = src.file.replace(/\\/g, "/").toLowerCase();
+        return n1 === n2 || n1.endsWith("/" + n3) || n1.endsWith(n3);
+      });
+    });
+    if (isHitInScene) {
+      revealPausedBreakpoint(currentFile, currentLine);
+    }
+  };
+  disposables.push(
+    vscode24.window.onDidChangeActiveTextEditor((e) => checkEditorPausedBreakpoint(e)),
+    vscode24.window.onDidChangeTextEditorSelection((e) => checkEditorPausedBreakpoint(e.textEditor))
+  );
+  const stackItemListener = vscode24.debug.onDidChangeActiveStackItem?.(async (item) => {
+    if (item && item.source?.path && typeof item.line === "number") {
+      await revealPausedBreakpoint(item.source.path, item.line);
+    }
+  });
+  if (stackItemListener) {
+    disposables.push(stackItemListener);
+  }
+  disposables.push(
+    vscode24.debug.onDidTerminateDebugSession(() => {
+      clearPausedBreakpoint();
+    })
+  );
+  return vscode24.Disposable.from(...disposables);
+}
+function registerSessionLifecycleService() {
+  return vscode24.debug.onDidTerminateDebugSession(async () => {
+    sceneStateManager.clearLastAppliedTopologyHash();
+    if (sceneStateManager.isPendingTopologyUpdate()) {
+      sceneStateManager.setPendingTopologyUpdate(false);
+      const workspaceRoot = getWorkspaceRoot2(false);
+      if (workspaceRoot) {
+        await handleExternalScenesFileChange(workspaceRoot);
+      }
+    }
+  });
+}
+
+// src/infra/vscode/listeners/breakpointSyncListener.ts
+var vscode25 = __toESM(require("vscode"));
+function registerBreakpointSyncService(treeDataProvider) {
+  return vscode25.debug.onDidChangeBreakpoints(async (event) => {
+    if (sceneStateManager.isApplyingScene()) {
+      return;
+    }
+    const currentCount = vscode25.debug.breakpoints.length;
+    if (currentCount === 0) {
+      sceneStateManager.setActiveScene(void 0, 0);
+      return;
+    }
+    if (event.changed && event.changed.length > 0) {
+      const activeScenes = sceneStateManager.getActiveScenes();
+      if (activeScenes.length > 0) {
+        const workspaceRoot = getWorkspaceRoot2(false);
+        if (workspaceRoot) {
+          const syncItems = event.changed.map((bp) => {
+            if (bp.functionName) {
+              return {
+                functionName: bp.functionName,
+                enabled: bp.enabled ?? true
+              };
+            }
+            if (bp.location?.uri?.fsPath && typeof bp.location?.range?.start?.line === "number") {
+              return {
+                file: bp.location.uri.fsPath,
+                line: bp.location.range.start.line + 1,
+                enabled: bp.enabled ?? true
+              };
+            }
+            return null;
+          }).filter(Boolean);
+          const hasUpdated = await breakpointManager.syncBreakpointChanges(
+            workspaceRoot,
+            syncItems,
+            activeScenes
+          );
+          if (hasUpdated) {
+            treeDataProvider.refresh();
+          }
+        }
+      }
+    }
+    sceneStateManager.checkDirtyWithCount(currentCount);
+  });
+}
+
+// src/infra/vscode/listeners/chatSkillListener.ts
+var vscode26 = __toESM(require("vscode"));
+function registerChatSkillService(context) {
+  if (typeof vscode26.chat?.registerSkillProvider === "function") {
+    const skillProvider = {
+      onDidChangeSkills: new vscode26.EventEmitter().event,
+      provideSkills() {
+        return [
+          {
+            uri: vscode26.Uri.joinPath(
+              context.extensionUri,
+              "skills",
+              "scene-breakpoints",
+              "SKILL.md"
+            )
+          }
+        ];
+      }
+    };
+    try {
+      return vscode26.chat.registerSkillProvider(skillProvider);
+    } catch {
+    }
+  }
+  return { dispose: () => {
+  } };
 }
 
 // src/extension.ts
+function setupCompositionRoot() {
+  configureDependencies({
+    sceneRepository: jsonFileSceneRepository,
+    breakpointBridge: vscodeBreakpointBridge,
+    loopGuard: echoLoopGuard,
+    fileLinesReader: async (filePath) => {
+      try {
+        const uri = vscode27.Uri.file(filePath);
+        const doc = await vscode27.workspace.openTextDocument(uri);
+        const lines = [];
+        for (let i = 0; i < doc.lineCount; i++) {
+          lines.push(doc.lineAt(i).text);
+        }
+        return lines;
+      } catch {
+        return void 0;
+      }
+    }
+  });
+}
 function activate(context) {
+  setupCompositionRoot();
   initStatusBarItem(context);
   const treeDataProvider = new SceneTreeDataProvider(context.extensionPath);
-  const treeView = vscode17.window.createTreeView("sceneBreakpointsView", {
+  const treeView = vscode27.window.createTreeView("sceneBreakpointsView", {
     treeDataProvider,
     showCollapseAll: true,
     dragAndDropController: treeDataProvider
@@ -4165,19 +5411,24 @@ function activate(context) {
     // AI Agent Chat Skill 动态注入服务
     registerChatSkillService(context),
     // 场景一键激活 CodeLens 透镜按钮
-    vscode17.languages.registerCodeLensProvider(
+    vscode27.languages.registerCodeLensProvider(
       { pattern: "**/debug-scenes.json" },
       new SceneCodeLensProvider()
     ),
+    // 行末场景断点注解与幽灵文本透视提供者 (Inlay Hints)
+    vscode27.languages.registerInlayHintsProvider(
+      "*",
+      new SceneInlayHintsProvider()
+    ),
     // Skill 官方模版虚拟文档比对提供者
-    vscode17.workspace.registerTextDocumentContentProvider(
+    vscode27.workspace.registerTextDocumentContentProvider(
       TemplateContentProvider.scheme,
       templateContentProvider
     ),
     treeView,
     { dispose: () => sceneStateManager.dispose() }
   );
-  const wsRoot = getWorkspaceRoot(false);
+  const wsRoot = getWorkspaceRoot2(false);
   if (wsRoot) {
     checkAndPromptSkillUpdates(context, wsRoot).catch(() => {
     });
@@ -4196,3 +5447,4 @@ function deactivate() {
   activate,
   deactivate
 });
+//# sourceMappingURL=extension.js.map

@@ -2,7 +2,7 @@
   "name": "scene-breakpoints-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "publisher": "tony-l",
   "author": "Tony.L <286269159@qq.com>",
   "license": "MIT",
@@ -43,7 +43,8 @@
   ],
   "imports": {
     "#src/*": "./src/*",
-    "#test/*": "./test/*"
+    "#test/*": "./test/*",
+    "#scripts/*": "./scripts/*"
   },
   "contributes": {
     "configuration": {
@@ -63,6 +64,11 @@
           "type": "boolean",
           "default": false,
           "description": "%config.autoInstallSkill%"
+        },
+        "sceneBreakpoints.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.inlayHintsEnabled%"
         }
       }
     },
@@ -470,18 +476,35 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run verify && npm run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts --ext .ts,.mjs",
+    "check:deps": "depcruise --config .dependency-cruiser.cjs src",
+    "check:dups": "jscpd",
     "verify": "node scripts/verify-guardrails.mjs",
     "build": "node build.mjs",
     "build:test": "node -e \"fs.rmSync('out-test', {recursive:true, force:true})\" && npx esbuild test-e2e/index.ts test-e2e/suite/*.test.ts --bundle --outdir=out-test --format=cjs --platform=node --external:vscode --external:mocha",
     "test": "node --experimental-transform-types --import ./test/register.mjs test/run-all.mjs",
     "test:unit": "node --experimental-transform-types --import ./test/register.mjs test/run-all.mjs",
+    "test:coverage": "c8 --reporter=text --reporter=html --reporter=lcov --include=src/** npm run test:unit",
     "test:e2e": "npm run build && npm run build:test && node test-e2e/runTest.mjs",
+    "test:coverage:e2e": "node scripts/run-e2e-coverage.mjs",
+    "test:coverage:all": "node scripts/run-all-coverage.mjs",
+    "test:mutation": "stryker run",
     "package": "npx -y @vscode/vsce package && npm run verify"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.2",
+    "@types/vscode": "~1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vscode/test-electron": "^3.1.0",
-    "mocha": "^12.0.1"
+    "c8": "^12.0.0",
+    "dependency-cruiser": "^18.4.0",
+    "eslint": "^8.57.1",
+    "jscpd": "^5.3.2",
+    "mocha": "^12.0.1",
+    "typescript": "^5.9.3"
   }
 }

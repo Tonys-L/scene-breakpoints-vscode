@@ -18,6 +18,11 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Release artifacts
-RELEASE_NOTES.md
+# Coverage & Reports
+coverage/
+.c8_output/
+*.map
+.stryker-tmp/
+reports/
+
 

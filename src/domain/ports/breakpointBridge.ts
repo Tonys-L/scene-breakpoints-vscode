@@ -1,4 +1,4 @@
-import type { SceneBreakpoint, SourceSceneBreakpoint } from "../types";
+import type { SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
 
 export interface ApplySceneResult {
 	loadedCount: number;
@@ -30,7 +30,7 @@ export interface IBreakpointBridge {
 	applySingleBreakpointToEditor(
 		workspaceRoot: string,
 		bp: SceneBreakpoint,
-	): Promise<void>;
+	): Promise<boolean>;
 
 	/** 同步宿主调试器中单个断点的启用/禁用状态 */
 	syncBreakpointEnabledToEditor(

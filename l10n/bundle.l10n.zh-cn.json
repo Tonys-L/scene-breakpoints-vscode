@@ -165,7 +165,27 @@
   "Currently Paused Here": "当前暂停在此断点",
   "File does not exist": "文件不存在",
   "View Diff": "查看差异 (Diff)",
-  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: 检测到工作区有 {0} 个 AI Skill 规则存在本地修改或可用更新 (v{1})。"
+  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: 检测到工作区有 {0} 个 AI Skill 规则存在本地修改或可用更新 (v{1})。",
+  "Scene Breakpoint: {0}": "场景断点: {0}",
+  "Step": "步骤",
+  "Type": "类型",
+  "Description": "描述",
+  "Condition": "条件表达式",
+  "Hit Condition": "命中条件",
+  "Log Message": "日志消息",
+  "Status": "状态",
+  "Unmatched (Code Drift Detected)": "未匹配脱靶 (检测到代码漂移)",
+  "Line Annotations: Switch to Press Mode (Ctrl+Alt)": "行末断点注解：切换为按键模式 (Ctrl+Alt)",
+  "Line Annotations: Switch to Always-On": "行末断点注解：切换为常驻显示",
+  "Currently always shown. Click to show only on holding Ctrl+Alt": "当前处于常驻显示状态。点击切换为仅按住 Ctrl+Alt 显示",
+  "Currently shown on holding Ctrl+Alt. Click to keep always visible": "当前仅按住 Ctrl+Alt 显示。点击切换为常驻显示",
+  "Line Annotations (Inlay Hints) are now Always-On.": "行末场景断点注解已切换为【常驻显示】。",
+  "Line Annotations (Inlay Hints) now show on holding Ctrl+Alt.": "行末场景断点注解已切换为【按住 Ctrl+Alt 显示】。",
+  "Scene Breakpoints: Line annotations are currently in shortcut mode. Would you like to enable always-on display?": "Scene Breakpoints: 场景断点行末注解当前处于按键模式。是否一键开启常驻显示？",
+  "Enable Always-On": "一键开启常驻",
+  "Hold Ctrl+Alt is Fine": "保持按键模式",
+  "Don't Ask Again": "不再提示",
+  "Scene configuration has Git merge conflicts. Please resolve them first.": "场景配置文件包含未解决的 Git 合并冲突，请先解决冲突。",
+  "Scene configuration self-healed: {0}": "场景配置已启动自愈修复：{0}",
+  "Command failed: {0}": "命令执行失败：{0}"
 }
-
-

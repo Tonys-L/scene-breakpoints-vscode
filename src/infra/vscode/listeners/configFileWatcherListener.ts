@@ -1,25 +1,48 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
-import { handleExternalChange } from "../../../application/sceneService";
-import { getWorkspaceRoot, isContentMatchingLastSaved } from "../../storage/jsonFileSceneRepository";
-import { saveLoopGuard } from "../../storage/saveLoopGuard";
-import { SceneTreeDataProvider } from "../sceneTreeProvider";
+import { agentSyncService } from "#src/application";
+import { isContentMatchingLastSaved, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository";
+import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 
-const syncCoordinator = saveLoopGuard;
+
+import { echoLoopGuard } from "#src/infra/storage/echoLoopGuard";
+import { vscodeBreakpointBridge } from "#src/infra/vscode/vscodeBreakpointBridge";
+import type { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
 
 /**
  * 响应外部 debug-scenes.json 变更与 AI 声明式场景激活
- * 职责：读取配置开关、感知调试会话状态并展示状态栏提示，将业务调度委托给 handleExternalChange
+ * 职责：读取配置开关、感知调试会话状态并展示状态栏提示，将业务调度委托给 AgentSyncService
  */
 export async function handleExternalScenesFileChange(workspaceRoot: string): Promise<void> {
 	const allowAiActivation = vscode.workspace
 		.getConfiguration("sceneBreakpoints")
 		.get<boolean>("allowAiFileActivation", false);
 
-	await handleExternalChange({
-		workspaceRoot,
+	await agentSyncService.handleExternalChange(workspaceRoot, {
 		allowAiActivation,
 		isDebuggingActive: !!vscode.debug.activeDebugSession,
+		sceneRepository: jsonFileSceneRepository,
+		breakpointBridge: vscodeBreakpointBridge,
+		fileLinesReader: async (filePath: string) => {
+			try {
+				const uri = vscode.Uri.file(filePath);
+				const doc = await vscode.workspace.openTextDocument(uri);
+				const lines: string[] = [];
+				for (let i = 0; i < doc.lineCount; i++) {
+					lines.push(doc.lineAt(i).text);
+				}
+				return lines;
+			} catch {
+				try {
+					if (fs.existsSync(filePath)) {
+						return fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+					}
+				} catch (err) {
+					console.warn(`[ConfigFileWatcher] Failed fallback reading file ${filePath}:`, err);
+				}
+				return undefined;
+			}
+		},
 		onPendingMessage: () => {
 			vscode.window.setStatusBarMessage(
 				vscode.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
@@ -27,7 +50,9 @@ export async function handleExternalScenesFileChange(workspaceRoot: string): Pro
 			);
 		},
 	});
+
 }
+
 
 /**
  * 配置文件文件系统监听服务 (Config File Watcher Listener)
@@ -57,7 +82,7 @@ export function registerConfigFileWatcherService(
 				// 文件占用写入时忽略
 			}
 
-			if (syncCoordinator.isInternalSaving()) {
+			if (echoLoopGuard.isInternalSaving()) {
 				return;
 			}
 

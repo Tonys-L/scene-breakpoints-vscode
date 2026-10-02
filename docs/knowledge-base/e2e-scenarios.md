@@ -1,27 +1,7 @@
 # 端到端测试全量场景规范 (E2E Test Scenarios)
 
 > ⚠️ **核心质量基线**：本文档是 Scene Breakpoints 插件的端到端（E2E）测试唯一事实来源（SSOT）。
-> **铁律**：后续任何新增业务能力、修改现有功能、重构交互命令或调整 UI 时，**必须同步在本文档中更新用例规范，并同步在 `test-e2e/suite/` 编写对应自动化测试用例**。未经 E2E 验证的功能禁止合并发布。
-
----
-
-## 目录
-
-- [1. 测试环境与架构体系](#1-测试环境与架构体系)
-- [2. 全量 42 大 E2E 测试场景矩阵](#2-全量-42-大-e2e-测试场景矩阵)
-  - [维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)](#维度一dap-原生断点装配与运行时生命周期-tc-dap)
-  - [维度二：多场景选择、叠加激活与动态组合 (TC-MUL)](#维度二多场景选择叠加激活与动态组合-tc-mul)
-  - [维度三：调试侧边栏 TreeView 视口与全按钮交互 (TC-TREE)](#维度三调试侧边栏-treeview-视口与全按钮交互-tc-tree)
-  - [维度四：底部常驻状态栏 StatusBarItem 响应式渲染 (TC-STAT)](#维度四底部常驻状态栏-statusbaritem-响应式渲染-tc-stat)
-  - [维度五：配置文件 CodeLens 行内交互 (TC-LENS)](#维度五配置文件-codelens-行内交互-tc-lens)
-  - [维度六：场景反向导出与剪贴板防御性流转 (TC-CLIP)](#维度六场景反向导出与剪贴板防御性流转-tc-clip)
-  - [维度七：代码自愈持久化闭环与脱靶失联告警 (TC-HEAL)](#维度七代码自愈持久化闭环与脱靶失联告警-tc-heal)
-  - [维度八：AI 声明式免 MCP 编排与文件监听协同 (TC-AI)](#维度八ai-声明式免-mcp-编排与文件监听协同-tc-ai)
-  - [维度九：调试生命周期联动与会话保护 (TC-SESS)](#维度九调试生命周期联动与会话保护-tc-sess)
-  - [维度十：配置项开关与无工作区防御性守卫 (TC-CONF)](#维度十配置项开关与无工作区防御性守卫-tc-conf)
-  - [维度十一：命令面板与全局快捷键联动 (TC-CMD & TC-KEY)](#维度十一命令面板与全局快捷键联动-tc-cmd--tc-key)
-- [3. 用例维护与演进规范](#3-用例维护与演进规范)
-- [4. 变更记录](#4-变更记录)
+> **铁律**：后续任何新增业务能力、修改现有功能、重构交互界面，必须在此处首先声明 E2E 验收规范！
 
 ---
 
@@ -33,11 +13,28 @@
 | **测试运行器** | `mocha` (TDD 模式) |
 | **测试沙箱** | `test-fixtures/sample-workspace`（完全与开发环境隔离） |
 | **执行命令** | `npm run test:e2e`（先编译扩展与测试套件，后在沙箱中拉起运行） |
-| **套件目录** | `test-e2e/suite/*.test.ts` |
+| **构建机制** | `npm run build:test`（esbuild 打包输出至 `out-test/suite/`） |
+| **套件目录** | `test-e2e/suite/*.test.ts`（11 个单一职责微测试套件，零 `and`） |
+
+### 1.1 套件单一职责架构分布
+
+| 微测试套件文件 | 核心职责 | 覆盖用例维度 |
+| :--- | :--- | :--- |
+| `01_dap_breakpoints.test.ts` | DAP 原生断点装配与注入点亮 | TC-DAP-01 ~ TC-DAP-04 |
+| `02_scene_merging.test.ts` | 多场景正向叠加与冲突合并覆盖 | TC-MUL-01 ~ TC-MUL-05 |
+| `03_treeview_view.test.ts` | 调试侧边栏 TreeView 视图渲染与状态呈现 | TC-TREE-01 ~ TC-TREE-05, TC-TREE-11, 12, 14 |
+| `04_treeview_commands.test.ts` | 树视图交互命令（克隆/新建/删除/排序）与运行时联动 | TC-TREE-06 ~ TC-TREE-10, TC-TREE-13, TC-TREE-15 ~ 18 |
+| `05_status_bar.test.ts` | 底部状态栏与 CodeLens 视图 | TC-STAT-01 ~ 02, TC-LENS-01 ~ 02 |
+| `06_inlay_hints.test.ts` | 编辑器行末注解 Inlay Hints 渲染 | TC-HINT-01 |
+| `07_clipboard.test.ts` | 剪贴板场景导入导出与数据清洗 | TC-CLIP-01 ~ TC-CLIP-03 |
+| `08_commands_registry.test.ts` | 扩展命令总线就绪与快捷键触发契约 | TC-CMD-01, TC-KEY-01 |
+| `09_breakpoint_healing.test.ts` | 智能断点自然漂移自愈与持久化回写 | TC-HEAL-01 ~ TC-HEAL-04, TC-ENRICH-01 |
+| `10_agent_skills.test.ts` | Agent 技能分发、巡检与平滑升级 | CMD-08, CMD-09, TC-SKILL-01 ~ TC-SKILL-04 |
+| `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-02, TC-CONF-01, 03, 05 |
 
 ---
 
-## 2. 全量 42 大 E2E 测试场景矩阵
+## 2. 全量 49 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -105,6 +102,14 @@
 
 ---
 
+### 维度五(B)：源码行末注解与幽灵文本透视交互 (TC-HINT)
+
+| 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
+| :--- | :--- | :--- | :--- | :--- |
+| **TC-HINT-01** | **激活场景源码行末 Inlay Hints 原生透视与响应式联动** | 激活场景后，对关联源文件执行 `vscode.executeInlayHintProvider` | 1. 未激活场景时绝对不产生 Inlay Hints（返回空数组）；<br>2. 激活场景后，在断点对应代码行末尾精准生成 `💡 [场景名 #序号] 备注`，悬浮卡片富文本完整；<br>3. 用户配置关闭 `sceneBreakpoints.inlayHints.enabled` 时安全静音返回空数组。 | #TASK-INLAY-HINTS-001 |
+
+---
+
 ### 维度六：场景反向导出与剪贴板防御性流转 (TC-CLIP)
 
 | 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
@@ -123,6 +128,8 @@
 | **TC-HEAL-02** | **破坏性修改未匹配脱靶告警** | 彻底删除断点所在目标代码块，重新装配场景 | 判定为 `unmatched` 脱靶，平滑回退原行；弹出警告通知，树节点展示专属矢量警告图标与 `[未匹配]` 标签 | INV-003<br>KDD-UNMATCHED-WARN-001 |
 | **TC-HEAL-03** | **Python 缩进敏感与 # 注释生态自愈** | 在 Python 模块函数内漂移，上层插入 `#` 注释行 | 识别 `#` 行尾注释与 `def` 作用域缩进边界，杜绝跨函数误伤，DAP 命中精准行并持久化回写 | INV-003<br>KDD-HEALING-POLYGLOT |
 | **TC-HEAL-04** | **Go 接收者方法与多语言作用域自愈** | 在 Go 结构体方法 `func (c *Calculator)` 内源码漂移 | 识别 Go 接收者方法签名模式与 `//` 注释，快速锁定正确执行行并反向回写 `debug-scenes.json` | INV-003<br>KDD-HEALING-POLYGLOT |
+| **TC-ENRICH-01** | **外部保存空指纹场景自动预加固与多场景激活持久化闭环** | 1. 外部写入包含空指纹断点（无 `contextSnippet`）的多场景配置并保存；<br>2. 验证保存触发的 `handleExternalChange` 自动静默加固未激活场景断点指纹并持久化回写；<br>3. 多场景叠加激活后，校验所有断点指纹与 DAP 装配 100% 存盘闭环。 | 1. 未激活场景的断点在文件保存后自动被抓取 3 行伴随源码并落盘填补 `contextSnippet`；<br>2. 多场景激活后，内存与磁盘的 `contextSnippet` 均保持完整，无任何指纹遗失；<br>3. 自动保存防回环机制生效，无死循环写盘。 | INV-001<br>INV-011<br>KDD-AUTO-ENRICH-001 |
+
 
 
 ---
@@ -184,21 +191,3 @@
    - 本地提交前必须通过离线单元测试（`npm test`）与真实宿主 E2E 测试（`npm run test:e2e`）。
 
 ---
-
-## 4. 变更记录
-
-| 日期 | 变更内容 | 变更人 | 关联变更 |
-| :--- | :--- | :--- | :--- |
-| 2026-09-12 | 初始版本：建立 Scene Breakpoints 全量 10 大维度、34 大端到端 (E2E) 测试场景规范矩阵 | Tony.L | KDD-E2E-SPEC-001 |
-| 2026-09-12 | 自动化套件落地：完成 Suite 01~04 全量自动化 E2E 用例补齐（31 个核心测试 100% 绿灯通过），修复 `loadScenesConfig` 遗漏解析 `activeScenes` 的核心契约缺陷 | Tony.L | #TASK-E2E-AUTO |
-| 2026-09-12 | 自愈 E2E 补齐：通过 WorkspaceEdit 动态位移源码成功将 TC-HEAL-01（行号漂移自愈与持久化回写闭环）与 TC-HEAL-02（未匹配脱靶告警）全量实装为自动化测试（33 个 E2E 用例 100% 通过） | Tony.L | #TASK-E2E-HEAL |
-| 2026-09-12 | 多语言自愈扩展：自愈算法支持 Python/Go/Rust/Java/C++ 作用域、#//-- 注释剥离与 Python 缩进边界保护，实装 TC-HEAL-03 与 TC-HEAL-04 自动化测试（全套件 35 个 E2E 用例 100% 绿灯） | Tony.L | #TASK-E2E-POLYGLOT |
-| 2026-09-12 | 命令面板与快捷键补齐：实装 TC-CMD-01（命令面板全量 20 大命令注册与总线就绪校验）与 TC-KEY-01（快捷键绑定契约与 editorTextFocus 焦点触发验证），自动化 E2E 套件达到 37 个用例 100% 绿灯通过 | Tony.L | #TASK-E2E-CMD-KEY |
-| 2026-09-13 | 修复 E2E 8 项断言与运行时异常：补齐 baseline 计数器、对齐 collectCurrentBreakpoints 异步契约、解耦 healingEngine 的 VS Code 依赖并补齐脱靶告警弹窗分支，37 个 E2E 用例 100% 绿灯通过 | Tony.L | #TASK-E2E-FIX-001 |
-| 2026-09-13 | 补齐新功能 E2E 全量测试：实装 TC-TREE-09（重命名）、TC-TREE-16（配置文件定位）、TC-TREE-17（排序微调）、TC-TREE-18（运行时断点命中高亮）以及 TC-SKILL-01/02（Skill 纯净升级与备份/Diff 生命周期），真实宿主自动化套件达到 43 个用例 100% 绿灯 | Tony.L | #TASK-E2E-NEW-FEAT |
-| 2026-09-13 | 扩充 Skill 指纹对比与生命周期规范：新增 TC-SKILL-03（扩展升级巡检与本地修改气泡提示闭环）与 TC-SKILL-04（跨平台 Frontmatter 剥离一致性与智能置顶） | Tony.L | #TASK-SKILL-E2E-EXPAND-006 |
-
-
-
-
-

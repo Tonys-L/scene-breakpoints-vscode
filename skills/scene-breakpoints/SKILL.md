@@ -47,6 +47,12 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 | `logpoint` | `file`, `line`, `logMessage` | `{ "type": "logpoint", "logMessage": "用户登录: {user.name}" }` | 日志断点（控制台输出，不暂停） |
 | `function` | `functionName` | `{ "type": "function", "functionName": "verifyPassword" }` | 跨文件函数入口拦截断点 |
 
+### 断点物理行选定铁律（避坑必读 ⚠️）
+
+> ❌ **严禁打在纯函数声明/签名行**：例如 `function foo(...) {`、`export async function bar(...) {` 或 `const baz = (...) => {`。  
+> **底层原因**：在 V8 虚拟机和 DAP（Debug Adapter Protocol）协议中，纯函数声明行本身没有可执行字节码指令（Opcode）。若将断点打在声明行，极易导致调试器发生**断点漂移（自动弹跳到内部）**或直接沦为**灰色空心圆（Unverified Breakpoint 无法验证）**，导致调试滑过而不触发暂停！  
+> ✅ **必须打在函数体内部的第一条真实可执行语句上**：例如函数内部第一行的 `const x = ...`、`if (...)` 或具体方法调用。
+
 ### 断点说明（desc）编写指引
 
 `desc` 应当填写该断点的“观察意图”，而非代码物理位置描述：
@@ -68,12 +74,14 @@ AI Agent 在协助用户阅读代码、排查 Bug 或开发新功能时，应当
 ## 操作流程
 
 1. **读取配置与探路**：先读取 `.vscode/debug-scenes.json`，检查是否已有可复用场景或相关调用链。
-2. **分析链路**：静态分析用户关注的业务函数入口、关键判断条件分支、循环体与错误抛出点。
-3. **写入断点**：
+2. **分析链路与选定行号**：
+   - 静态分析核心流程的主干调用关系（参数校验、核心计算、关键分支、异常抛出与结果存盘）；
+   - 严格遵循**【断点物理行选定铁律】**，所有断点行号必须落在**函数内部的第一条可执行语句**上，严禁写函数声明头所在行。
+3. **写入断点（严格禁止手动填写指纹）**：
    - 将新场景命名（如 `auth-login-flow`），写入 `scenes["auth-login-flow"]` 数组；
-   - 断点只需提供 `type`、`file`、`line` 以及表达观察意图的 `desc`；
-   - ⚠️ **自愈指纹 `contextSnippet` 留空无需填写**：插件会在激活并保存时自动从实际源码提取并闭环补齐；
-   - 断点尽量按执行先后顺序排列。
+   - 断点条目**只需且仅需**提供 `type`、`file`、`line` 以及表达观察意图的 `desc`（可选 `enabled`）；
+   - ⚠️ **严禁手动添加 `contextSnippet` 字段**（即使只写 `{ "current": "..." }` 也绝对严禁）：插件内部设有自动感知守卫，只要检测到存在 `contextSnippet.current`，就会短路判定“已有指纹”，进而**跳过从源文件抓取完整 3 行拓扑（prev/current/next/scopeAnchor）的自愈提取与回写存盘流程**！保持此字段彻底缺省，插件在用户首次激活时会自动、完整地提取并持久化回写；
+   - 断点尽量按实际业务执行时序先后排列。
 4. **激活场景**：将根级 `"activeScenes": ["auth-login-flow"]` 设置为目标场景名并保存文件。
 5. **引导调试**：告知用户断点已就绪，提示用户按 **F5** 启动调试直接命中现场。
 

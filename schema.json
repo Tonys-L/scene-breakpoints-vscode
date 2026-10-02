@@ -67,11 +67,11 @@
               "enum": [
                 "line",
                 "condition",
-                "hit",
+                "hitCount",
                 "logpoint",
                 "function"
               ],
-              "description": "Type of the breakpoint: line, condition, hit, logpoint, or function"
+              "description": "Type of the breakpoint: line, condition, hitCount, logpoint, or function"
             },
             "file": {
               "type": "string",
@@ -118,6 +118,36 @@
             "contextAfter": {
               "type": "string",
               "description": "Lexical fingerprint of the succeeding line used by the self-healing engine"
+            },
+            "contextSnippet": {
+              "type": "object",
+              "description": "Contextual lexical fingerprint used by the self-healing engine to detect line drift",
+              "required": [
+                "current"
+              ],
+              "properties": {
+                "current": {
+                  "type": "string",
+                  "description": "Code snippet of the current breakpoint line"
+                },
+                "prev": {
+                  "type": "string",
+                  "description": "Code snippet of the previous non-empty line"
+                },
+                "next": {
+                  "type": "string",
+                  "description": "Code snippet of the next non-empty line"
+                },
+                "scopeAnchor": {
+                  "type": "string",
+                  "description": "Nearest enclosing function or method name anchor"
+                },
+                "indent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Indentation level (number of spaces or tabs)"
+                }
+              }
             }
           },
           "allOf": [

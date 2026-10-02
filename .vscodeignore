@@ -9,12 +9,14 @@ test-fixtures/**
 out-test/**
 docs/**
 scripts/**
-RELEASE_NOTES.md
 .gitignore
 node_modules/**
 build.mjs
 install.bat
 install.ps1
 AGENTS.md
-DESIGN.md
+.c8rc.json
+coverage/**
+.c8_output/**
+*.map
 *.vsix

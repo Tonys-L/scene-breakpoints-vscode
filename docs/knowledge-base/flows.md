@@ -18,40 +18,48 @@
 flowchart TD
     Start([开始激活场景]) --> CheckConfig[从 debug-scenes.json 读取目标场景列表]
     CheckConfig --> ValidateExist{场景在配置中是否存在?}
-    ValidateExist -->|全部不存在| ShowError[弹出错误提示并中止，不变更状态不改断点]
-    ValidateExist -->|存在或部分存在| FilterValid[保留有效场景并跳过不存在项]
-    FilterValid --> SetLock[设置原子状态锁 isApplying = true]
-    SetLock --> RemoveOld[调用 vscode.debug.removeBreakpoints 清理所有现有断点]
-    RemoveOld --> LoopBps{遍历目标断点列表}
+    ValidateExist -->|全部不存在| ShowError[弹出错误提示并中止 (幽灵拦截 INV-009)]
+    ValidateExist -->|有效场景列表| MergeBps[Scene.merge 聚合多场景断点 (先到先得排重 INV-011)]
 
-    LoopBps -->|函数断点| CreateFuncBp[创建 FunctionBreakpoint]
-    LoopBps -->|代码行相关断点| CheckHeal[执行 resolveHealedLine 自愈探测]
+    MergeBps --> HealPipeline[执行前置自愈与指纹补齐管道 (enrichAndHealBreakpoints)]
+    HealPipeline --> FastPath{快路径: 当前代码行文本完全一致?}
+    FastPath -->|是| Matched[状态标记为 matched (原行号保持)]
+    FastPath -->|否| Phase1[阶段一: 原址双向滑动窗口辐射探测 ±30 行]
 
-    CheckHeal --> FastPath{快路径: 当前行文本一致?}
-    FastPath -->|是| KeepLine[使用原行号]
-    FastPath -->|否| SlowPath[双向滑动 ±30 行加权打分探测]
+    Phase1 --> Phase1Pass{软相似度 >= 70% 且 动态置信度 >= 60%?}
+    Phase1Pass -->|是| Healed1[状态标记为 healed (校准行号)]
+    Phase1Pass -->|否| Phase2[阶段二: 作用域巡航大跨度重锚定 (最大 150 行)]
 
-    SlowPath --> ScorePass{得分 >= 14.5 或 独一无二 >= 8.5?}
-    ScorePass -->|通过| UpdateHealedLine[更新行号并标记 healedCount++]
-    ScorePass -->|未通过| FallbackLine[优雅回退至原始行号]
+    Phase2 --> Phase2Pass{作用域内存在本体特征 且 置信度 >= 60%?}
+    Phase2Pass -->|是| Healed2[状态标记为 healed (校准行号)]
+    Phase2Pass -->|否| Unmatched[安全标记为 unmatched (脱靶保持原行号)]
 
-    KeepLine --> AssembleBp[根据类型装配 SourceBreakpoint]
-    UpdateHealedLine --> AssembleBp
-    FallbackLine --> AssembleBp
+    Unmatched --> WarnState[向状态机登记脱靶失联警告 (sceneStateManager.setUnmatchedBreakpoints)]
+    Matched --> CheckActiveDisk
+    Healed1 --> CheckActiveDisk
+    Healed2 --> CheckActiveDisk
+    WarnState --> CheckActiveDisk
 
-    CreateFuncBp --> NextBp[放入待装配队列]
-    AssembleBp --> NextBp
-    NextBp --> LoopBps
+    CheckActiveDisk{activeScenes 是否改变?}
+    CheckActiveDisk -->|改变| SaveActive[权威 SSOT 优先落盘 (INV-010)]
+    CheckActiveDisk -->|未变| ApplyDiff
+    SaveActive --> ApplyDiff
 
-    LoopBps -->|全部遍历完毕| ApplyDAP[批量调用 vscode.debug.addBreakpoints 下发编辑器]
-    ApplyDAP --> ReleaseLock[释放原子状态锁 isApplying = false]
-    ReleaseLock --> CheckLoopback{healedCount > 0 或 enrichedCount > 0?}
+    ApplyDiff[调度 breakpointBridge.applySceneBreakpoints (INV-002, INV-005)]
+    ApplyDiff --> SetLock[加持原子锁 withApplyingLock (isApplying = true)]
+    SetLock --> CalcDiff[computeDapDiff 计算工作区断点与目标拓扑差量]
+    CalcDiff --> DiffExec[原地 0 闪烁装配: removeBreakpoints(toRemove) + addBreakpoints(toAdd)]
+    DiffExec --> ReleaseLock[释放原子锁 isApplying = false]
 
-    CheckLoopback -->|是| SyncConfig[显式回写 saveScenesConfig 更新 JSON 文件 (行号修正/补齐指纹)]
-    CheckLoopback -->|否| UpdateState
-    SyncConfig --> UpdateState[更新状态机 sceneStateManager.setActiveScene]
-    UpdateState --> RenderUI[状态机通知 StatusBar 响应式渲染高亮]
-    RenderUI --> End([激活完成])
+    ReleaseLock --> UpdateState[更新会话状态机 sceneStateManager.setActiveScenes]
+    UpdateState --> CheckHealedSave{healedCount > 0 或 enrichedCount > 0?}
+    CheckHealedSave -->|是| BackfillSave[回填自愈校准行号与伴随指纹并持久化落盘]
+    CheckHealedSave -->|否| EmitBus
+    BackfillSave --> EmitBus
+
+    EmitBus[appEventBus.emit 广播 scene:activated 事件]
+    EmitBus --> RenderUI[驱动 TreeView、StatusBar 与 InlayHints 响应式自刷新]
+    RenderUI --> End([激活与装配完成])
 ```
 
 ---
@@ -72,7 +80,7 @@ flowchart TD
     CheckExist -->|否| WriteNew[新建场景条目]
     PromptChoice --> WriteNew
     WriteNew --> Save[调用 saveScenesConfig 写入 debug-scenes.json]
-    Save --> UpdateActive[调用 sceneStateManager.setActiveScene 更新激活态]
+    Save --> UpdateActive[调用 sceneStateManager.setActiveScenes([sceneName]) 更新激活态]
     UpdateActive --> Done([导出完成])
 ```
 
@@ -122,15 +130,5 @@ stateDiagram-v2
 |----------|----------|----------|----------|
 | `Active(A)` 切换中 | `None` (瞬态) | 在下发场景断点清除旧断点期间，严禁向外暴露未激活状态 | `sceneStateManager.isApplying` 原子锁保护 |
 | `Active(Dirty)` | `Active(B)` (无提示直接清除) | 严禁在未询问用户意愿的前提下直接暴力清除用户手动打下的临时断点 | `applySceneCommand` 模态保护弹窗（放弃/追加保存/取消） |
-| `None` / 任意状态 | `Active(不存在场景)` | 严禁将 `debug-scenes.json` 中不存在的幽灵场景设为主状态，防止状态栏虚假染绿与断点误清空 | `applySceneCommand` 存在性强校验守卫与 `resolveLaunchBoundScenes` 防御性过滤 |
+| `None` / 任意状态 | `Active(不存在场景)` | 严禁将 `debug-scenes.json` 中不存在的幽灵场景设为主状态，防止状态栏虚假染绿与断点误清空 | `applySceneCommand` 存在性强校验守卫与 `LaunchBindingResolver.resolveScenes` 防御性过滤 |
 
----
-
-## 变更记录
-
-| 日期 | 变更内容 | 变更人 | 关联变更 |
-|------|----------|--------|----------|
-| 2026-09-08 | 初始版本 | Tony.L | KDD-INIT-001 |
-| 2026-09-08 | 引入断点脏状态（Clean ↔ Dirty）与防误清保护转换路径 | Tony.L | KDD-STATE-004 |
-| 2026-09-08 | 确立幽灵场景存在性校验分支与禁止转换为虚假激活状态规则 | Tony.L | KDD-DEFENSE-001 |
-| 2026-09-13 | 新增自愈指纹自动补齐（enrichedCount > 0）与持久化闭环流程分支 | Tony.L | #TASK-AUTO-ENRICH-001 |

@@ -5,18 +5,29 @@ import * as os from "node:os";
 
 import {
 	cleanLine,
+	calculateSimilarity,
+} from "#src/shared/utils/stringSimilarity.ts";
+import {
 	countIndent,
 	extractScopeAnchor,
+} from "#src/shared/utils/textUtils.ts";
+import {
 	extractContextSnippet,
-	calculateSimilarity,
-	resolveHealedLineFromLines as resolveHealedLineInMemory,
-} from "../../src/domain/healingEngine.ts";
-import { upsertBreakpointToScene } from "../../src/domain/sceneOperations.ts";
+	HealingEngine,
+} from "#src/domain/services/healingEngine.ts";
+import { SceneCatalog, Breakpoint } from "#src/domain/models/index.ts";
+
+function resolveHealedLineInMemory(lines, item) {
+	if (!item || !item.line) {
+		return { healedLine: item?.line ?? 1, isHealed: false, status: "matched" };
+	}
+	return HealingEngine.heal(lines, item.line, item.contextSnippet);
+}
 import {
 	stripJsonComments,
 	loadScenesConfig,
 	saveScenesConfig,
-} from "../../src/infra/storage/jsonFileSceneRepository.ts";
+} from "#src/infra/storage/jsonFileSceneRepository.ts";
 
 export function runRoundtripAndEdgeTests() {
 	console.log("🚀 Running Roundtrip & Edge Cases Test Suite...\n");
@@ -72,11 +83,13 @@ export function runRoundtripAndEdgeTests() {
 	];
 
 	// 模拟执行追加导出
+	const catalog = SceneCatalog.fromConfig(config);
+	const scene = catalog.getScene("checkout-flow");
 	for (const bp of exportedBps) {
-		upsertBreakpointToScene(config, "checkout-flow", bp);
+		scene.upsertBreakpoint(new Breakpoint(bp));
 	}
 
-	const list = config.scenes["checkout-flow"];
+	const list = catalog.toJSON().scenes["checkout-flow"];
 	// 断点总数应该为 3（原 order.ts:42 被更新，validatePayment 被更新，新追加 payment.ts:88），绝不能产生 5 个重复项！
 	assert.strictEqual(list.length, 3, "追加导出后应精确去重为 3 个断点，杜绝重复副本");
 

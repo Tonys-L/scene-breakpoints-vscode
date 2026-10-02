@@ -1,15 +1,14 @@
 import * as vscode from "vscode";
-import { syncEditorBreakpointChangesToConfig } from "../../../domain/sceneOperations";
-import { getWorkspaceRoot, loadScenesConfig, saveScenesConfig } from "../../storage/jsonFileSceneRepository";
-import { sceneStateManager } from "../../../domain/sceneStateManager";
-import { SceneTreeDataProvider } from "../sceneTreeProvider";
-import { saveLoopGuard } from "../../storage/saveLoopGuard";
+import { breakpointManager } from "#src/application";
+import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
+import { sceneStateManager } from "#src/application/sceneStateManager";
 
-const syncCoordinator = saveLoopGuard;
+
+import type { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
 
 /**
  * 断点全双工同步与脏状态服务 (Breakpoint Sync Listener)
- * 职责：专职负责监听 VS Code 编辑器原生断点变动事件，受原子锁与内部写盘防回环保护，将启用/禁用变更反向同步至激活场景并检查脏状态
+ * 职责：专职负责监听 VS Code 编辑器原生断点变动事件，受原子锁与内部写盘防回环保护，调度 syncBreakpointChanges 同步至激活场景并检查脏状态
  */
 export function registerBreakpointSyncService(
 	treeDataProvider: SceneTreeDataProvider,
@@ -30,16 +29,32 @@ export function registerBreakpointSyncService(
 			if (activeScenes.length > 0) {
 				const workspaceRoot = getWorkspaceRoot(false);
 				if (workspaceRoot) {
-					const config = loadScenesConfig(workspaceRoot);
-					const hasUpdated = syncEditorBreakpointChangesToConfig(
-						config,
-						activeScenes,
-						event.changed,
+					const syncItems = event.changed
+						.map((bp: any) => {
+							if (bp.functionName) {
+								return {
+									functionName: bp.functionName,
+									enabled: bp.enabled ?? true,
+								};
+							}
+							if (bp.location?.uri?.fsPath && typeof bp.location?.range?.start?.line === "number") {
+								return {
+									file: bp.location.uri.fsPath,
+									line: bp.location.range.start.line + 1,
+									enabled: bp.enabled ?? true,
+								};
+							}
+							return null;
+						})
+						.filter(Boolean) as { file?: string; line?: number; functionName?: string; enabled: boolean }[];
+
+					const hasUpdated = await breakpointManager.syncBreakpointChanges(
 						workspaceRoot,
+						syncItems,
+						activeScenes,
 					);
+
 					if (hasUpdated) {
-						syncCoordinator.markInternalSaving();
-						saveScenesConfig(workspaceRoot, config);
 						treeDataProvider.refresh();
 					}
 				}
@@ -49,5 +64,3 @@ export function registerBreakpointSyncService(
 		sceneStateManager.checkDirtyWithCount(currentCount);
 	});
 }
-
-export const registerBreakpointSyncCoordinator = registerBreakpointSyncService;

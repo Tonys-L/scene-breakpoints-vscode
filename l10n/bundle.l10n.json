@@ -165,7 +165,27 @@
   "Currently Paused Here": "Currently Paused Here",
   "File does not exist": "File does not exist",
   "View Diff": "View Diff",
-  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1})."
+  "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).": "Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).",
+  "Scene Breakpoint: {0}": "Scene Breakpoint: {0}",
+  "Step": "Step",
+  "Type": "Type",
+  "Description": "Description",
+  "Condition": "Condition",
+  "Hit Condition": "Hit Condition",
+  "Log Message": "Log Message",
+  "Status": "Status",
+  "Unmatched (Code Drift Detected)": "Unmatched (Code Drift Detected)",
+  "Line Annotations: Switch to Press Mode (Ctrl+Alt)": "Line Annotations: Switch to Press Mode (Ctrl+Alt)",
+  "Line Annotations: Switch to Always-On": "Line Annotations: Switch to Always-On",
+  "Currently always shown. Click to show only on holding Ctrl+Alt": "Currently always shown. Click to show only on holding Ctrl+Alt",
+  "Currently shown on holding Ctrl+Alt. Click to keep always visible": "Currently shown on holding Ctrl+Alt. Click to keep always visible",
+  "Line Annotations (Inlay Hints) are now Always-On.": "Line Annotations (Inlay Hints) are now Always-On.",
+  "Line Annotations (Inlay Hints) now show on holding Ctrl+Alt.": "Line Annotations (Inlay Hints) now show on holding Ctrl+Alt.",
+  "Scene Breakpoints: Line annotations are currently in shortcut mode. Would you like to enable always-on display?": "Scene Breakpoints: Line annotations are currently in shortcut mode. Would you like to enable always-on display?",
+  "Enable Always-On": "Enable Always-On",
+  "Hold Ctrl+Alt is Fine": "Hold Ctrl+Alt is Fine",
+  "Don't Ask Again": "Don't Ask Again",
+  "Scene configuration has Git merge conflicts. Please resolve them first.": "Scene configuration has Git merge conflicts. Please resolve them first.",
+  "Scene configuration self-healed: {0}": "Scene configuration self-healed: {0}",
+  "Command failed: {0}": "Command failed: {0}"
 }
-
-

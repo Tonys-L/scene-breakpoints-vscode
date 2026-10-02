@@ -1,29 +1,62 @@
 import * as vscode from "vscode";
-import { sceneStateManager } from "./domain";
+import { configureDependencies, sceneStateManager } from "./application";
 import {
 	registerAllCommands,
 	checkAndPromptSkillUpdates,
+	registerTreeInteractionService,
+	SceneCodeLensProvider,
+	SceneInlayHintsProvider,
+	SceneTreeDataProvider,
+	TemplateContentProvider,
+	templateContentProvider,
+	getStatusBarItem,
+	initStatusBarItem,
+} from "./ui";
+import {
 	registerBreakpointSyncService,
 	registerChatSkillService,
 	registerConfigFileWatcherService,
 	registerDebugLaunchService,
 	registerDebugPauseService,
 	registerSessionLifecycleService,
-	registerTreeInteractionService,
-	SceneCodeLensProvider,
-	SceneTreeDataProvider,
-	TemplateContentProvider,
-	templateContentProvider,
-	getStatusBarItem,
-	initStatusBarItem,
 	getWorkspaceRoot,
+	jsonFileSceneRepository,
+	echoLoopGuard,
+	vscodeBreakpointBridge,
 } from "./infra";
 
 /**
- * 插件主激活入口 (Composition Root)
+ * 组装装配根基础设施依赖
+ */
+function setupCompositionRoot(): void {
+	configureDependencies({
+		sceneRepository: jsonFileSceneRepository,
+		breakpointBridge: vscodeBreakpointBridge,
+		loopGuard: echoLoopGuard,
+		fileLinesReader: async (filePath: string) => {
+			try {
+				const uri = vscode.Uri.file(filePath);
+				const doc = await vscode.workspace.openTextDocument(uri);
+				const lines: string[] = [];
+				for (let i = 0; i < doc.lineCount; i++) {
+					lines.push(doc.lineAt(i).text);
+				}
+				return lines;
+			} catch {
+				return undefined;
+			}
+		},
+	});
+}
+
+/**
+ * 插件启动与生命周期装配总线 (Composition Root)
  * 职责：专职负责核心服务连线、命令注册与各领域协同服务 (Services) 挂载，0 业务实现细节残留
  */
 export function activate(context: vscode.ExtensionContext) {
+	// 0. 装配应用用例层依赖 (Composition Root 依赖注入，遵循 Clean Architecture DIP)
+	setupCompositionRoot();
+
 	// 1. 初始化底部常驻状态栏
 	initStatusBarItem(context);
 
@@ -58,6 +91,11 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerCodeLensProvider(
 			{ pattern: "**/debug-scenes.json" },
 			new SceneCodeLensProvider(),
+		),
+		// 行末场景断点注解与幽灵文本透视提供者 (Inlay Hints)
+		vscode.languages.registerInlayHintsProvider(
+			"*",
+			new SceneInlayHintsProvider(),
 		),
 		// Skill 官方模版虚拟文档比对提供者
 		vscode.workspace.registerTextDocumentContentProvider(

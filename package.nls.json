@@ -29,6 +29,7 @@
   "config.autoActivateOnLaunch": "Automatically activate bound scene breakpoints when a debug launch configuration is started",
   "config.allowAiFileActivation": "Allow AI Agent to declaratively activate and switch scenes by modifying activeScenes in debug-scenes.json",
   "config.autoInstallSkill": "Prompt to install AI Skill when an AI Agent workspace is detected",
+  "config.inlayHintsEnabled": "Show subtle scene breakpoint annotations and ghost text at the end of editor lines",
   "view.sceneBreakpoints": "Scene Breakpoints"
 }
 

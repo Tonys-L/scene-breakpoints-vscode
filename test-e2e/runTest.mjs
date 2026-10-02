@@ -15,6 +15,10 @@ async function main() {
     console.log(`🧪 Test Runner: ${extensionTestsPath}`);
     console.log(`📂 Sandbox Workspace: ${testWorkspace}`);
 
+    const extensionTestsEnv = process.env.NODE_V8_COVERAGE
+      ? { ...process.env, NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }
+      : undefined;
+
     await runTests({
       extensionDevelopmentPath,
       extensionTestsPath,
@@ -23,6 +27,7 @@ async function main() {
         "--disable-extensions",
         "--disable-gpu",
       ],
+      ...(extensionTestsEnv ? { extensionTestsEnv } : {}),
     });
 
     console.log("🎉 All E2E Tests Completed Successfully!");

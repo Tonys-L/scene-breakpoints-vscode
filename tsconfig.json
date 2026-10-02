@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node", "vscode", "mocha"],
+    "paths": {
+      "#src/*": ["./src/*"],
+      "#test/*": ["./test/*"],
+      "#scripts/*": ["./scripts/*"]
+    },
+    "skipLibCheck": true,
+    "strict": true
+  },
+  "include": ["src/**/*", "test/**/*", "test-e2e/**/*"]
+}

@@ -1,0 +1,88 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "project": ["./tsconfig.json"]
+  },
+  "plugins": [
+    "@typescript-eslint"
+  ],
+  "rules": {
+    "eqeqeq": ["error", "always"],
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-duplicate-imports": "error",
+    "no-constant-condition": ["error", { "checkLoops": false }],
+    "no-debugger": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["../*"],
+            "message": "严禁使用跨层级相对导入 '../'，必须统一使用 Subpath Imports (如 '#src/*') 确保路径绝对纯净性。"
+          }
+        ]
+      }
+    ],
+
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports"
+      }
+    ],
+    "@typescript-eslint/no-floating-promises": "error",
+    "max-lines": [
+      "error",
+      {
+        "max": 400,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-lines-per-function": [
+      "error",
+      {
+        "max": 80,
+        "skipBlankLines": true,
+        "skipComments": true,
+        "IIFEs": true
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.mjs"],
+      "parserOptions": {
+        "project": null
+      },
+      "rules": {
+        "@typescript-eslint/no-floating-promises": "off",
+        "@typescript-eslint/consistent-type-imports": "off",
+        "max-lines": "off",
+        "max-lines-per-function": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "out/**",
+    "out-test/**",
+    "dist/**",
+    "coverage/**",
+    "extension.js",
+    "build.mjs",
+    "test/**",
+    "test-e2e/**",
+    "*.d.ts"
+  ]
+}

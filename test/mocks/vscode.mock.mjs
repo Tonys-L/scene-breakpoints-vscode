@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 /**
  * 测试专用 vscode API Mock
  *
@@ -154,7 +157,14 @@ export const debug = {
 	onDidTerminateDebugSession: _sessionTerminateEmitter.event,
 	fireDidTerminateDebugSession: (e) => _sessionTerminateEmitter.fire(e),
 	_trackerFactories: [],
-	registerDebugConfigurationProvider: (_type, _provider) => new Disposable(() => {}),
+	_configProviders: [],
+	registerDebugConfigurationProvider: (_type, provider) => {
+		debug._configProviders.push(provider);
+		return new Disposable(() => {
+			const idx = debug._configProviders.indexOf(provider);
+			if (idx >= 0) debug._configProviders.splice(idx, 1);
+		});
+	},
 	registerDebugAdapterTrackerFactory: (_type, factory) => {
 		debug._trackerFactories.push(factory);
 		return new Disposable(() => {
@@ -197,6 +207,46 @@ export const window = {
 	}),
 	showQuickPick: async () => undefined,
 	showInputBox: async () => undefined,
+	createQuickPick: () => {
+		let _items = [];
+		let _activeItems = [];
+		let _selectedItems = [];
+		const _acceptListeners = [];
+		const _hideListeners = [];
+		const qp = {
+			get items() { return _items; },
+			set items(val) { _items = val; },
+			get activeItems() { return _activeItems; },
+			set activeItems(val) { _activeItems = val; },
+			get selectedItems() { return _selectedItems; },
+			set selectedItems(val) { _selectedItems = val; },
+			placeholder: "",
+			matchOnDescription: false,
+			matchOnDetail: false,
+			show() {},
+			hide() {
+				for (const cb of _hideListeners) cb();
+			},
+			dispose() {},
+			onDidAccept: (cb) => {
+				_acceptListeners.push(cb);
+				return new Disposable(() => {});
+			},
+			onDidHide: (cb) => {
+				_hideListeners.push(cb);
+				return new Disposable(() => {});
+			},
+			_triggerAccept: async (item) => {
+				qp.selectedItems = item ? [item] : [];
+				for (const cb of _acceptListeners) {
+					await cb();
+				}
+			},
+		};
+		window._lastQuickPick = qp;
+		return qp;
+	},
+	showTextDocument: async () => ({}),
 	withProgress: async (_options, task) => task({ report() {} }),
 	createOutputChannel: () => ({
 		appendLine() {},
@@ -215,8 +265,22 @@ export const workspace = {
 	workspaceFolders: [],
 	findFiles: async () => [],
 	textDocuments: [],
-	openTextDocument: async () => {
-		throw new Error("vscode.mock: openTextDocument 未在单元测试中实现");
+	openTextDocument: async (uriOrPath) => {
+		const filePath = typeof uriOrPath === "string" ? uriOrPath : uriOrPath.fsPath || String(uriOrPath);
+		let content = "";
+		try {
+			content = fs.readFileSync(filePath, "utf-8");
+		} catch {
+			content = "";
+		}
+		const lines = content.split(/\r?\n/);
+		return {
+			uri: Uri.file(filePath),
+			fileName: filePath,
+			lineCount: lines.length,
+			lineAt: (i) => ({ text: lines[i] ?? "" }),
+			getText: () => content,
+		};
 	},
 	onDidChangeTextDocument: () => new Disposable(() => {}),
 	onDidSaveTextDocument: () => new Disposable(() => {}),
@@ -225,14 +289,47 @@ export const workspace = {
 		get: (_key, defaultValue) => defaultValue,
 		update: async () => {},
 	}),
+	getWorkspaceFolder: () => workspace.workspaceFolders[0],
 	applyEdit: async () => true,
 	asRelativePath: (p) => String(p),
-	createFileSystemWatcher: () => ({
-		onDidChange: () => new Disposable(() => {}),
-		onDidCreate: () => new Disposable(() => {}),
-		onDidDelete: () => new Disposable(() => {}),
-		dispose() {},
-	}),
+	_lastWatcher: undefined,
+	createFileSystemWatcher: () => {
+		const watcher = {
+			_changeCbs: [],
+			_createCbs: [],
+			_deleteCbs: [],
+			onDidChange: (cb) => {
+				watcher._changeCbs.push(cb);
+				return new Disposable(() => {});
+			},
+			onDidCreate: (cb) => {
+				watcher._createCbs.push(cb);
+				return new Disposable(() => {});
+			},
+			onDidDelete: (cb) => {
+				watcher._deleteCbs.push(cb);
+				return new Disposable(() => {});
+			},
+			dispose() {},
+		};
+		workspace._lastWatcher = watcher;
+		return watcher;
+	},
+	fs: {
+		readFile: async (uri) => {
+			const filePath = uri.fsPath || String(uri);
+			return fs.readFileSync(filePath);
+		},
+		writeFile: async (uri, content) => {
+			const filePath = uri.fsPath || String(uri);
+			fs.mkdirSync(path.dirname(filePath), { recursive: true });
+			fs.writeFileSync(filePath, content);
+		},
+		createDirectory: async (uri) => {
+			const dirPath = uri.fsPath || String(uri);
+			fs.mkdirSync(dirPath, { recursive: true });
+		},
+	},
 };
 
 // ---------- 命令与杂项 ----------
@@ -269,6 +366,13 @@ export const StatusBarAlignment = { Left: 1, Right: 2 };
 export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
 export const TreeItemCheckboxState = { Unchecked: 0, Checked: 1 };
 export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
+export const QuickPickItemKind = { Separator: -1, Default: 0 };
+
+export class DataTransferItem {
+	constructor(value) {
+		this.value = value;
+	}
+}
 
 export class TreeItem {
 	constructor(label, collapsibleState) {
@@ -312,6 +416,24 @@ export class CodeLens {
 	}
 }
 
+export const InlayHintKind = { Type: 1, Parameter: 2 };
+
+export class InlayHint {
+	constructor(position, label, kind) {
+		this.position = position;
+		this.label = label;
+		this.kind = kind;
+		this.paddingLeft = false;
+		this.paddingRight = false;
+		this.tooltip = undefined;
+	}
+}
+
+export const languages = {
+	registerCodeLensProvider: () => new Disposable(() => {}),
+	registerInlayHintsProvider: () => new Disposable(() => {}),
+};
+
 export class CancellationTokenSource {
 	constructor() {
 		this._cancelled = false;
@@ -325,12 +447,16 @@ export class CancellationTokenSource {
 	dispose() {}
 }
 
+let _clipboardText = "";
+
 export const env = {
 	language: "en",
 	appName: "vscode-mock",
 	clipboard: {
-		writeText: async () => {},
-		readText: async () => "",
+		writeText: async (text) => {
+			_clipboardText = String(text);
+		},
+		readText: async () => _clipboardText,
 	},
 };
 
@@ -339,14 +465,37 @@ export const extensions = {
 	all: [],
 };
 
+export const chat = {
+	registerSkillProvider: undefined,
+};
+
 // ---------- 测试辅助 ----------
 
 /** 重置 Mock 可变状态（断点列表、消息记录、调试会话），每个测试块前调用 */
 export function __resetMockVscodeState() {
+	chat.registerSkillProvider = undefined;
 	debugBreakpoints.length = 0;
 	window.messages.length = 0;
+	window.showErrorMessage = (message) => {
+		window.messages.push({ level: "error", message });
+		return Promise.resolve(undefined);
+	};
+	window.showWarningMessage = (message) => {
+		window.messages.push({ level: "warning", message });
+		return Promise.resolve(undefined);
+	};
+	window.showInformationMessage = (message) => {
+		window.messages.push({ level: "info", message });
+		return Promise.resolve(undefined);
+	};
+	window.showQuickPick = async () => undefined;
+	window.showInputBox = async () => undefined;
+	window.activeTextEditor = undefined;
 	debug.activeDebugSession = undefined;
 	debug._trackerFactories.length = 0;
+	debug._configProviders.length = 0;
 	workspace.workspaceFolders.length = 0;
+	workspace._lastWatcher = undefined;
+	_clipboardText = "";
 	_registeredCommands.clear();
 }

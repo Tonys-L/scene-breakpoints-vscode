@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "mutate": [
+    "src/application/serialQueue.ts",
+    "src/infra/storage/echoLoopGuard.ts",
+    "src/infra/storage/fileLineReader.ts",
+    "src/infra/storage/atomicFileJsonStore.ts"
+  ],
+  "mutator": {
+    "excludedMutations": ["Regex"]
+  },
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "node --experimental-transform-types --import ./test/register.mjs test/runners/run-tier4-tests.mjs"
+  },
+  "reporters": [
+    "clear-text",
+    "html"
+  ],
+  "concurrency": 2,
+  "timeoutMS": 10000,
+  "tempDirName": ".stryker-tmp"
+}

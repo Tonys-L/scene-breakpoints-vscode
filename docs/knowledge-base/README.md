@@ -29,22 +29,43 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 
 | 模块 | 关联模块 | 影响方向 | 影响说明 |
 |------|----------|----------|----------|
-| `commands/applyScene` | `sceneStateManager` | 命令 → 状态机 | 场景激活成功后，通知状态机更新全局激活场景与状态 |
-| `commands/applyScene` | `breakpointAdapter` | 命令 → DAP适配器 | 下发场景断点集合，执行原生清除与批量注入 |
-| `breakpointAdapter` | `healingAdapter` | 适配器 → 自愈引擎 | 下发代码行断点前，调用自愈算法探测并返回修正行号 |
-| `breakpointAdapter` | `sceneStateManager` | 适配器 → 状态机 | 清除与装载断点期间设置原子锁（`isApplying`），防止触发状态栏闪烁 |
-| `commands/applyScene` | `configManager` | 命令 → 配置管理 | 检测到行号自愈漂移时，显式将更新后的断点持久化回写至 `.vscode/debug-scenes.json` |
-| `sceneStateManager` | `statusBar` | 状态机 → 视图(View) | 基于 EventEmitter 响应式触发底部状态栏渲染，UI 不直接存储状态 |
+| `src/ui/commands` | `sceneManager` / `breakpointManager` | UI → 管理器 | 响应用户交互命令，调度场景生命周期管理与断点启闭/重排 |
+| `sceneManager` | `sceneStateManager` | 管理器 → 状态机 | 场景激活或清空成功后，通知状态机更新全局激活场景与拓扑快照 |
+| `sceneManager` | `vscodeBreakpointBridge` | 管理器 → DAP桥接器 | 调度 DAP 适配器，执行散落断点清场与目标场景断点批量增量注入 |
+| `vscodeBreakpointBridge` | `healingEngine` | 桥接器 → 自愈引擎 | 下发断点时调用纯领域自愈算法探测行号位移并提取上下文指纹 |
+| `sceneManager` | `jsonFileSceneRepository` | 管理器 → 存储持久化 | 严格遵循单向时序（INV-010）将权威 SSOT 持久化落盘至 `.vscode/debug-scenes.json` |
+| `sceneStateManager` / `eventBus` | `src/ui/views` | 状态机/总线 → 视图(View) | 状态机维护会话投影；ApplicationEventBus (INV-028) 广播驱动树视图 (TreeView)、状态栏与行末注解响应式自刷新 |
 
 ## 项目阶段
 
-**Production (v1.0.2) / Next: v1.1.0**
-- 核心三层隔离架构（SOLID/SoC）与 services 协同服务层全面实施；
-- 两阶段自愈算法（近距辐射 + 作用域巡航大跨度重锚定）、当前行本体守卫与脱靶警告告警已就绪；
-- 状态机单向数据流、多场景叠加激活（Layered Activation）与防竞态锁已全面落地；
-- 调试启动配置智能联动（Launch Hook）与全双工双向实时同步就绪；
-- 侧边栏专属树视图（TreeView）具备 16x16 矢量 SVG 矩阵（彻底根治选中变灰）、稳定 `id` 原生 DOM Diff 就地更新（彻底杜绝整树重绘闪烁）；
-- AI 免 MCP 声明式场景激活（`activeScenes`）、主流 VS Code AI Agent Skill 矩阵及拓扑快照防回环中枢就绪。
+**Production (v1.0.8)**
+- 纯正整洁架构（Clean Architecture + DDD）与展示层（`src/ui`）独立分层全面落地；
+- 两阶段自愈算法（近距辐射 + 作用域巡航大跨度重锚定）、当前行本体守卫与脱靶警告告警就绪；
+- 状态机单向数据流、多场景叠加激活（Layered Activation）与防竞态锁全面就绪；
+- 调试启动配置智能联动（Launch Hook）与全双工双向实时防回环同步（Echo Loop Guard）就绪；
+- 专职应用管理器（SceneManager / BreakpointManager / AgentSyncService）与单写者串行队列就绪；
+- 彻底淘汰 Java 式 DTO 参数类，全面采用 TypeScript 纯粹自然参数规范；
+- 建立全工程 0 TS 报红的静态类型健全性硬门禁（GR-004 / `tsc --noEmit`），30 大自动化单测套件 100% 绿灯；四大梯队变异测试在 14 大核心模块均分突破 91.76%。
+
+
+---
+
+# 知识库治理准则
+
+## AI-Native 知识库构建第一性原理
+
+知识库（KDD）的核心使命是作为 **AI Agent 的高信噪比上下文（Context Window）真源**，直接服务于 AI 快速理解领域全貌与高效无幻觉开发：
+
+1. **信噪比至上 (High Signal-to-Noise Ratio)**：
+   - 业务不变量必须极度纯粹，聚焦于领域模型、状态机与数据一致性物理定律；
+   - **严禁将 CI 工具、构建体积、代码风格等工程质量绊线冒充为业务不变量**，避免污染 AI 上下文造成推理漂移与过度防御。
+2. **轻装上阵与精准指引 (Lean & Actionable)**：
+   - 用最少、最精准的词汇传达不可动摇的业务约束；
+   - 确保 AI 在几秒内建立起对业务拓扑与数据不变量的绝对空间感，一次做对。
+3. **分层治理 (Separation of Concerns)**：
+   - 业务不变量（`constraints.md` 业务部分）：指引业务逻辑与状态转移；
+   - 工程质量硬门禁（`constraints.md` 工程部分）：由 `scripts/verify-guardrails.mjs` 物理绊线自动强制拦截；
+   - 经验教训库（`lessons/`）：归纳踩坑根因与防御解法。
 
 ---
 
@@ -63,6 +84,20 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 - 测试约束
 
 适用于理解：什么不能做、什么必须遵守。
+
+---
+
+## architecture.md
+
+系统架构与模块依赖全景设计。**系统级架构参考。**
+
+包含：
+- 整洁架构（Clean Architecture）四层同心模型
+- 总体架构与依赖流向全景图（Mermaid）
+- 模块职责划分与依赖倒置（DIP）契约
+- 场景激活自愈与防回环控制流时序图
+
+适用于理解：系统的宏观结构、各层依赖方向与调用链路。
 
 ---
 
@@ -120,15 +155,19 @@ Scene Breakpoints (场景断点管理器) 是一个专为复杂业务调试与�
 
 ---
 
-# 文档联动规则
+# 文档语义联动准则
 
-修改一个文档时，必须联动检查相关文档：
+知识库联动遵循**“语义驱动、精准收敛”**原则，杜绝无脑全网漫游：
 
-| 修改了 | 必须检查 |
-|--------|----------|
-| `constraints.md` | `glossary.md`、`boundaries.md`、`flows.md`、`e2e-scenarios.md`、`lessons/` |
-| `boundaries.md` | `constraints.md`、`flows.md`、`e2e-scenarios.md` |
-| `e2e-scenarios.md` | `boundaries.md`、`constraints.md`（功能修改必须同步更新测试场景） |
-| `flows.md` | `constraints.md`、`boundaries.md`、本文件（核心业务关系） |
-| `glossary.md` | `constraints.md` |
-| 本文件（核心业务关系） | `boundaries.md`、`flows.md` |
+| 变更性质 | 核心修改源 | 联动同步文档 | 联动要点 |
+|---|---|---|---|
+| **术语与概念** | 引入或调整业务概念、缩写 | `glossary.md` | 补充/更新术语定义，全文档术语统一 |
+| **能力与边界** | 新增/修改对外功能、宿主解耦端口 | `boundaries.md`、`architecture.md` | 更新核心能力矩阵与分层架构图 |
+| **状态机与流程** | 修改场景激活、脏状态流转、用户交互时序 | `flows.md` | 补充时序路径，核对禁止转换状态 |
+| **不变量与防御** | 变更业务规则（INV）、工程质量门禁（GR） | `constraints.md` | 更新不变量表或工程硬门禁清单 |
+| **测试场景契约** | 涉及宿主生命周期或端到端命令联动变动 | `e2e-scenarios.md` | 同步对应场景用例与质量红线 |
+| **踩坑经验教训** | 排查发现暗坑、反模式或过度工程 | `lessons/` | 对应业务分类下沉淀新教训 |
+
+> **轻量门禁豁免**：纯 UI 调整或纯文档维护任务，不改变领域模型与契约，无需执行跨文档联动。
+
+
