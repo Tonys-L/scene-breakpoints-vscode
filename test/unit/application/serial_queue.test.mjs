@@ -148,6 +148,43 @@ export async function runSerialQueueTests() {
 		assert.strictEqual(res, undefined, "当任务返回 undefined 时，应当能正常解析");
 	}
 
+	// 7. 全局唯一单写者队列 applicationSerialQueue 存在性与跨管理器互斥测试 (INV-010)
+	{
+		const { applicationSerialQueue } = await import("#src/application/serialQueue.ts");
+		assert.ok(applicationSerialQueue instanceof SerialQueue, "applicationSerialQueue 必须为 SerialQueue 实例");
+
+		const events = [];
+		const p1 = applicationSerialQueue.enqueue(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+			events.push("p1-done");
+		});
+		const p2 = applicationSerialQueue.enqueue(async () => {
+			events.push("p2-done");
+		});
+
+		await Promise.all([p1, p2]);
+		assert.deepStrictEqual(events, ["p1-done", "p2-done"], "跨管理器共享队列必须严格串行执行");
+	}
+
+	// 8. 队列内嵌套任务安全可重入测试 (防自死锁 Reentrant)
+	{
+		const queue = new SerialQueue();
+		const history = [];
+
+		const result = await queue.enqueue(async () => {
+			history.push("outer-start");
+			const innerResult = await queue.enqueue(async () => {
+				history.push("inner-run");
+				return "inner-ok";
+			});
+			history.push(`outer-end:${innerResult}`);
+			return "outer-ok";
+		});
+
+		assert.strictEqual(result, "outer-ok");
+		assert.deepStrictEqual(history, ["outer-start", "inner-run", "outer-end:inner-ok"], "嵌套任务必须同上下文直接放行，防自死锁");
+	}
+
 	console.log("  ✅ [SerialQueue] SerialQueue 单元测试全部通过！\n");
 }
 

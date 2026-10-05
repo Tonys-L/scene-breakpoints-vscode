@@ -12,21 +12,22 @@ import {
 	registerDebugPauseService,
 	registerSessionLifecycleService,
 } from "#src/infra/vscode/listeners/index";
-import { registerTreeInteractionService } from "#src/ui/views/treeInteractionListener";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { SceneTreeDataProvider, SceneNode } from "#src/ui/views/sceneTreeProvider";
+import { dapEchoGuard } from "#src/infra/vscode/dapEchoGuard";
+import { SceneTreeDataProvider, SceneNode, registerTreeInteractionService } from "#src/ui/views/sceneTreeProvider";
 
 export async function runListenersRegistryTests() {
 	console.log("  ▶ [Listeners Registry] 运行 5 大核心事件监听与生命周期协同单元测试（真实源码）...");
 
 	__resetMockVscodeState();
+	dapEchoGuard.reset();
 	const mockTreeDataProvider = new SceneTreeDataProvider();
 
 	// 1. registerBreakpointSyncService 生命周期、断点清空与反向同步分支
 	{
 		sceneStateManager.setApplyingState(false);
 		sceneStateManager.setActiveScenes(["test-scene"]);
-		const syncDisposable = registerBreakpointSyncService(mockTreeDataProvider);
+		const syncDisposable = registerBreakpointSyncService();
 		assert.ok(syncDisposable && typeof syncDisposable.dispose === "function", "必须返回合法 Disposable");
 
 		// A. 模拟编辑器断点数归零 -> 触发状态机激活清空 (使用 length = 0 保持引用一致)
@@ -97,7 +98,7 @@ export async function runListenersRegistryTests() {
 
 	// 3. registerConfigFileWatcherService 文件系统监听器与外部变更调度
 	{
-		const watcherDisposable = registerConfigFileWatcherService(mockTreeDataProvider);
+		const watcherDisposable = registerConfigFileWatcherService();
 		assert.ok(watcherDisposable && typeof watcherDisposable.dispose === "function");
 
 		// 触发 watcher 的各类事件回调
@@ -206,6 +207,11 @@ export async function runListenersRegistryTests() {
 		fs.rmSync(tmpWs3, { recursive: true, force: true });
 
 		treeInteractionDisposable.dispose();
+
+		// 直接通过 SceneTreeDataProvider.bindView 绑定 TreeView 契约验证
+		const directBindViewDisposable = mockTreeDataProvider.bindView(mockTreeView);
+		assert.ok(directBindViewDisposable && typeof directBindViewDisposable.dispose === "function", "SceneTreeDataProvider.bindView 必须返回合法 Disposable");
+		directBindViewDisposable.dispose();
 	}
 
 	// 7. registerDebugPauseService 多线程 (WorkerThread) DAP continued 隔离防误杀
@@ -216,7 +222,7 @@ export async function runListenersRegistryTests() {
 			reveal: async () => {},
 		};
 
-		const pauseDisposable = registerDebugPauseService(mockTreeView, customTreeProvider);
+		const pauseDisposable = registerDebugPauseService();
 		assert.ok(debug._trackerFactories.length > 0, "必须注册 DebugAdapterTrackerFactory");
 		const factory = debug._trackerFactories[0];
 		const tracker = factory.createDebugAdapterTracker({});

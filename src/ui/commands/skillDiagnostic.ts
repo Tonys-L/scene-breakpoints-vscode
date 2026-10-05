@@ -1,38 +1,21 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import {
-	LATEST_SKILL_VERSION,
-	AgentRuleAsset,
-} from "#src/domain/models/agentRuleAsset";
+import { LATEST_SKILL_VERSION } from "#src/domain/models/agentRuleAsset";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { templateContentProvider } from "#src/ui/views/templateContentProvider";
-
 import {
-	type SkillTargetItem,
+	agentSkillService,
+	type InspectedSkillTarget,
+	type SkillTargetConfig,
+} from "#src/application/agentSkillService";
+import {
 	backupSkillFile,
-	formatSkillContent,
-	getSupportedSkillTargets,
+	readOfficialTemplate,
 	writeSkillToTarget,
-} from "./skillCommands";
+	showSkillDiff,
+} from "#src/ui/utils/agentRuleManager";
 
 type DiagnosticItem = vscode.QuickPickItem & { action?: () => Promise<void> };
-
-async function readOfficialTemplate(context: vscode.ExtensionContext): Promise<string> {
-	const skillSourceUri = vscode.Uri.joinPath(
-		context.extensionUri,
-		"skills",
-		"scene-breakpoints",
-		"SKILL.md",
-	);
-	try {
-		const rawBytes = await vscode.workspace.fs.readFile(skillSourceUri);
-		return Buffer.from(rawBytes).toString("utf-8");
-	} catch {
-		return "";
-	}
-}
 
 function createPermissionDiagnostic(
 	config: vscode.WorkspaceConfiguration,
@@ -63,35 +46,10 @@ function createActiveScenesDiagnostic(activeScenes: string[]): DiagnosticItem {
 	};
 }
 
-function sortTargetItems(targetItems: SkillTargetItem[], workspaceRoot: string): SkillTargetItem[] {
-	const hostAppName = (vscode.env.appName || "").toLowerCase();
-	const isTargetHost = (target: SkillTargetItem): boolean => {
-		if (target.hostKeywords && target.hostKeywords.some((k) => hostAppName.includes(k))) {
-			return true;
-		}
-		const baseName = target.label.split(/[\s/]/)[0].toLowerCase();
-		return Boolean(baseName && hostAppName.includes(baseName));
-	};
-
-	return [...targetItems].sort((a, b) => {
-		const existsA = fs.existsSync(path.join(workspaceRoot, a.dir, a.file));
-		const existsB = fs.existsSync(path.join(workspaceRoot, b.dir, b.file));
-		if (existsA && !existsB) return -1;
-		if (!existsA && existsB) return 1;
-
-		const matchHostA = isTargetHost(a);
-		const matchHostB = isTargetHost(b);
-		if (matchHostA && !matchHostB) return -1;
-		if (!matchHostA && matchHostB) return 1;
-
-		return 0;
-	});
-}
-
 async function handleCustomModifiedAction(
 	context: vscode.ExtensionContext,
 	workspaceRoot: string,
-	target: SkillTargetItem,
+	target: SkillTargetConfig,
 	fullPath: string,
 	rawOfficialTemplate: string,
 ): Promise<void> {
@@ -116,19 +74,7 @@ async function handleCustomModifiedAction(
 	);
 
 	if (choice?.value === "diff") {
-		const expectedBytes = formatSkillContent(Buffer.from(rawOfficialTemplate, "utf-8"), target);
-		const expectedStr = Buffer.from(expectedBytes).toString("utf-8");
-		templateContentProvider.setTemplateContent(target.file, expectedStr);
-
-		const localUri = vscode.Uri.file(fullPath);
-		const virtualUri = vscode.Uri.parse(`scene-breakpoints-template://template/${target.file}`);
-
-		await vscode.commands.executeCommand(
-			"vscode.diff",
-			localUri,
-			virtualUri,
-			`${target.label} (${vscode.l10n.t("Local vs Official v{0}", LATEST_SKILL_VERSION)})`,
-		);
+		await showSkillDiff(target, fullPath, rawOfficialTemplate, LATEST_SKILL_VERSION);
 	} else if (choice?.value === "backup") {
 		const backupPath = backupSkillFile(fullPath);
 		await writeSkillToTarget(context, workspaceRoot, target);
@@ -145,12 +91,13 @@ async function handleCustomModifiedAction(
 function createTargetItemDiagnostic(
 	context: vscode.ExtensionContext,
 	workspaceRoot: string,
-	target: SkillTargetItem,
+	item: InspectedSkillTarget,
 	rawOfficialTemplate: string,
 	currentVersion: string,
 ): DiagnosticItem {
-	const fullPath = path.join(workspaceRoot, target.dir, target.file);
-	if (!fs.existsSync(fullPath)) {
+	const { target, fullPath, status } = item;
+
+	if (status === "NotInstalled") {
 		return {
 			label: `$(add) ${target.label} (${vscode.l10n.t("Not Installed - Click to Install")})`,
 			description: target.description,
@@ -166,10 +113,7 @@ function createTargetItemDiagnostic(
 		};
 	}
 
-	const localContent = fs.readFileSync(fullPath, "utf-8");
-	const lifecycle = new AgentRuleAsset("local", localContent).evaluateLifecycle(rawOfficialTemplate, currentVersion);
-
-	if (lifecycle.status === "UpToDate") {
+	if (status === "UpToDate") {
 		return {
 			label: `$(pass) ${target.label} (${vscode.l10n.t("Up to Date: v{0}", currentVersion)})`,
 			description: target.description,
@@ -192,9 +136,9 @@ function createTargetItemDiagnostic(
 		};
 	}
 
-	if (lifecycle.status === "CleanOutdated") {
+	if (status === "CleanOutdated") {
 		return {
-			label: `$(sync) ${target.label} (${vscode.l10n.t("Updatable: v{0} -> v{1}", lifecycle.detectedVersion || "1.0.x", currentVersion)})`,
+			label: `$(sync) ${target.label} (${vscode.l10n.t("Updatable: v{0} -> v{1}", item.detectedVersion || "1.0.x", currentVersion)})`,
 			description: target.description,
 			detail: vscode.l10n.t("Official template outdated. Click to update smoothly."),
 			action: async () => {
@@ -237,10 +181,15 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 			},
 		];
 
-		const sortedTargetItems = sortTargetItems(getSupportedSkillTargets(), workspaceRoot);
-		for (const target of sortedTargetItems) {
+		const sortedTargetItems = agentSkillService.inspectSkillTargets(
+			workspaceRoot,
+			rawOfficialTemplate,
+			currentVersion,
+			vscode.env.appName,
+		);
+		for (const item of sortedTargetItems) {
 			diagnostics.push(
-				createTargetItemDiagnostic(context, workspaceRoot, target, rawOfficialTemplate, currentVersion),
+				createTargetItemDiagnostic(context, workspaceRoot, item, rawOfficialTemplate, currentVersion),
 			);
 		}
 
@@ -253,4 +202,3 @@ export async function diagnoseAiIntegrationCommand(context: vscode.ExtensionCont
 		}
 	});
 }
-

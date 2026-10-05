@@ -21,7 +21,7 @@
 | 微测试套件文件 | 核心职责 | 覆盖用例维度 |
 | :--- | :--- | :--- |
 | `01_dap_breakpoints.test.ts` | DAP 原生断点装配与注入点亮 | TC-DAP-01 ~ TC-DAP-04 |
-| `02_scene_merging.test.ts` | 多场景正向叠加与冲突合并覆盖 | TC-MUL-01 ~ TC-MUL-05 |
+| `02_scene_merging.test.ts` | 多场景正向叠加与冲突合并覆盖 | TC-MUL-01 ~ TC-MUL-06 |
 | `03_treeview_view.test.ts` | 调试侧边栏 TreeView 视图渲染与状态呈现 | TC-TREE-01 ~ TC-TREE-05, TC-TREE-11, 12, 14 |
 | `04_treeview_commands.test.ts` | 树视图交互命令（克隆/新建/删除/排序）与运行时联动 | TC-TREE-06 ~ TC-TREE-10, TC-TREE-13, TC-TREE-15 ~ 18 |
 | `05_status_bar.test.ts` | 底部状态栏与 CodeLens 视图 | TC-STAT-01 ~ 02, TC-LENS-01 ~ 02 |
@@ -30,11 +30,11 @@
 | `08_commands_registry.test.ts` | 扩展命令总线就绪与快捷键触发契约 | TC-CMD-01, TC-KEY-01 |
 | `09_breakpoint_healing.test.ts` | 智能断点自然漂移自愈与持久化回写 | TC-HEAL-01 ~ TC-HEAL-04, TC-ENRICH-01 |
 | `10_agent_skills.test.ts` | Agent 技能分发、巡检与平滑升级 | CMD-08, CMD-09, TC-SKILL-01 ~ TC-SKILL-04 |
-| `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-02, TC-CONF-01, 03, 05 |
+| `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-01 ~ TC-SESS-02, TC-CONF-01 ~ TC-CONF-05 |
 
 ---
 
-## 2. 全量 49 大 E2E 测试场景矩阵
+## 2. 全量 53 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -56,6 +56,7 @@
 | **TC-MUL-03** | **多场景取消复位清空** | 当前激活 `[B]`，再次调用场景 B 上的 `toggleSceneActivation` | 全部场景取消激活，状态机复位为 `(None)`，DAP 彻底卸载断点 | KDD-MULTI-ACTIVATE-001 |
 | **TC-MUL-04** | **冲突断点先到先得与 enabled 覆盖** | 场景 A 声明行 3 禁用 (`enabled: false`)，场景 B 声明行 3 启用 | 激活 `[A, B]` 时保留 A 的禁用状态；激活 `[B, A]` 时保留 B 的启用状态（严格首发声明胜出） | INV-001<br>INV-011 |
 | **TC-MUL-05** | **多场景状态栏自适应折叠** | 叠加激活 3 个及以上长名称场景 | 总字符 $\le 28$ 完整展示 `[a + b + c]`；超长时折叠为 `[a + b, +1]`，Tooltip 保留全名列表 | KDD-MULTI-ACTIVATE-001 |
+| **TC-MUL-06** | **显式空数组参数调用 applyScene([]) 彻底清空断点** | 外部或命令传入显式空数组 `applyScene([])` 调度清空 | 状态机 `activeScenes` 集合清空为 `[]`，DAP 所有断点全部卸载，且不触发任何警告弹窗 | INV-004<br>KDD-MULTI-ACTIVATE-001 |
 
 ---
 
@@ -174,7 +175,7 @@
 
 | 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
 | :--- | :--- | :--- | :--- | :--- |
-| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 23 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 23 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
+| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 25 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 25 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
 | **TC-KEY-01** | **快捷键 (Keybindings) 映射契约与 editorTextFocus 焦点触发验证** | 校验 `ctrl+alt+b` / `ctrl+alt+s`（Mac 对应 `cmd+alt+*`）绑定及 `when: "editorTextFocus"`；模拟编辑器聚焦触发 | 快捷键配置 100% 吻合规范；获得文本焦点时触发命令，断点精准注入光标所在物理行，验证快捷键通路健康 | KDD-KEY-001 |
 
 ---

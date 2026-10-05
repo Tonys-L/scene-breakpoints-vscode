@@ -1,3 +1,5 @@
+import { activeBreakpointIndex } from "./activeBreakpointIndex";
+
 export interface Disposable {
 	dispose(): void;
 }
@@ -43,8 +45,14 @@ export class SceneStateManager {
 	private baselineBreakpointCount = 0;
 	private unmatchedBreakpointsKeySet = new Set<string>();
 
+	private hasExplicitActiveState = false;
+
 	private readonly _onDidChangeState = new PureEventEmitter<SceneState>();
 	public readonly onDidChangeState = this._onDidChangeState.event;
+
+	public hasExplicitState(): boolean {
+		return this.hasExplicitActiveState;
+	}
 
 	public getActiveScenes(): string[] {
 		return [...this.currentActiveScenes];
@@ -87,16 +95,29 @@ export class SceneStateManager {
 	}
 
 	public setActiveScenes(sceneNames: string[], initialBpCount = 0): void {
+		this.hasExplicitActiveState = true;
 		const uniqueSorted = Array.from(new Set(sceneNames.map((s) => s.trim()).filter(Boolean))).sort();
+		const prev = this.currentActiveScenes;
+		const isSame = prev.length === uniqueSorted.length && prev.every((s, i) => s === uniqueSorted[i]);
+
 		this.currentActiveScenes = uniqueSorted;
 		this.baselineBreakpointCount = initialBpCount;
 		this.isDirty = false;
+
+		if (!isSame && !activeBreakpointIndex.isUpToDate(activeBreakpointIndex.getWorkspaceRoot(), uniqueSorted)) {
+			activeBreakpointIndex.markDirty();
+		}
+
+		if (uniqueSorted.length === 0) {
+			activeBreakpointIndex.clear();
+		}
 
 		this._onDidChangeState.fire({
 			activeScenes: this.currentActiveScenes,
 			isDirty: this.isDirty,
 		});
 	}
+
 
 	public setActiveScene(sceneName: string | undefined, initialBpCount = 0): void {
 		this.setActiveScenes(sceneName ? [sceneName] : [], initialBpCount);
@@ -162,9 +183,20 @@ export class SceneStateManager {
 		this.pendingTopologyUpdate = pending;
 	}
 
-	public dispose(): void {
+	public resetState(): void {
+		this.currentActiveScenes = [];
+		this.isDirty = false;
+		this.isApplying = false;
+		this.baselineBreakpointCount = 0;
+		this.hasExplicitActiveState = false;
+		this.unmatchedBreakpointsKeySet.clear();
 		this.clearLastAppliedTopologyHash();
 		this.pendingTopologyUpdate = false;
+		activeBreakpointIndex.clear();
+	}
+
+	public dispose(): void {
+		this.resetState();
 		this._onDidChangeState.dispose();
 	}
 }

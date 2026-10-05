@@ -1,16 +1,15 @@
-import type { IBreakpointBridge, ISceneRepository } from "#src/domain/ports";
+import type { IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
 import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
-import { ActiveScenesDiffResolver } from "#src/domain/services/activeScenesDiffResolver";
+import { computeTopologyHash, resolveActiveScenesDiff } from "#src/domain/services/activeScenesDiffResolver";
 import { sceneStateManager } from "./sceneStateManager";
 import { sceneManager } from "./sceneManager";
-import { SerialQueue } from "./serialQueue";
+import { applicationSerialQueue, type SerialQueue } from "./serialQueue";
 import { getDependencies } from "./dependencies";
 
 export interface EnrichAllSceneFingerprintsOptions {
 	sceneRepository?: ISceneRepository;
-	loopGuard?: { markInternalSaving: () => void };
-	fileLinesReader?: (filePath: string) => Promise<string[] | undefined>;
+	lineReader?: ILineReader;
 }
 
 export interface EnrichAllSceneFingerprintsResult {
@@ -23,8 +22,7 @@ export interface HandleExternalChangeOptions {
 	isDebuggingActive?: boolean;
 	sceneRepository?: ISceneRepository;
 	breakpointBridge?: IBreakpointBridge;
-	loopGuard?: { markInternalSaving: () => void };
-	fileLinesReader?: (filePath: string) => Promise<string[] | undefined>;
+	lineReader?: ILineReader;
 	onPendingMessage?: () => void;
 }
 
@@ -38,7 +36,7 @@ export interface HandleExternalChangeResult {
  * 职责：负责外部文件变更感知、AI 自动激活协同、核心拓扑比对 Diff 与全场景代码指纹静默预加固流程，受单写者串行队列保护 (INV-010)
  */
 export class AgentSyncService {
-	constructor(private readonly queue: SerialQueue = new SerialQueue()) {}
+	constructor(private readonly queue: SerialQueue = applicationSerialQueue) {}
 
 	/**
 	 * 全场景伴随指纹静默预加固
@@ -50,8 +48,8 @@ export class AgentSyncService {
 		return this.queue.enqueue(async () => {
 			const defaultDeps = getDependencies();
 			const sceneRepository = options?.sceneRepository || defaultDeps.sceneRepository;
-			const loopGuard = options?.loopGuard || defaultDeps.loopGuard;
-			const fileLinesReader = options?.fileLinesReader;
+			const activeLineReader: ILineReader | undefined =
+				options?.lineReader || defaultDeps.lineReader;
 
 			if (!sceneRepository) {
 				return { enrichedCount: 0, persisted: false };
@@ -68,21 +66,11 @@ export class AgentSyncService {
 				return { enrichedCount: 0, persisted: false };
 			}
 
-			const fileCache = new Map<string, string[] | undefined>();
-			const readLines = async (filePath: string): Promise<string[] | undefined> => {
-				if (fileCache.has(filePath)) {
-					return fileCache.get(filePath);
-				}
-				const lines = fileLinesReader ? await fileLinesReader(filePath) : undefined;
-				fileCache.set(filePath, lines);
-				return lines;
-			};
-
 			let enrichedCount = 0;
 			for (const bp of unfingerprintedBps) {
 				if (bp.type === "function") continue;
 				const fullPath = bp.resolveFullPath(workspaceRoot);
-				const lines = await readLines(fullPath);
+				const lines = activeLineReader ? await activeLineReader.readLines(fullPath) : undefined;
 				if (!lines || lines.length === 0) continue;
 
 				if (bp.enrich(lines)) {
@@ -91,7 +79,6 @@ export class AgentSyncService {
 			}
 
 			if (enrichedCount > 0) {
-				loopGuard?.markInternalSaving();
 				sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
 				return { enrichedCount, persisted: true };
 			}
@@ -106,9 +93,10 @@ export class AgentSyncService {
 	private async autoEnrichEmptyFingerprints(
 		workspaceRoot: string,
 		sceneRepository: ISceneRepository,
-		fileLinesReader: (filePath: string) => Promise<string[] | undefined>,
-		loopGuard?: { markInternalSaving: () => void },
+		lineReader?: ILineReader,
 	): Promise<void> {
+		if (!lineReader) return;
+		lineReader.clearCache?.();
 		try {
 			const configForEnrich = sceneRepository.loadScenesConfig(workspaceRoot);
 			const catalogForEnrich = new SceneCatalog(configForEnrich);
@@ -120,13 +108,12 @@ export class AgentSyncService {
 			for (const bp of unfingerprintedBps) {
 				if (bp.type === "function") continue;
 				const fullPath = bp.resolveFullPath(workspaceRoot);
-				const lines = await fileLinesReader(fullPath);
+				const lines = await lineReader.readLines(fullPath);
 				if (lines && lines.length > 0 && bp.enrich(lines)) {
 					enriched = true;
 				}
 			}
 			if (enriched) {
-				loopGuard?.markInternalSaving();
 				sceneRepository.saveScenesConfig(workspaceRoot, catalogForEnrich.toJSON());
 			}
 		} catch (err) {
@@ -151,7 +138,7 @@ export class AgentSyncService {
 			.map((name) => catalog.getScene(name))
 			.filter((s): s is Scene => !!s);
 		const merged = Scene.merge(activeScenes).getBreakpoints().map((bp) => bp.toJSON());
-		const newTopologyHash = ActiveScenesDiffResolver.computeTopologyHash(merged);
+		const newTopologyHash = computeTopologyHash(merged);
 
 		if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
 			return { action: "noop" };
@@ -185,10 +172,10 @@ export class AgentSyncService {
 			const defaultDeps = getDependencies();
 			const sceneRepository = options?.sceneRepository || defaultDeps.sceneRepository;
 			const breakpointBridge = options?.breakpointBridge || defaultDeps.breakpointBridge;
-			const loopGuard = options?.loopGuard || defaultDeps.loopGuard;
 			const allowAiActivation = options?.allowAiActivation ?? false;
 			const isDebuggingActive = options?.isDebuggingActive ?? false;
-			const fileLinesReader = options?.fileLinesReader;
+			const activeLineReader: ILineReader | undefined =
+				options?.lineReader || defaultDeps.lineReader;
 			const onPendingMessage = options?.onPendingMessage;
 
 			if (!sceneRepository || !breakpointBridge) {
@@ -196,8 +183,8 @@ export class AgentSyncService {
 			}
 
 			// 1. 静默预补齐指纹
-			if (fileLinesReader) {
-				await this.autoEnrichEmptyFingerprints(workspaceRoot, sceneRepository, fileLinesReader, loopGuard);
+			if (activeLineReader) {
+				await this.autoEnrichEmptyFingerprints(workspaceRoot, sceneRepository, activeLineReader);
 			}
 
 			// 2. 外部变更差异比对 (Diff Engine)
@@ -205,7 +192,7 @@ export class AgentSyncService {
 			const catalog = new SceneCatalog(config);
 			const currentActives = sceneStateManager.getActiveScenes();
 
-			const diff = ActiveScenesDiffResolver.resolveActiveScenesDiff({
+			const diff = resolveActiveScenesDiff({
 				currentActiveScenes: currentActives,
 				rawActiveScenes: config.activeScenes,
 				allowAiActivation,
@@ -217,13 +204,13 @@ export class AgentSyncService {
 					await sceneManager.activateScene(
 						workspaceRoot,
 						diff.targetScenes,
-						{ sceneRepository, breakpointBridge, loopGuard },
+						{ sceneRepository, breakpointBridge },
 					);
 					return { action: "applied", targetScenes: diff.targetScenes };
 				} else if (diff.action === "clear") {
 					await sceneManager.clearAll(
 						workspaceRoot,
-						{ sceneRepository, breakpointBridge, loopGuard },
+						{ sceneRepository, breakpointBridge },
 					);
 					return { action: "cleared" };
 				}

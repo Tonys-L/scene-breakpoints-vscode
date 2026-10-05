@@ -1,6 +1,5 @@
 import assert from "node:assert";
-import { describe, it } from "node:test";
-import { sceneManager, SceneManager } from "#src/application/sceneManager";
+import { sceneManager } from "#src/application/sceneManager";
 import { breakpointManager, BreakpointManager } from "#src/application/breakpointManager";
 
 export async function runCoordinatorsTests() {
@@ -91,6 +90,20 @@ export async function runCoordinatorsTests() {
 
 		// 移除断点
 		const removed = await breakpointManager.removeBreakpoint("/project", "testScene", 0, testOpts);
+		assert.strictEqual(removed, true);
+		assert.strictEqual(savedConfig.scenes.testScene.length, 1);
+	}
+
+	// 3. 断点新增、切换与删除往返一致性
+	{
+		const toggleRes = await breakpointManager.toggleBreakpoint("/project", "testScene", 0, false, testOpts);
+		assert.strictEqual(toggleRes.success, true);
+
+		const addRes = await breakpointManager.addBreakpoint("/project", "testScene", { file: "src/new.ts", line: 42, enabled: true }, testOpts);
+		assert.strictEqual(addRes.success, true);
+		assert.strictEqual(savedConfig.scenes.testScene.length, 2);
+
+		const removed = await breakpointManager.removeBreakpoint("/project", "testScene", 1, testOpts);
 		assert.strictEqual(removed, true);
 		assert.strictEqual(savedConfig.scenes.testScene.length, 1);
 	}

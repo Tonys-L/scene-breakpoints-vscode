@@ -5,6 +5,7 @@ import {
 	encodeScenePayload,
 	decodeScenePayload,
 	getSupportedFormatsTemplate,
+	sanitizeScenesConfig,
 } from "#src/domain/services/scenePayloadCodec";
 import { Scene } from "#src/domain/models/scene";
 
@@ -483,6 +484,46 @@ export function runScenePayloadCodecTests() {
 		const lineTypeRes = decodeScenePayload(lineTypePayload);
 		assert.strictEqual(lineTypeRes.success, true);
 		assert.strictEqual(lineTypeRes.breakpoints[0].type, "line");
+	}
+
+	// 13. sanitizeScenesConfig 与 ScenePayloadCodec.sanitizeConfig 全局配置清洗
+	{
+		// 空值与非对象兜底
+		assert.deepStrictEqual(sanitizeScenesConfig(null), { scenes: {} });
+		assert.deepStrictEqual(sanitizeScenesConfig("invalid"), { scenes: {} });
+		assert.deepStrictEqual(sanitizeScenesConfig([1, 2, 3]), { scenes: {} });
+
+		// 正常配置提取与脏数据过滤
+		const rawConfig = {
+			$schema: "http://example.com/schema.json",
+			activeScenes: [" scene-a ", "scene-b", ""],
+			bindings: {
+				"launch-task": " scene-a ",
+				"multi-task": ["scene-a", " scene-b ", ""],
+				invalidBinding: 12345,
+			},
+			scenes: {
+				"scene-a": [
+					{ file: "src/a.ts", line: 10 },
+					null,
+					"invalid-bp",
+				],
+			},
+		};
+
+		const sanitized = sanitizeScenesConfig(rawConfig);
+		assert.deepStrictEqual(sanitized.activeScenes, ["scene-a", "scene-b"]);
+		assert.strictEqual(sanitized.bindings["launch-task"], "scene-a");
+		assert.deepStrictEqual(sanitized.bindings["multi-task"], ["scene-a", "scene-b"]);
+		assert.strictEqual(sanitized.bindings.invalidBinding, undefined);
+		assert.strictEqual(sanitized.scenes["scene-a"].length, 1);
+		assert.strictEqual(sanitized.scenes["scene-a"][0].file, "src/a.ts");
+
+		// 验证类静态门面与单例门面一致性
+		const sanitizedViaClass = ScenePayloadCodec.sanitizeConfig(rawConfig);
+		assert.deepStrictEqual(sanitizedViaClass, sanitized);
+		const sanitizedViaInstance = defaultScenePayloadCodec.sanitizeConfig(rawConfig);
+		assert.deepStrictEqual(sanitizedViaInstance, sanitized);
 	}
 
 	console.log("  ✅ [Scene Payload Codec] ScenePayloadCodec 领域编解码单元测试全部通过！");

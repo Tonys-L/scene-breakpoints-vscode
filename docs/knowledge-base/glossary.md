@@ -87,7 +87,7 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 ### S
 
 #### 单写者串行队列 (Single-Writer Serial Queue)
-应用用例层（`src/application/sceneManager.ts` 与 `breakpointManager.ts`）内置的私有任务队列调度机制。将所有针对场景主状态的写操作（如场景激活、新增断点、清除重置、外部变更调度、剪贴板导入等）严格约束进串行化互斥管道，前序任务完成（无论成功还是失败）方才出队执行后续任务，从根源上杜绝异步并发交错造成的读写脏覆盖与竞态死锁。
+应用用例层全局唯一的单写者可重入串行互斥队列（`applicationSerialQueue`，实现于 `src/application/serialQueue.ts`）。依托 Node.js 原生 `AsyncLocalStorage` 赋予队列同调用链安全可重入特性，将所有针对场景主状态的写操作（如场景激活、新增断点、清除重置、外部变更调度、剪贴板导入等）严格约束进全局唯一的串行化互斥管道，前序任务完成方才出队执行后续任务，既杜绝并发写脏覆盖，又彻底免疫嵌套调用的自死锁。
 
 #### 场景 (Scene)
 一个用业务语义命名的断点集合（例如 `user-login`、`order-pay-flow`），声明式保存在 `.vscode/debug-scenes.json` 中，可一键整体激活或反向导出。

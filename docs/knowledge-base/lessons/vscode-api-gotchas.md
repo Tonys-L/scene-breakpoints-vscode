@@ -158,13 +158,100 @@
 **影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/infra/vscode/sceneTreeProvider.ts`, `test/unit/infra/listeners_registry.test.mjs`
 **日期**: 2026-09-13
 
-### 1.18 剪贴板导入全新场景时从未更新的旧配置读取断点数量抛出 TypeError 异常
+### 1.19 UI 命令控制器深度与交互样板代码收敛 (Declarative Action Controller & Locators Separation)
 
-**问题**: 用户或 E2E 测试通过命令 `sceneBreakpoints.importSceneFromClipboard` 导入一个配置中原本不存在的全新场景时，导入虽成功写盘，但随后弹出通知时崩溃并抛出 `TypeError: Cannot read properties of undefined (reading 'length')`。
-**原因**: 在 `clipboardCommands.ts` 中，`config` 对象是在函数入口处通过 `loadScenesConfig` 加载的旧内存快照。当导入新场景并落盘后，弹窗通知尝试通过 `config.scenes[finalSceneName].length` 读取断点数量；由于旧快照尚未包含新场景，`config.scenes[finalSceneName]` 为 `undefined`，访问 `.length` 触发未捕获异常。
-**解决方案**: 严禁从旧 `config` 快照读取动态变更属性，改为直接读取当前已被聚合根实体更新的 `targetScene.breakpoints.length`，确保任何场景状态下 100% 安全取值。
-**影响文件**: `src/infra/vscode/commands/clipboardCommands.ts`
-**日期**: 2026-09-24
+**问题**: 在 `sceneCommands.ts` 与 `treeCommands.ts` 等宿主命令模块中，混入了长达数十行的活动编辑器向上逆序文本扫描逻辑（在 `debug-scenes.json` 中匹配场景键名），并且各命令重复编写非空校验、空白字符修剪（`validateInput`）与模态警告弹窗（`modal: true`）样板代码，导致模块过浅（Shallow）且职责泄露。
+**原因**: UI 命令层兼顾了入参推导、文本物理定位、输入校验弹窗与用例调用等多重职责，缺乏专职的定位器（Locator）与交互辅助模块。
+**解决方案**:
+1. **提取专职定位器**：创建 `src/ui/locators/sceneEditorLocator.ts`，将逆向行文本匹配提取为纯函数 `findEnclosingSceneName`（支持原生 `string[]` 与 `lineAt` 鸭子类型，脱离 VS Code 进行 100% 纯单测），宿主集成接口封装为 `detectSceneFromActiveEditor`；
+2. **提取统一交互对话框**：创建 `src/ui/utils/promptHelpers.ts`，导出 `promptSceneName`（内置非空与修剪校验）、`confirmModalAction`（内置模态警告）与 `promptSelectScenes`（多选面板）；
+3. **命令处理器声明式编排**：各命令收敛为“解析/输入 -> 调用 Application Manager -> 提示 Feedback”的极简动作编排。
+**影响文件**: `src/ui/locators/sceneEditorLocator.ts`, `src/ui/utils/promptHelpers.ts`, `src/ui/commands/sceneCommands.ts`, `src/ui/commands/treeCommands.ts`
+### 1.20 无头测试环境下命令参数空数组 [] 误判为 falsy 导致唤起模态 QuickPick 挂起超时 (Headless QuickPick Timeout on Empty Array Parameter)
+
+**问题**: 在 CI 或无头（Headless）E2E 测试中执行取消多场景勾选（如 `TC-MUL-03`）或传入空数组 `[]` 调用 `sceneBreakpoints.applyScene` 时，测试出现 30 秒超时挂起并报错。
+**原因**: `parseSceneParameter` 在历史实现中采用了 `if (!sceneParam) return undefined` 且在 `uniqueStrings(sceneParam)` 长度为 0 时返回 `undefined`。由于返回了 `undefined`，命令推导逻辑误认为“调用方未传入参数”，从而降级弹出交互式多选面板 `promptSelectScenes`。在无头测试环境下无人工交互，导致命令无限等待用户选框输入直至超时。
+**解决方案**: 显式区分“未传参（`undefined`/`null`）”与“显式传入空目标列表（`[]`）”。当入参为 `Array.isArray(sceneParam)` 时严格保留为 `string[]`；在 `resolveTargetScenes` 中仅当 `targetScenes === undefined` 时才回退至弹窗；若解析得到 `[]`，则立即将其作为“清空所有激活断点”的合法语义执行 `sceneManager.clearAll`。
+**影响文件**: `src/ui/commands/sceneCommands.ts`
+**日期**: 2026-10-05
+
+### 1.21 跨激活生命周期的全局 LineReader 单例未及时失效导致自愈管道读取过期源码脏缓存 (LineReader Cache Invalidation Across Scene Activations)
+
+**问题**: 在测试源码行号自然漂移自愈与持久化回写（如 `TC-HEAL-01`, `TC-HEAL-03`, `TC-HEAL-04`）时，首次装配场景正常，但开发者或测试向源文件插入注释/代码后再次装配场景，断点未漂移到最新真实行，仍然停留在初始行号。
+**原因**: `vscodeLineReader` 作为全局单例适配器在内存中常驻，内部持有的 `cache: Map<string, string[]>` 在首次激活时缓存了文件行。后续即便磁盘文件或 VS Code 文档发生编辑，自愈引擎在调用 `readLines` 时仍然优先命中了内存旧缓存，导致自愈匹配算法基于过期的旧文件代码计算，无法感知源码已下移的客观现实。
+**解决方案**:
+1. **端口契约增强**：在 `ILineReader` 端口中增加 `clearCache?(): void` 契约规范；
+2. **激活与富化管道主动重置**：在 `executeSceneActivation` 与 `autoEnrichEmptyFingerprints` 执行起点，主动调用 `lineReader?.clearCache?.()` 保证每次操作均使用全新的代码视图；
+3. **VS Code 文档变更联动**：在 `createVsCodeLineReader` 中监听 `vscode.workspace.onDidChangeTextDocument` 事件，一旦活动文档发生编辑立即清空缓存。
+**影响文件**: `src/domain/ports/lineReader.ts`, `src/application/sceneActivationPipeline.ts`, `src/application/agentSyncService.ts`, `src/infra/vscode/vscodeLineReader.ts`
+**日期**: 2026-10-05
+
+### 1.22 新增断点后 Inlay Hints 渲染延迟与输入框焦点失脱陷阱 (Inlay Hints Deferred Rendering on Modal Focus Loss)
+
+**问题**: 开发者在代码中使用 `Ctrl+Alt+B` 或右键添加断点后，红点已点亮且断点已入库，但该行行末的 Inlay Hints 注解（`💡 [scene #x] ...`）未即刻呈现，直到在侧边栏双击该断点（重新调用 `vscode.open` 激活编辑器）后才出现。
+**原因**:
+1. **输入框关闭与通知弹窗导致的焦点失脱**：添加断点过程中经历了 QuickPick 和 InputBox 弹窗，编辑器失去焦点；保存后由于右下角信息气泡弹出，编辑器仍未完全重新取得活动焦点。VS Code 装饰/注解管线在编辑器失焦期可能延迟或推迟 `provideInlayHints` 拉取；
+2. **DAP 注入完成后缺乏二次通知**：`breakpointManager.addBreakpoint` 中先通过 `mutateCatalog` 写盘并广播事件，但此时底层 DAP 原生断点尚未执行 `applySingleBreakpointToEditor`；而在断点成功点亮后，未再次触发 `breakpoints:changed`，导致外部状态机与 UI 产生微小感知时差。
+**解决方案**:
+1. **焦点主动平滑归还**：在 `addBreakpointCommand` 完成后，显式调用 `vscode.window.showTextDocument(editor.document, { preserveFocus: false })`，将活动焦点平滑归还当前文本编辑器，触发宿主 Inlay Hints 自动重算；
+2. **DAP 注入闭环双向通知**：在 `breakpointManager.addBreakpoint` 的 `isSuccess !== false` 分支中，即刻点亮后追加派发 `appEventBus.emit("breakpoints:changed")`；
+3. **DAP 监听双重保底**：在 `SceneInlayHintsProvider` 中追加对 `vscode.debug.onDidChangeBreakpoints` 的监听，确保原生断点集变动时 100% 自动触发 `refresh()`。
+**影响文件**: `src/application/breakpointManager.ts`, `src/ui/commands/addBreakpointCommand.ts`, `src/ui/views/sceneInlayHintsProvider.ts`
+**日期**: 2026-10-05
+
+### 1.23 场景激活与取消激活 Inlay Hints 渲染竞态与旧态复活陷阱 (Inlay Hints Deferred Refresh and State Resurrection on Scene Toggle)
+
+**问题**: 用户在侧边栏 TreeView 点击场景激活时，可见编辑器行末的 Inlay Hints 没有即刻显示，必须点击断点或编辑器才显示；在点击取消激活时，Inlay Hints 同样没有即刻清除消失，直到点击断点后才消失。
+**原因**:
+1. **DAP 阶段未加锁导致中间态过早触发事件（Premature DAP Event Fire）**：`executeSceneActivation` 中装配断点至 DAP 时调用了 VS Code 的 `addBreakpoints` / `removeBreakpoints`；`SceneInlayHintsProvider` 监听了 `onDidChangeBreakpoints` 但未检查 `isApplyingScene()`，在断点下发期间过早触发了 `_onDidChangeInlayHints.fire()`。此时状态机与 `ActiveBreakpointIndex` 尚未更新，VS Code 调度了一次拉取（拉取到旧状态/空状态），并在微任务周期内将后续事件拦截（VS Code 内部 `if (!scheduler.isScheduled())` 直接忽略后续通知），导致界面直到下一次手动点击断点触发新的 DAP 事件时才被动刷新；
+2. **状态与索引时序倒置（Out-of-Order Execution in Pipeline）**：在 `sceneActivationPipeline.ts` 中先执行 `setActiveScenes`，后执行 `activeBreakpointIndex.sync`；`setActiveScenes` 同步触发 `_onDidChangeState`，此时索引处于脏标记状态；
+3. **取消激活时旧状态复活（State Resurrection Bug in Deactivation）**：在 `SceneInlayHintsProvider.provideInlayHints` 中，冷启动降级判定 `if (activeScenes.length === 0)` 误把运行期主动取消激活判定为冷启动，从而从磁盘残留配置中读取出旧的 `activeScenes` 赋给提示提供者，导致取消激活时 Inlay Hints 纹丝不动；且 `clearAll` 调用 `mutateCatalog` 时未传递 `syncActive: false`，导致 `syncActiveBreakpointsIfNeeded` 在 `catalog.getActiveScenes()` 为 0 时退回到旧 activeScenes；
+4. **侧边栏失焦防抖延迟补偿（Blurred Window Refresh Guarantee）**：用户在侧边栏点击时编辑器失焦，VS Code `InlayHintsController` 对后台编辑器有节流与丢帧倾向。
+**解决方案**:
+1. **装配加锁静默屏蔽**：在 `executeSceneActivation` 与 `clearAll` 期间加锁 `sceneStateManager.setApplyingState(true)`；`SceneInlayHintsProvider` 的 `onDidChangeBreakpoints` 监听中检测到 `isApplyingScene()` 时静默返回，彻底阻断装配中途的半生事件；
+2. **时序校准与最新聚合根投影**：在 `sceneActivationPipeline.ts` 中调整时序，在发射状态机事件前先完成 `activeBreakpointIndex.sync(...)`；
+3. **引入显式状态区分与阻断复活**：在 `SceneStateManager` 中记录 `hasExplicitActiveState` 与 `resetState()`；当显式清空场景后，`provideInlayHints` 绝不退回磁盘旧配置；在 `clearAll` 中传递 `syncActive: false`，并在 `mutateCatalog` 中若 `catalog.getHasExplicitActiveScenes() && catalog.getActiveScenes().length === 0` 时阻断断点复活；
+4. **尾随补偿与全局生命周期订阅**：在 `SceneInlayHintsProvider.refresh()` 中加入 50ms 尾随轻量补偿（Trailing Flush），并订阅 `scene:activated` 与 `scenes:changed` 全局终态事件。
+**影响文件**: `src/application/sceneStateManager.ts`, `src/application/sceneActivationPipeline.ts`, `src/application/mutateCatalog.ts`, `src/application/sceneManager.ts`, `src/domain/models/sceneCatalog.ts`, `src/ui/views/sceneInlayHintsProvider.ts`
+**日期**: 2026-10-05
+
+### 1.24 Monaco 文本编辑器失焦节流屏障、IPC 竞态踩踏与 Inlay Hints 渲染穿透 (Monaco InlayHintsController Background Throttling and Viewport Penetration)
+
+**问题**: 用户在侧边栏 TreeView 点击场景激活按钮时，可见文本编辑器行末的 Inlay Hints 注解无法立即绘制；用户必须点击编辑器内部或点击断点条目后，提示才突然浮现。同样，在侧边栏取消激活（清空场景）时，行末注解未消失，必须点击断点条目或编辑器后才消失；再次激活又不显示。
+**原因**:
+1. **Monaco InlayHintsController 失焦抑制与节流机制 (Background Editor Throttling)**：当焦点位于侧边栏（TreeView DOM）时，VS Code 的代码编辑器处于失焦（blurred/unfocused）状态。Monaco 内核的 `InlayHintsController` 为防止高刷后台编辑器卡顿，对失焦编辑器的装饰图层施加了惰性节流策略；
+2. **Monaco RunOnceScheduler IPC 往返窗口期监听器卸载漏洞**：在 Monaco 内部，每次 `scheduler` 执行时首先调用 `cancellationStore.reset()`，这会**立刻 dispose 对 provider.onDidChangeInlayHints 的监听器**；随后进入 `await InlayHintsFragments.create(...)` 跨进程 IPC 调用。在此 IPC 往返期间，若插件端因多次事件广播或定时器再次 `.fire()`，此时 Monaco 端**没有任何监听器存在**，导致事件被静默吞掉（Drop）；同时正在处理的前一个 Token 被标记 Cancelled，直接 `return` 放弃更新；
+3. **`showTextDocument` 伪唤醒的副作用**：原先试图通过带 `preserveFocus: true` 的 `vscode.window.showTextDocument` 穿透节流，但 Monaco 检测到 selection 未变直接视作 No-op；同时在某些版本下跨进程唤起编辑器反而中断了 Inlay Hints 的计算管线；
+4. **单次操作触发多重冗余事件风暴**：场景激活和清空同时触发了 `sceneStateManager.onDidChangeState`、`appEventBus.emit("scene:activated")`、`appEventBus.emit("scenes:changed")`，在几毫秒内多次调用 `refresh()`，加剧了 Monaco 内部的 Token 竞态取消。
+**解决方案**:
+1. **无感微触唤醒管线 (Non-intrusive Decoration Wake-up / `flushVisibleEditors`)**：
+   抛弃侵入性的 `showTextDocument`，改用轻量级空装饰触碰：通过 `editor.setDecorations(dummyDecorationType, [])`。这会触发 Monaco 底层的 `deltaDecorations` 逻辑，在完全不抢占侧边栏焦点、不触碰选区、微秒级开销下，强制唤醒失焦编辑器的重绘计算；
+2. **清除尾随双发定时器与事件去重**：
+   彻底移除 `refresh()` 内部的 50ms 尾随双重 `.fire()` 定时器。去除 `scene:activated` 对 `refresh()` 的冗余绑定，确保一次场景操作仅发出单次精准、干净的 `_onDidChangeInlayHints.fire()`，彻底消除 IPC 往返窗口期的踩踏与丢事件；
+3. **工作区根路径大小写标准化比对**：
+   在 `ActiveBreakpointIndex.isUpToDate` 中引入 `normalizeFsPath`，解决 Windows 盘符（如 `D:` 与 `d:`）因大小写严格比对导致缓存命中失败的隐蔽问题；
+4. **文档选择器标准化规范**：将 `registerInlayHintsProvider` 的选择器限定为 `[{ scheme: "file" }, { scheme: "untitled" }]`。
+**影响文件**: `src/ui/views/sceneInlayHintsProvider.ts`, `src/application/activeBreakpointIndex.ts`, `src/ui/commands/sceneCommands.ts`, `test-e2e/suite/06_inlay_hints.test.ts`
+**日期**: 2026-10-05
+
+### 1.25 从被动拉取（Pull）到主动推送（Push）：以 TextEditorDecorationType 根治失焦侧边栏交互下行末注解不刷新 (Push-based Decoration Pipeline for Scene Annotations)
+
+**问题**: 用户在侧边栏 TreeView 中点击激活场景时，可见文本编辑器行末的 Inlay Hints 注解不能即刻呈现；在侧边栏取消激活（清空）时，行末注解也未即刻消除；后续再次激活依旧不显示，直到用户在编辑器里点一下鼠标或者点击侧边栏的具体断点条目后，提示才突然同步。
+**原因**:
+1. **被动拉取模型 (Pull Model) 的物理局限**：VS Code 原生 `InlayHintsProvider` 主要服务于 LSP 语言服务器（如 TypeScript 类型提示、参数名提示），其重绘周期由 Monaco 内核的 `InlayHintsController` 驱动。Monaco 的设计对处于失焦（blurred/unfocused）状态的编辑器具有严格的降频与挂起策略，单纯触发 `_onDidChangeInlayHints.fire()` 无法强行击穿失焦屏障；
+2. **点击断点条目与侧边栏激活的物理差异**：用户点击侧边栏断点条目时，底层执行了 `vscode.open` 并在参数中携带了 `selection: Range`，这不仅移动了光标，而且强制将焦点带入了编辑器内部，唤醒了 Monaco 的 `onDidFocusEditorText` 与光标监听器；而侧边栏激活/取消激活仅在 TreeView 上操作，焦点仍在侧边栏，Monaco 编辑器持续处于睡眠状态。
+**解决方案**:
+1. **采用主动推送装饰管线 (Push-based TextEditorDecorationType Pipeline)**：
+   遵循业界顶级插件（GitLens、ErrorLens、Bookmarks 等）的最佳实践，使用 `vscode.window.createTextEditorDecorationType` 建立权威视图推送图层。`editor.setDecorations(decorationType, decorations)` 是 Extension Host 对 Monaco 视图层的直接主动推送机制，**完全不受编辑器失焦、后台或分屏节流影响**，在激活场景的当前微任务周期内即刻完成渲染；在取消激活或清空场景时，直接调用 `editor.setDecorations(decorationType, [])` 瞬间全清（0ms 响应）；
+2. **像素级视觉对齐与 Markdown 悬停富文本保真**：
+   在 `DecorationOptions` 中通过 `after: { contentText, color: new vscode.ThemeColor("editorInlayHint.foreground"), backgroundColor: new vscode.ThemeColor("editorInlayHint.background") }` 实现与原生 Inlay Hints 完全一致的视觉呈现；并通过 `hoverMessage` 挂载包含场景名、步骤序号、断点类型、触发条件、命中计数以及代码漂移自愈状态的丰富 Markdown 提示卡片；
+3. **状态记录与可见编辑器生命周期全景同步**：
+   由 `SceneInlayHintsProvider` 统一记录与同步状态：在 `sceneStateManager.onDidChangeState`、`appEventBus.on("breakpoints:changed")`、`appEventBus.on("scenes:changed")`、`vscode.window.onDidChangeVisibleTextEditors`、`vscode.window.onDidChangeActiveTextEditor` 等全量生命周期切面中统一调用 `updateDecorations()`；
+4. **核心逻辑提炼消除重复与 CRAP 立方惩罚**：
+   提炼 `getGroupedBreakpointsForDocument` 私有方法，统一承接活跃场景校验、断点索引同步、文档断点过滤与按行聚合步骤，消除 `updateDecorations` 与 `provideInlayHints` 之间的重复代码，将单函数圈复杂度控制在安全阈值，保障全工程平均 CRAP <= 3.5。
+**影响文件**: `src/ui/views/sceneInlayHintsProvider.ts`, `src/application/activeBreakpointIndex.ts`, `src/application/sceneStateManager.ts`
+**日期**: 2026-10-05
+
 
 
 

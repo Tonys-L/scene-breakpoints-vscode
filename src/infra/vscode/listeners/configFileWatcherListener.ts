@@ -7,7 +7,8 @@ import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 
 import { echoLoopGuard } from "#src/infra/storage/echoLoopGuard";
 import { vscodeBreakpointBridge } from "#src/infra/vscode/vscodeBreakpointBridge";
-import type { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
+import { vscodeLineReader } from "#src/infra/vscode/vscodeLineReader";
+import { appEventBus } from "#src/application/eventBus";
 
 /**
  * 响应外部 debug-scenes.json 变更与 AI 声明式场景激活
@@ -23,26 +24,7 @@ export async function handleExternalScenesFileChange(workspaceRoot: string): Pro
 		isDebuggingActive: !!vscode.debug.activeDebugSession,
 		sceneRepository: jsonFileSceneRepository,
 		breakpointBridge: vscodeBreakpointBridge,
-		fileLinesReader: async (filePath: string) => {
-			try {
-				const uri = vscode.Uri.file(filePath);
-				const doc = await vscode.workspace.openTextDocument(uri);
-				const lines: string[] = [];
-				for (let i = 0; i < doc.lineCount; i++) {
-					lines.push(doc.lineAt(i).text);
-				}
-				return lines;
-			} catch {
-				try {
-					if (fs.existsSync(filePath)) {
-						return fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
-					}
-				} catch (err) {
-					console.warn(`[ConfigFileWatcher] Failed fallback reading file ${filePath}:`, err);
-				}
-				return undefined;
-			}
-		},
+		lineReader: vscodeLineReader,
 		onPendingMessage: () => {
 			vscode.window.setStatusBarMessage(
 				vscode.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),
@@ -56,11 +38,9 @@ export async function handleExternalScenesFileChange(workspaceRoot: string): Pro
 
 /**
  * 配置文件文件系统监听服务 (Config File Watcher Listener)
- * 职责：监听 debug-scenes.json 磁盘文件变化，施加防抖与内部写盘指纹拦截，调度外部变更并刷新树视图
+ * 职责：监听 debug-scenes.json 磁盘文件变化，施加防抖与内部写盘指纹拦截，调度外部变更并通过 appEventBus 广播事件
  */
-export function registerConfigFileWatcherService(
-	treeDataProvider: SceneTreeDataProvider,
-): vscode.Disposable {
+export function registerConfigFileWatcherService(): vscode.Disposable {
 	let fileChangeDebounceTimer: NodeJS.Timeout | undefined;
 	const fileWatcher = vscode.workspace.createFileSystemWatcher("**/debug-scenes.json");
 
@@ -87,16 +67,22 @@ export function registerConfigFileWatcherService(
 			}
 
 			// 调度处理外部文件变更
-			const workspaceRoot = getWorkspaceRoot(false);
+			const workspaceRoot = getWorkspaceRoot();
 			if (workspaceRoot) {
 				await handleExternalScenesFileChange(workspaceRoot);
+				appEventBus.emit("scenes:changed", { workspaceRoot, reason: "external_file_change" });
 			}
-			treeDataProvider.refresh();
 		}, 100);
 	});
 
-	fileWatcher.onDidCreate(() => treeDataProvider.refresh());
-	fileWatcher.onDidDelete(() => treeDataProvider.refresh());
+	fileWatcher.onDidCreate(() => {
+		const workspaceRoot = getWorkspaceRoot() || "";
+		appEventBus.emit("scenes:changed", { workspaceRoot, reason: "file_created" });
+	});
+	fileWatcher.onDidDelete(() => {
+		const workspaceRoot = getWorkspaceRoot() || "";
+		appEventBus.emit("scenes:changed", { workspaceRoot, reason: "file_deleted" });
+	});
 
 	return fileWatcher;
 }

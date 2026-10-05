@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { SceneInlayHintsProvider } from "#src/ui/views/sceneInlayHintsProvider";
 import { sceneStateManager } from "#src/application/sceneStateManager";
+import { appEventBus } from "#src/application/eventBus";
 import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 
 export async function runInlayHintsProviderTests() {
@@ -203,7 +204,7 @@ export async function runInlayHintsProviderTests() {
 	// 8. 冷启动/重载窗口场景：内存状态机暂为空，但磁盘配置中声明了 activeScenes，自动回退感知
 	{
 		__resetMockVscodeState();
-		sceneStateManager.setActiveScenes([]); // 模拟刚启动未手动激活
+		sceneStateManager.resetState(); // 模拟刚启动未手动激活
 		const configWithActive = {
 			activeScenes: ["order-pay"],
 			scenes: mockConfig.scenes,
@@ -216,6 +217,108 @@ export async function runInlayHintsProviderTests() {
 		const doc = createMockDoc("d:/test-project/src/order.ts");
 		const hints = provider.provideInlayHints(doc);
 		assert.strictEqual(hints.length, 2, "冷启动时自动回退读取磁盘 activeScenes 并成功点亮提示");
+		provider.dispose();
+	}
+
+	// 9. 修复 Stale Inlay Hints Bug：激活场景未变，但场景内断点发生变更时，通过事件总线自动刷新提示
+	{
+		__resetMockVscodeState();
+		sceneStateManager.setActiveScenes(["dynamic-flow"]);
+		let dynamicConfig = {
+			scenes: {
+				"dynamic-flow": [
+					{ type: "line", file: "src/order.ts", line: 10, desc: "原断点" },
+				],
+			},
+		};
+		const provider = new SceneInlayHintsProvider(
+			() => dynamicConfig,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+		const doc = createMockDoc("d:/test-project/src/order.ts");
+		const hintsInitial = provider.provideInlayHints(doc);
+		assert.strictEqual(hintsInitial.length, 1);
+		assert.strictEqual(hintsInitial[0].label, "💡 [dynamic-flow #1] 原断点");
+
+		// 模拟在相同场景中新增一个断点，但 activeScenes 数组名称不变
+		dynamicConfig = {
+			scenes: {
+				"dynamic-flow": [
+					{ type: "line", file: "src/order.ts", line: 10, desc: "原断点" },
+					{ type: "line", file: "src/order.ts", line: 20, desc: "新追加断点" },
+				],
+			},
+		};
+		// 广播 breakpoints:changed 事件（模拟 mutateCatalog）
+		appEventBus.emit("breakpoints:changed", { workspaceRoot: mockWorkspaceRoot });
+
+		// 再次获取 Inlay Hints，必须立即返回 2 个提示，彻底修复缓存未失效缺陷
+		const hintsUpdated = provider.provideInlayHints(doc);
+		assert.strictEqual(hintsUpdated.length, 2, "断点变更后提示必须立即刷新，不得显示陈旧缓存");
+		assert.ok(hintsUpdated.some((h) => h.label.includes("新追加断点")));
+		provider.dispose();
+	}
+
+	// 10. 验证当 VS Code DAP 原生断点变动 (onDidChangeBreakpoints) 时，Inlay Hints 提供者触发 refresh 广播
+	{
+		__resetMockVscodeState();
+		const provider = new SceneInlayHintsProvider(
+			() => mockConfig,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+
+		let firedCount = 0;
+		provider.onDidChangeInlayHints(() => {
+			firedCount++;
+		});
+
+		// 触发宿主 DAP 断点变动
+		vscode.debug.fireDidChangeBreakpoints({ added: [], removed: [], changed: [] });
+		assert.strictEqual(firedCount, 1, "DAP 断点集合变动时，Inlay Hints 必须收到刷新通知");
+		provider.dispose();
+	}
+
+	// 11. 运行期主动取消激活场景后，即便磁盘配置中残留 activeScenes，也绝不复活显示提示
+	{
+		__resetMockVscodeState();
+		sceneStateManager.setActiveScenes([]); // 运行期明确取消激活
+		const configWithStaleActive = {
+			activeScenes: ["order-pay"],
+			scenes: mockConfig.scenes,
+		};
+		const provider = new SceneInlayHintsProvider(
+			() => configWithStaleActive,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+		const doc = createMockDoc("d:/test-project/src/order.ts");
+		const hints = provider.provideInlayHints(doc);
+		assert.strictEqual(hints.length, 0, "明确取消激活后必须返回空提示，绝不复活旧场景");
+		provider.dispose();
+	}
+
+	// 12. 当处于场景装配锁定中 (isApplyingScene = true)，DAP 原生断点变动被静默阻断，杜绝竞态闪烁
+	{
+		__resetMockVscodeState();
+		const provider = new SceneInlayHintsProvider(
+			() => mockConfig,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+
+		let firedCount = 0;
+		provider.onDidChangeInlayHints(() => {
+			firedCount++;
+		});
+
+		sceneStateManager.setApplyingState(true);
+		vscode.debug.fireDidChangeBreakpoints({ added: [], removed: [], changed: [] });
+		assert.strictEqual(firedCount, 0, "装配加锁期间必须阻断 DAP 变动通知");
+		sceneStateManager.setApplyingState(false);
+
+		provider.dispose();
 	}
 
 	console.log("  ✅ [Inlay Hints Provider] SceneInlayHintsProvider 单元测试全部通过！");

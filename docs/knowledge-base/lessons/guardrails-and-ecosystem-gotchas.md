@@ -88,7 +88,117 @@ VS Code 宿主交互 API 返回的是 `Thenable<T | undefined>`（Promise 兼容
 **影响文件**: `.eslintrc.json`, `test/unit/architecture/architecture_guard.test.mjs`, `src/**/*`
 **日期**: 2026-10-02
 
+### 3.4 Clean Architecture 与展示/基础设施物理硬隔离 (UI & Infra Strict Decoupling)
+
+**问题**:
+在功能演进中，UI 命令或辅助工具容易绕过应用层直连外部基础设施（如 UI 直接调用 Node `node:fs` 探测文件、直接操纵 DAP 适配器或通过克隆 `workspaceRoot.ts` 逃避分层门禁）。
+
+**原因**:
+缺乏层级边界自检意识，追求局部敏捷而破坏了单向依赖与分层隔离约束。
+
+**解决方案**:
+1. 严格落实依赖倒置原则（DIP）：UI 层严禁直接导入 `node:fs` 或 Infra 底座，统一通过 Application 深度服务（如 `AgentSkillService`）或宿主文档抽象进行安全 I/O；
+2. 精准化架构门禁（`.dependency-cruiser.cjs`），消除为了绕过规则而克隆辅助工具的坏味道；
+3. UI 视图纯粹作为被动观察者，通过 `ApplicationEventBus` 监听状态自刷新，严禁直接持有或篡改主业务状态。
+
+**影响模块**: `src/ui/commands/*`, `src/application/*`, `src/infra/*`, `.dependency-cruiser.cjs`
+
+---
+
+### 3.5 深模块设计与假想接缝/空壳类清除 (Deep Modules & Class Ceremony Elimination)
+
+**问题**:
+滥用面向对象仪式，为单一实现的接口提取假想接缝（如只有单个实现的 `ISelfHealingStore`）、创建只有静态方法的空壳工具类、或在模块间建立无附加价值的浅层透传桩。
+
+**原因**:
+盲目套用传统重型设计模式，导致文件碎片化（浅模块），增加调用跳跃成本并稀释内聚性。
+
+**解决方案**:
+1. 践行“深模块（Deep Modules）”原则：接口尽量极简，内部封装尽量充分；单一实现的存储契约直接内聚于具体实现中，拒绝过度假想抽象；
+2. 无状态纯计算全面回归函数式导出（`export function`），彻底废除纯静态空壳类；
+3. 坚决执行“删除测试（Deletion Test）”：清除无参数转换或防御聚合的空壳透传桩与死接口，调用方直连真实业务单例。
+
+**影响模块**: `src/infra/storage/*`, `src/shared/utils/*`, `src/application/*`
+
+---
+
+### 3.6 统一单写者变异管道与 SSOT 持久化一致性 (Single-Writer Mutation Pipeline)
+
+**问题**:
+多个管理器（如 `SceneManager`、`BreakpointManager`）各自手写落盘、防回环标记与事件广播样板代码，不仅产生重复逻辑，更易导致活跃断点变更时与 VS Code DAP 桥接器失步（如删除断点后红点残留）。
+
+**原因**:
+缺乏统一的变异事务管道，各管理器直接暴露写操作，打破了 INV-010 单向回写时序保证。
+
+**解决方案**:
+1. 建立统一的原子写事务管道 `mutateCatalog`，统一收敛磁盘落盘、防回环守卫标记与应用事件广播；
+2. 管道内集成活跃场景拓扑变更感知（`computeTopologyHash`）：一旦当前激活场景的断点发生增删、启闭或排序，自动调度桥接器执行原地 0 闪烁增量 Diff 同步，并刷新状态机内存投影；
+3. 依托 `SerialQueue` 与 `AsyncLocalStorage` 赋予变异管道同调用链安全可重入能力，彻底消除并发写覆盖与自死锁。
+
+**影响模块**: `src/application/mutateCatalog.ts`, `src/application/serialQueue.ts`, `src/application/breakpointManager.ts`
+
+---
+
+### 3.7 活动断点内存索引投影与应用事件总线弱耦合 (Active Breakpoint Index & Event Bus)
+
+**问题**:
+源码行末注解（InlayHints）与调试命中监听等高频操作（每毫秒多次）直接扫描磁盘或遍历全量配置，造成严重性能瓶颈；同时底层监听器直接持有 UI 视图实例，导致底层反向依赖上层视图。
+
+**原因**:
+混淆了“静态持久化权威 SSOT”与“运行期高性能内存投影”的职责边界，且缺乏解耦事件中枢。
+
+**解决方案**:
+1. 建立专职高频只读内存投影 `ActiveBreakpointIndex`，毫秒级快速响应文档断点检索与命中判定，物理隔离低频写事务；
+2. 建立轻量 `ApplicationEventBus`：领域与应用层数据状态变更、调试暂停与恢复统一广播事件，UI 视图响应式自刷新，彻底根除 Infra 到 UI 的逆向依赖。
+
+**影响模块**: `src/application/activeBreakpointIndex.ts`, `src/application/eventBus.ts`, `src/ui/views/*`
+
+---
+
+### 3.8 树节点呈现模型纯化与可变状态解耦 (TreeNodes Presentation State Decoupling)
+
+**问题**:
+树节点类挂载静态可变状态（如 `SceneNode.expandedScenes = new Set()`），且构造函数直连全局单例状态计算图标与失配状态，破坏了视图层的纯渲染约束，导致单测困难与隐式副作用。
+
+**原因**:
+为快速实现功能而引入全局静态容器与隐式依赖。
+
+**解决方案**:
+1. 提取显式 `TreeViewState` 容器统一管理树展开/折叠状态；
+2. 纯函数化图标计算（`resolveBreakpointIconFileName`），使图标逻辑具备 100% 确定性；
+3. 解耦树节点构造器，通过显式参数注入呈现数据，使树节点彻底回归无副作用的纯呈现模型。
+
+**影响模块**: `src/ui/views/treeNodes.ts`, `src/ui/views/sceneTreeProvider.ts`
+
+---
+
+### 3.9 AI 架构摆锤效应与深浅模块裁决防线 (AI Architectural Thrashing & Anti-Churn Protocol)
+
+**问题**:
+AI 在多轮架构扫描中容易陷入“摆锤效应”：一轮提议将细分模块合并为上帝对象，下一轮又提议拆散，造成无意义的代码反复横跳与架构震荡。
+
+**原因**:
+缺乏业务无关、正交客观的架构裁决硬标准。局部扫描仅凭浅层行数或调用层级做推导，忽视了“高频热点与低频事务的物理隔离”、“外部生态与内部规则的依赖边界”以及“充血实体的数据与行为主权”。
+
+**解决方案**:
+正式确立 ADR-004“防架构摇摆五步裁决协议”并作为不可逾越的架构硬约束：
+1. **测试一：变更节拍与性能热点隔离测试 (Cadence & Hotpath Isolation Test)**
+2. **测试二：依赖层级与框架边界测试 (Dependency Level & Framework Boundary Test)**
+3. **测试三：充血实体主权与防上帝对象测试 (Sovereign Entity vs. God Object Test)**
+4. **测试四：共变性与删除测试 (Co-variation & Deletion Test)**
+5. **测试五：伪中间人与正当门面判定 (Middleman vs. Legitimate Facade Test)**
+对空壳透传桩坚决修剪，对正当的高频投影、领域实体与物理分层实施刚性保护。
+
+**影响模块**: `docs/knowledge-base/adr/004-architectural-anti-churn-standard.md`, `docs/knowledge-base/constraints.md`, `src/application/sceneStateManager.ts`
+
+---
+
 ## 4. 命令总线与清单一致性陷阱
+
+
+
+
+
 
 ### 4.1 package.json 命令声明与代码实现 1:1 双向一致性
 
@@ -100,8 +210,6 @@ VS Code 插件容易在 `package.json` 配置了 `contributes.commands`，但在
 
 **影响文件**: `src/ui/commands/index.ts`, `src/ui/commands/treeCommands.ts`, `scripts/verify-guardrails.mjs`
 **日期**: 2026-09-30
-
----
 
 ## 5. 门禁与知识库治理陷阱
 
@@ -120,4 +228,26 @@ VS Code 插件容易在 `package.json` 配置了 `contributes.commands`，但在
 
 **影响文件**: `AGENTS.md`, `docs/knowledge-base/README.md`, `docs/knowledge-base/constraints.md`
 **日期**: 2026-10-02
+
+---
+
+### 5.2 CRAP 变更风险指标在高质量代码库中的敏感度校准 (KDD-CRAP-RADAR-001)
+
+
+**问题**:
+在引入 Uncle Bob 的 CRAP (Change Risk Anti-Patterns) 变更风险反模式指标时，若直接照搬业界通用的 16.4 作为危险警报阈值，雷达在高质量代码库中会严重失真、迟钝失效。
+
+**原因**:
+业界 16.4 阈值的数学推导假设是 $10^2 \times (1 - 0.6)^3 + 10 = 16.4$，其容忍圈复杂度高达 10 且允许测试覆盖率仅为 60%（普通平庸项目的及格线）。而在经过严格 Clean Architecture 分层与治理的高质量工程中，单函数受 GR-013 限制通常 $\le 80$ 行（全工程平均复杂度仅 3.13），核心代码受 GR-008 限制行覆盖率 $\ge 85\%$（CRAP 均分达到 3.51）。若继续使用 16.4 作为预警线，超过 97% 的函数都会通过，错失大量在 6 ~ 10 分区间的复杂度膨胀与微小测试盲区。
+
+**解决方案**:
+1. 基于工程自身的不变量与门禁指标推导本土化阈值：以容许复杂度 $\text{comp} \le 8$、单测覆盖率 $\text{cov} \ge 80\%$ 为基准，推导出项目专属告警敏感线为 6.0 ~ 8.5；
+2. 建立 6.0（关注警戒线）与 10.0（高危红线）的阶梯式双阈值雷达，并以 7 级金字塔分布直方图监控全项目 76% 代码维持在 $\le 4.0$ 的健康区间；
+3. 将计算固化为 `scripts/compute-crap.mjs` 并注册 `npm run check:crap`，实现 100% 物理真实 AST 提取与覆盖率对齐。
+
+**影响文件**: `scripts/compute-crap.mjs`, `package.json`
+**日期**: 2026-10-04
+
+---
+
 

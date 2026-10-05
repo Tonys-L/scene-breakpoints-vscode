@@ -60,6 +60,27 @@ export async function runFileLineReaderTests() {
 		}
 	}
 
+	// 3.1 优先命中异步编辑器文档提供者 (Promise<string[] | undefined>)
+	{
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-reader-async-"));
+		try {
+			const asyncReader = new FileLineReader({
+				workspaceRoot: tmpDir,
+				getDocumentLines: async (filePath) => {
+					if (filePath.endsWith("async.ts")) {
+						return ["async line 1", "async line 2"];
+					}
+					return undefined;
+				},
+			});
+
+			const lines = await asyncReader.readLines("async.ts");
+			assert.deepStrictEqual(lines, ["async line 1", "async line 2"], "必须正确解析异步文档提供者返回的内容");
+		} finally {
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		}
+	}
+
 	// 4. 磁盘物理文件读取、相对路径与绝对路径互斥解析
 	{
 		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-reader-test-"));

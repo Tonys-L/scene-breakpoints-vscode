@@ -5,3 +5,7 @@ export * from "./sceneManager";
 export * from "./breakpointManager";
 export * from "./agentSyncService";
 export * from "./eventBus";
+export * from "./mutateCatalog";
+export * from "./activeBreakpointIndex";
+export * from "./sceneActivationPipeline";
+export * from "./agentSkillService";

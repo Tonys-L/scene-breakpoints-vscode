@@ -138,4 +138,23 @@ suite("Suite 02: 多场景正向叠加与冲突合并", () => {
       "Tooltip 应保留完整全景清单",
     );
   });
+
+  test("TC-MUL-06: 显式空数组参数调用 applyScene([]) 彻底清空断点", async () => {
+    // 1. 初始激活两个场景
+    await vscode.commands.executeCommand("sceneBreakpoints.applyScene", [
+      "login-flow",
+      "discount-flow",
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.strictEqual(vscode.debug.breakpoints.length, 3, "初始应激活 3 个断点");
+
+    // 2. 显式传入 [] 参数调用 applyScene，断言不弹窗且直接清空
+    await vscode.commands.executeCommand("sceneBreakpoints.applyScene", []);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    // 3. 断言全部断点被清空，状态栏复位为 (None)
+    assert.strictEqual(vscode.debug.breakpoints.length, 0, "传入 [] 应清空全部断点");
+    const statusBar = api.getStatusBarItem();
+    assert.ok(statusBar.text.includes("(None)"), "状态栏应复位为 (None)");
+  });
 });

@@ -1,10 +1,9 @@
-import type { IBreakpointBridge, ISceneRepository } from "#src/domain/ports";
+import type { IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
 
 export interface ApplicationDependencies {
 	sceneRepository?: ISceneRepository;
 	breakpointBridge?: IBreakpointBridge;
-	loopGuard?: { markInternalSaving: () => void; isInternalSaving?: () => boolean };
-	fileLinesReader?: (filePath: string) => Promise<string[] | undefined>;
+	lineReader?: ILineReader;
 }
 
 let defaultDependencies: ApplicationDependencies = {};

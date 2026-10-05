@@ -1,12 +1,11 @@
 import * as vscode from "vscode";
 import { sceneManager } from "#src/application";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
+import { promptSceneCollision, showPayloadFormatError } from "#src/ui/utils/promptHelpers";
 import {
-	getSupportedFormatsTemplate,
 	decodeScenePayload as parseScenePayload,
 	encodeScenePayload as serializeScenePayload,
 } from "#src/domain/services/scenePayloadCodec";
-import { sceneStateManager } from "#src/application/sceneStateManager";
 import { SceneNode } from "#src/ui/views/sceneTreeProvider";
 import { applySceneCommand } from "./sceneCommands";
 
@@ -79,18 +78,7 @@ export async function importSceneFromClipboardCommand(): Promise<void> {
 		const parseResult = parseScenePayload(clipboardText);
 		if (!parseResult.success) {
 			const errorMsg = (parseResult as { success: false; error: string }).error;
-			const viewFormatAction = vscode.l10n.t("View Supported Formats");
-			const action = await vscode.window.showErrorMessage(
-				vscode.l10n.t("Failed to import scene from clipboard: {0}", errorMsg),
-				viewFormatAction,
-			);
-			if (action === viewFormatAction) {
-				const doc = await vscode.workspace.openTextDocument({
-					language: "jsonc",
-					content: getSupportedFormatsTemplate(),
-				});
-				await vscode.window.showTextDocument(doc, { preview: true });
-			}
+			await showPayloadFormatError(errorMsg);
 			return;
 		}
 
@@ -103,12 +91,7 @@ export async function importSceneFromClipboardCommand(): Promise<void> {
 		await sceneManager.importScene(workspaceRoot, finalSceneName, importedBreakpoints, mode);
 
 		// 记录展开状态，使导入后树视图响应 scenes:changed 事件刷新时新场景自动展开断点列表
-		SceneNode.expandedScenes.add(finalSceneName);
-
-		// 若当前导入覆盖或追加的场景正处于激活状态，立即重新激活更新后的断点集合
-		if (sceneStateManager.isSceneActive(finalSceneName)) {
-			await applySceneCommand(sceneStateManager.getActiveScenes());
-		}
+		SceneNode.markExpanded(finalSceneName);
 
 		const activateAction = vscode.l10n.t("Activate Scene");
 		const choice = await vscode.window.showInformationMessage(
@@ -135,38 +118,5 @@ async function resolveImportTargetScene(
 		return { sceneName: initialName, mode: "overwrite" };
 	}
 
-	const action = await vscode.window.showQuickPick(
-		[
-			{
-				label: vscode.l10n.t("Overwrite Existing Scene"),
-				description: vscode.l10n.t("Replace existing [{0}] completely", initialName),
-				value: "overwrite" as const,
-			},
-			{
-				label: vscode.l10n.t("Append & Merge Breakpoints"),
-				description: vscode.l10n.t("Keep existing breakpoints and upsert imported ones", initialName),
-				value: "append" as const,
-			},
-			{
-				label: vscode.l10n.t("Rename Imported Scene"),
-				description: vscode.l10n.t("Save under a new scene name", initialName),
-				value: "rename" as const,
-			},
-		],
-		{ placeHolder: vscode.l10n.t("Scene [{0}] already exists. Choose action:", initialName) },
-	);
-
-	if (!action) return null;
-
-	if (action.value === "rename") {
-		const newName = await vscode.window.showInputBox({
-			prompt: vscode.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
-			value: `${initialName}-copy`,
-			validateInput: (val) => (!val || !val.trim() ? vscode.l10n.t("Scene name cannot be empty") : null),
-		});
-		if (!newName || !newName.trim()) return null;
-		return { sceneName: newName.trim(), mode: "overwrite" };
-	}
-
-	return { sceneName: initialName, mode: action.value };
+	return promptSceneCollision({ sceneName: initialName, allowRename: true });
 }

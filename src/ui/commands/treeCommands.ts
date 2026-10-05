@@ -1,28 +1,24 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { sceneManager, breakpointManager } from "#src/application";
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import type { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
-import { BreakpointNode, SceneNode } from "#src/ui/views/treeNodes";
-import { findBreakpointLineInJson } from "#src/ui/locators/treeviewLocator";
+import { BreakpointNode, type SceneNode } from "#src/ui/views/treeNodes";
+import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator";
 import { applySceneCommand } from "./sceneCommands";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
+import { promptSceneName, confirmModalAction } from "#src/ui/utils/promptHelpers";
 
 function registerSceneActivationCommands(): vscode.Disposable[] {
+	const handleToggleSceneItem = async (node?: SceneNode) => {
+		if (node?.sceneName) {
+			const nextScenes = sceneStateManager.toggleScene(node.sceneName);
+			await applySceneCommand(nextScenes);
+		}
+	};
 	return [
-		vscode.commands.registerCommand("sceneBreakpoints.applySceneItem", async (node?: SceneNode) => {
-			if (node?.sceneName) {
-				const nextScenes = sceneStateManager.toggleScene(node.sceneName);
-				await applySceneCommand(nextScenes);
-			}
-		}),
-		vscode.commands.registerCommand("sceneBreakpoints.toggleSceneActivation", async (node?: SceneNode) => {
-			if (node?.sceneName) {
-				const nextScenes = sceneStateManager.toggleScene(node.sceneName);
-				await applySceneCommand(nextScenes);
-			}
-		}),
+		vscode.commands.registerCommand("sceneBreakpoints.applySceneItem", handleToggleSceneItem),
+		vscode.commands.registerCommand("sceneBreakpoints.toggleSceneActivation", handleToggleSceneItem),
 	];
 }
 
@@ -33,14 +29,12 @@ function registerSceneCrudCommands(treeDataProvider: SceneTreeDataProvider): vsc
 		}),
 		vscode.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
 			await runWithWorkspace(true, async (workspaceRoot) => {
-				const sceneName = await vscode.window.showInputBox({
+				const target = await promptSceneName({
 					prompt: vscode.l10n.t("Enter new scene identifier (e.g. auth-flow)"),
 					placeHolder: "auth-flow",
-					validateInput: (v) => (!v || !v.trim() ? vscode.l10n.t("Scene name cannot be empty") : null),
 				});
-				if (!sceneName) return;
+				if (!target) return;
 
-				const target = sceneName.trim();
 				const ok = await sceneManager.createScene(workspaceRoot, target);
 				if (ok) {
 					void vscode.window.showInformationMessage(vscode.l10n.t("Created empty scene [{0}]", target));
@@ -52,17 +46,16 @@ function registerSceneCrudCommands(treeDataProvider: SceneTreeDataProvider): vsc
 		vscode.commands.registerCommand("sceneBreakpoints.renameSceneItem", async (node?: SceneNode) => {
 			if (!node?.sceneName) return;
 			await runWithWorkspace(true, async (workspaceRoot) => {
-				const newName = await vscode.window.showInputBox({
+				const newName = await promptSceneName({
 					prompt: vscode.l10n.t("Enter new identifier for scene [{0}]", node.sceneName),
 					value: node.sceneName,
-					validateInput: (v) => (!v || !v.trim() ? vscode.l10n.t("Scene name cannot be empty") : null),
 				});
-				if (!newName || newName.trim() === node.sceneName) return;
+				if (!newName || newName === node.sceneName) return;
 
-				const renamed = await sceneManager.renameScene(workspaceRoot, node.sceneName, newName.trim());
+				const renamed = await sceneManager.renameScene(workspaceRoot, node.sceneName, newName);
 				if (renamed) {
 					void vscode.window.showInformationMessage(
-						vscode.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName.trim()),
+						vscode.l10n.t("Renamed scene [{0}] to [{1}]", node.sceneName, newName),
 					);
 				}
 			});
@@ -70,13 +63,11 @@ function registerSceneCrudCommands(treeDataProvider: SceneTreeDataProvider): vsc
 		vscode.commands.registerCommand("sceneBreakpoints.deleteSceneItem", async (node?: SceneNode) => {
 			if (!node?.sceneName) return;
 			await runWithWorkspace(true, async (workspaceRoot) => {
-				const confirmText = vscode.l10n.t("Delete");
-				const choice = await vscode.window.showWarningMessage(
+				const confirmed = await confirmModalAction(
 					vscode.l10n.t("Are you sure you want to delete scene [{0}]? This action cannot be undone.", node.sceneName),
-					{ modal: true },
-					confirmText,
+					vscode.l10n.t("Delete"),
 				);
-				if (choice !== confirmText) return;
+				if (!confirmed) return;
 
 				const deleted = await sceneManager.deleteScene(workspaceRoot, node.sceneName);
 				if (deleted) {
@@ -87,15 +78,12 @@ function registerSceneCrudCommands(treeDataProvider: SceneTreeDataProvider): vsc
 		vscode.commands.registerCommand("sceneBreakpoints.duplicateScene", async (node?: SceneNode) => {
 			if (!node?.sceneName) return;
 			await runWithWorkspace(true, async (workspaceRoot) => {
-				const defaultTargetName = `${node.sceneName}-copy`;
-				const newName = await vscode.window.showInputBox({
+				const target = await promptSceneName({
 					prompt: vscode.l10n.t("Enter target identifier for duplicated scene"),
-					value: defaultTargetName,
-					validateInput: (v) => (!v || !v.trim() ? vscode.l10n.t("Scene name cannot be empty") : null),
+					value: `${node.sceneName}-copy`,
 				});
-				if (!newName) return;
+				if (!target) return;
 
-				const target = newName.trim();
 				const duplicated = await sceneManager.duplicateScene(workspaceRoot, node.sceneName, target);
 				if (duplicated) {
 					void vscode.window.showInformationMessage(
@@ -149,23 +137,21 @@ function registerBreakpointMutationCommands(): vscode.Disposable[] {
 			if (!node?.sceneName || !node.breakpoint) return;
 			await runWithWorkspace(true, async (workspaceRoot) => {
 				const configPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
-				if (!fs.existsSync(configPath)) {
+				try {
+					const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(configPath));
+					const editor = await vscode.window.showTextDocument(doc, { preview: false });
+					const targetLine = findBreakpointLineInJson(doc.getText(), node.sceneName, node.breakpoint!);
+
+					const lineIdx = Math.max(0, targetLine - 1);
+					const pos = new vscode.Position(lineIdx, 0);
+					const range = new vscode.Range(pos, pos);
+					editor.selection = new vscode.Selection(pos, pos);
+					editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+				} catch (err: any) {
 					void vscode.window.showWarningMessage(
-						vscode.l10n.t("Failed to read debug-scenes.json: {0}", vscode.l10n.t("File does not exist")),
+						vscode.l10n.t("Failed to read debug-scenes.json: {0}", err?.message || String(err)),
 					);
-					return;
 				}
-
-				const content = fs.readFileSync(configPath, "utf-8");
-				const targetLine = findBreakpointLineInJson(content, node.sceneName, node.breakpoint!);
-				const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(configPath));
-				const editor = await vscode.window.showTextDocument(doc, { preview: false });
-
-				const lineIdx = Math.max(0, targetLine - 1);
-				const pos = new vscode.Position(lineIdx, 0);
-				const range = new vscode.Range(pos, pos);
-				editor.selection = new vscode.Selection(pos, pos);
-				editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
 			});
 		}),
 	];
@@ -211,10 +197,8 @@ async function executeMove(
 
 			setTimeout(async () => {
 				try {
-					const children = await treeDataProvider.getChildren(new SceneNode(node.sceneName, 0, false, false));
-					const updatedNode = children.find(
-						(c): c is BreakpointNode => c instanceof BreakpointNode && c.index === targetIndex,
-					);
+					const children = await treeDataProvider.getBreakpointNodes(node.sceneName);
+					const updatedNode = children.find((c) => c.index === targetIndex);
 					if (updatedNode) {
 						await treeView.reveal(updatedNode, { select: true, focus: true });
 					}
@@ -261,4 +245,3 @@ export function registerTreeCommands(
 		...registerBreakpointReorderCommands(treeDataProvider, treeView),
 	);
 }
-

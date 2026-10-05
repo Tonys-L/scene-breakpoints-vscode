@@ -36,7 +36,14 @@ suite("Suite 10: Agent 技能分发、巡检与平滑升级", () => {
     if (initialConfigContent) {
       const workspaceFolders = vscode.workspace.workspaceFolders!;
       const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
-      require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+      for (let i = 0; i < 5; i++) {
+        try {
+          require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   });

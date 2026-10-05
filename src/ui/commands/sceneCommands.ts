@@ -2,9 +2,12 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { sceneManager } from "#src/application";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { promptInlayHintsModeIfFirstTime } from "#src/ui/views/inlayHintsPrompt";
+import { promptInlayHintsModeIfFirstTime } from "#src/ui/utils/inlayHintsCoordinator";
+import { flushVisibleEditors } from "#src/ui/views/sceneInlayHintsProvider";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
-export { addBreakpointCommand } from "./addBreakpointCommand";
+import { detectSceneFromActiveEditor } from "#src/ui/locators/sceneJsonLocator";
+import { promptSceneName, promptSelectScenes, promptSceneCollision } from "#src/ui/utils/promptHelpers";
+import { uniqueStrings } from "#src/shared/utils/arrayUtils";
 
 let extensionGlobalState: vscode.Memento | undefined;
 
@@ -19,12 +22,24 @@ export function setExtensionGlobalState(state?: vscode.Memento): void {
 export async function clearAllCommand(): Promise<void> {
 	await runWithWorkspace(false, async (workspaceRoot) => {
 		await sceneManager.clearAll(workspaceRoot);
+		flushVisibleEditors();
+		void vscode.window.showInformationMessage(vscode.l10n.t("Cleared all breakpoints"));
 	});
 }
 
 // ==============================
 // 2. 激活场景断点辅助：目标场景推导
 // ==============================
+
+export function parseSceneParameter(sceneParam?: unknown): string[] | undefined {
+	if (sceneParam === undefined || sceneParam === null) return undefined;
+	if (Array.isArray(sceneParam)) return uniqueStrings(sceneParam);
+	if (typeof sceneParam === "string") {
+		const parsed = uniqueStrings(sceneParam);
+		return parsed.length > 0 ? parsed : undefined;
+	}
+	return undefined;
+}
 
 async function resolveTargetScenes(
 	workspaceRoot: string,
@@ -37,52 +52,24 @@ async function resolveTargetScenes(
 		return undefined;
 	}
 
-	let targetScenes: string[] | undefined;
+	// 1. 优先解析显式调用参数
+	let targetScenes = parseSceneParameter(sceneParam);
 
-	if (Array.isArray(sceneParam)) {
-		targetScenes = sceneParam.map((s) => String(s).trim()).filter(Boolean);
-	} else if (typeof sceneParam === "string" && sceneParam.trim()) {
-		if (sceneParam.includes(",")) {
-			targetScenes = sceneParam.split(",").map((s) => s.trim()).filter(Boolean);
-		} else {
-			targetScenes = [sceneParam.trim()];
+	// 2. 智能感知：若当前打开的是 debug-scenes.json 且未显式指定场景，优先识别光标所在区域的场景名
+	if (targetScenes === undefined) {
+		const detected = detectSceneFromActiveEditor(sceneNames);
+		if (detected) {
+			targetScenes = [detected];
 		}
 	}
 
-	// 智能感知：若当前打开的是 debug-scenes.json 且未显式指定场景，优先识别光标所在区域的场景名
-	if (!targetScenes) {
-		const activeEditor = vscode.window.activeTextEditor;
-		if (activeEditor && activeEditor.document.fileName.endsWith("debug-scenes.json")) {
-			const currentLine = activeEditor.selection.active.line;
-			for (let i = currentLine; i >= 0; i--) {
-				const lineText = activeEditor.document.lineAt(i).text;
-				for (const sName of sceneNames) {
-					if (lineText.includes(`"${sName}"`) && lineText.includes(":")) {
-						targetScenes = [sName];
-						break;
-					}
-				}
-				if (targetScenes) break;
-			}
+	// 3. 若仍未确定场景，弹出可多选面板 (canPickMany: true)
+	if (targetScenes === undefined) {
+		const sceneCounts: Record<string, number> = {};
+		for (const name of sceneNames) {
+			sceneCounts[name] = config.scenes[name]?.length || 0;
 		}
-	}
-
-	// 若仍未确定场景，弹出可多选面板 (canPickMany: true)
-	if (!targetScenes) {
-		const currentActiveScenes = sceneStateManager.getActiveScenes();
-		const items = sceneNames.map((name) => ({
-			label: name,
-			description: vscode.l10n.t("{0} breakpoint(s)", config.scenes[name]?.length || 0),
-			picked: currentActiveScenes.includes(name),
-		}));
-
-		const picked = await vscode.window.showQuickPick(items, {
-			canPickMany: true,
-			placeHolder: vscode.l10n.t("Select one or more debug scenes to activate (check to layer breakpoints)"),
-		});
-
-		if (picked === undefined) return undefined; // 用户按 ESC 或取消
-		targetScenes = picked.map((it) => it.label);
+		targetScenes = await promptSelectScenes(sceneNames, sceneCounts, sceneStateManager.getActiveScenes());
 	}
 
 	return targetScenes;
@@ -194,6 +181,7 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 		// 若所有勾选均被取消，执行清空并返回
 		if (targetScenes.length === 0) {
 			await sceneManager.clearAll(workspaceRoot);
+			flushVisibleEditors();
 			return;
 		}
 
@@ -219,6 +207,7 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 			: result.validTargetScenes.join(" + ");
 
 		showActivationFeedback(workspaceRoot, primarySceneLabel, result);
+		flushVisibleEditors();
 		promptInlayHintsModeIfFirstTime(extensionGlobalState).catch(() => {});
 	});
 }
@@ -230,49 +219,32 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 export async function exportSceneCommand(): Promise<void> {
 	const currentBreakpoints = vscode.debug.breakpoints;
 	if (!currentBreakpoints || currentBreakpoints.length === 0) {
-		void vscode.window.showWarningMessage(vscode.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."));
+		void vscode.window.showWarningMessage(
+			vscode.l10n.t("No active breakpoints found in current workspace. Please set some breakpoints first."),
+		);
 		return;
 	}
 
 	await runWithWorkspace(true, async (workspaceRoot) => {
-		// 1. 输入新场景名称
-		const sceneName = await vscode.window.showInputBox({
+		// 1. 输入新场景名称 (统一通过 promptSceneName 内置非空校验)
+		const targetScene = await promptSceneName({
 			prompt: vscode.l10n.t("Enter scene identifier to export current breakpoints to (e.g. order-flow-debug)"),
 			placeHolder: "order-flow-debug",
-			validateInput: (value) => {
-				if (!value || !value.trim()) return vscode.l10n.t("Scene name cannot be empty");
-				return null;
-			},
 		});
-
-		if (!sceneName || !sceneName.trim()) return;
-		const targetScene = sceneName.trim();
+		if (!targetScene) return;
 
 		// 2. 询问是否覆盖或追加（若场景已存在）
 		const config = sceneManager.loadScenesConfig(workspaceRoot);
 		let mode: "overwrite" | "append" = "overwrite";
 
 		if (config.scenes[targetScene] && config.scenes[targetScene].length > 0) {
-			const action = await vscode.window.showQuickPick(
-				[
-					{ label: vscode.l10n.t("Overwrite Existing Scene"), value: "overwrite" as const },
-					{ label: vscode.l10n.t("Append to Existing Scene"), value: "append" as const },
-				],
-				{
-					placeHolder: vscode.l10n.t("Scene [{0}] already exists. Choose action:", targetScene),
-				},
-			);
-
-			if (!action) return;
-			mode = action.value;
+			const decision = await promptSceneCollision({ sceneName: targetScene });
+			if (!decision) return;
+			mode = decision.mode;
 		}
 
 		// 3. 调用 Application 用例执行导出保存
-		const result = await sceneManager.exportScene(
-			workspaceRoot,
-			targetScene,
-			mode,
-		);
+		const result = await sceneManager.exportScene(workspaceRoot, targetScene, mode);
 
 		if (result.success) {
 			sceneStateManager.setActiveScene(targetScene, result.count);
@@ -282,4 +254,3 @@ export async function exportSceneCommand(): Promise<void> {
 		}
 	});
 }
-

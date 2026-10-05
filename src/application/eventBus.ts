@@ -6,12 +6,16 @@
 export type ApplicationEventType =
 	| "scenes:changed"
 	| "scene:activated"
-	| "breakpoints:changed";
+	| "breakpoints:changed"
+	| "debug:paused"
+	| "debug:resumed";
 
 export interface ApplicationEventPayloads {
 	"scenes:changed": { workspaceRoot: string; reason?: string };
 	"scene:activated": { workspaceRoot: string; activeScenes: string[] };
 	"breakpoints:changed": { workspaceRoot: string; sceneName?: string };
+	"debug:paused": { file: string; line: number };
+	"debug:resumed": { reason?: string } | undefined;
 }
 
 export type ApplicationEventListener<T extends ApplicationEventType> = (

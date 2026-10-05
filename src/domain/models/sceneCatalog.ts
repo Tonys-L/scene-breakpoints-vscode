@@ -201,6 +201,13 @@ export class SceneCatalog {
 	}
 
 	/**
+	 * 判断当前聚合根是否显式声明了激活场景集合 (即使为空数组)
+	 */
+	public getHasExplicitActiveScenes(): boolean {
+		return this.hasExplicitActiveScenes;
+	}
+
+	/**
 	 * 获取启动项路由表
 	 */
 	public getBindings(): Record<string, string | string[]> {

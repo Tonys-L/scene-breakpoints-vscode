@@ -480,7 +480,11 @@
     "lint": "eslint src scripts --ext .ts,.mjs",
     "check:deps": "depcruise --config .dependency-cruiser.cjs src",
     "check:dups": "jscpd",
+    "check:crap": "node scripts/compute-crap.mjs",
     "verify": "node scripts/verify-guardrails.mjs",
+    "check:all": "npm run typecheck && npm run lint && npm run check:deps && npm run check:dups && npm run check:crap && npm run verify",
+    "test:all": "npm run check:all && npm test && npm run test:e2e",
+
     "build": "node build.mjs",
     "build:test": "node -e \"fs.rmSync('out-test', {recursive:true, force:true})\" && npx esbuild test-e2e/index.ts test-e2e/suite/*.test.ts --bundle --outdir=out-test --format=cjs --platform=node --external:vscode --external:mocha",
     "test": "node --experimental-transform-types --import ./test/register.mjs test/run-all.mjs",

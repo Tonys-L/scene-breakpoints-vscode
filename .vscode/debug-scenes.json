@@ -4,13 +4,11 @@
       {
         "type": "line",
         "file": "src/extension.ts",
-        "line": 61,
+        "line": 47,
         "enabled": true,
         "desc": "步骤 1: 插件主入口 activate，初始化状态栏与调试侧边栏树视图",
         "contextSnippet": {
-          "prev": "// 1. 初始化底部常驻状态栏",
           "current": "initStatusBarItem(context);",
-          "next": "// 2. 注册左侧调试面板专属场景管理树视图 (Run & Debug View)",
           "scopeAnchor": "activate",
           "indent": 1
         }
@@ -22,8 +20,8 @@
         "enabled": true,
         "desc": "步骤 2: registerAllCommands 表驱动集中注册所有命令与 globalState 挂载",
         "contextSnippet": {
-          "prev": "export function registerAllCommands(",
           "current": "context: vscode.ExtensionContext,",
+          "prev": "export function registerAllCommands(",
           "next": "deps?: CommandDependencies,",
           "scopeAnchor": "registerAllCommands",
           "indent": 1
@@ -32,13 +30,11 @@
       {
         "type": "line",
         "file": "src/extension.ts",
-        "line": 75,
+        "line": 64,
         "enabled": true,
         "desc": "步骤 3: 挂载 5 大核心事件监听器、Inlay Hints 与 CodeLens 提供者",
         "contextSnippet": {
-          "prev": "// 4. 挂载各领域协同业务服务 (Services) 与技术层提供者",
           "current": "context.subscriptions.push(",
-          "next": "// 启动项三级匹配与调试配置联动服务",
           "scopeAnchor": "activate",
           "indent": 1
         }
@@ -46,12 +42,12 @@
       {
         "type": "line",
         "file": "src/ui/commands/skillCommands.ts",
-        "line": 110,
+        "line": 43,
         "enabled": true,
         "desc": "步骤 4: checkAndPromptSkillUpdates 检查工作区 Agent Skill 规则版本",
         "contextSnippet": {
-          "prev": "export async function checkAndPromptSkillUpdates(",
           "current": "context: vscode.ExtensionContext,",
+          "prev": "export async function checkAndPromptSkillUpdates(",
           "next": "workspaceRoot: string,",
           "scopeAnchor": "checkAndPromptSkillUpdates",
           "indent": 0
@@ -66,7 +62,6 @@
         "enabled": true,
         "desc": "步骤 1: applySceneCommand 用户触发场景激活指令",
         "contextSnippet": {
-          "prev": "// ==============================",
           "current": "async function resolveTargetScenes(",
           "next": "workspaceRoot: string,",
           "scopeAnchor": "resolveTargetScenes",
@@ -80,8 +75,8 @@
         "enabled": true,
         "desc": "步骤 2: activateScene 进入单写者串行队列排队与校验",
         "contextSnippet": {
-          "prev": "targetScenes: string[],",
           "current": "options?: SceneOpOptions,",
+          "prev": "targetScenes: string[],",
           "next": "): Promise<ActivateSceneResult> {",
           "scopeAnchor": "loadCatalog",
           "indent": 4
@@ -89,13 +84,13 @@
       },
       {
         "type": "line",
-        "file": "src/infra/vscode/bridge/dapDiffApplier.ts",
-        "line": 22,
+        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
+        "line": 225,
         "enabled": true,
         "desc": "步骤 3: applySceneBreakpoints 增量 Diff 装配入口",
         "contextSnippet": {
-          "prev": "*/",
           "current": "export async function applySceneBreakpoints(",
+          "prev": "*/",
           "next": "workspaceRoot: string,",
           "scopeAnchor": "applySceneBreakpoints",
           "indent": 0
@@ -106,26 +101,19 @@
         "file": "src/domain/services/healingEngine.ts",
         "line": 133,
         "enabled": true,
-        "desc": "步骤 4: resolveHealedLineFromLines 快路径校验与滑动窗口打分探测",
-        "contextSnippet": {
-          "prev": "}",
-          "current": "",
-          "next": "// (4) 几何缩进深度协同打分",
-          "indent": 0
-        }
+        "desc": "步骤 4: resolveHealedLineFromLines 快路径校验与滑动窗口打分探测"
       },
       {
         "type": "line",
-        "file": "src/infra/vscode/bridge/dapDiffApplier.ts",
-        "line": 44,
+        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
+        "line": 243,
         "enabled": true,
         "desc": "步骤 5: 原地 0 闪烁增量下发 DAP 断点",
         "contextSnippet": {
-          "prev": "if (toRemove.length > 0) await vscode.debug.removeBreakpoints(toRemove);",
           "current": "if (toAdd.length > 0) await vscode.debug.addBreakpoints(toAdd);",
-          "next": "// 3. 记录已装配拓扑 Hash",
+          "prev": "if (toRemove.length > 0) await vscode.debug.removeBreakpoints(toRemove);",
           "scopeAnchor": "applySceneBreakpoints",
-          "indent": 4
+          "indent": 2
         }
       },
       {
@@ -135,8 +123,8 @@
         "enabled": true,
         "desc": "步骤 6: 投影更新至 sceneStateManager 驱动 UI 刷新与自愈回写",
         "contextSnippet": {
-          "prev": "private baselineBreakpointCount = 0;",
           "current": "private unmatchedBreakpointsKeySet = new Set<string>();",
+          "prev": "private baselineBreakpointCount = 0;",
           "next": "private readonly _onDidChangeState = new PureEventEmitter<SceneState>();",
           "scopeAnchor": "SceneStateManager",
           "indent": 2
@@ -149,35 +137,69 @@
         "file": "src/ui/commands/sceneCommands.ts",
         "line": 196,
         "enabled": true,
-        "desc": "步骤 1: exportSceneCommand 触发反向导出指令与场景名输入"
+        "desc": "步骤 1: exportSceneCommand 触发反向导出指令与场景名输入",
+        "contextSnippet": {
+          "current": "if (result.missingScenes.length > 0) {",
+          "prev": "}",
+          "next": "void vscode.window.showWarningMessage(",
+          "scopeAnchor": "applySceneCommand",
+          "indent": 4
+        }
       },
       {
         "type": "line",
         "file": "src/application/sceneManager.ts",
         "line": 223,
         "enabled": true,
-        "desc": "步骤 2: exportScene 采集当前所有活动断点并封装聚合根"
+        "desc": "步骤 2: exportScene 采集当前所有活动断点并封装聚合根",
+        "contextSnippet": {
+          "current": "{ ...options, queue: this.queue },",
+          "prev": "},",
+          "next": ");",
+          "indent": 6
+        }
       },
       {
         "type": "line",
-        "file": "src/infra/vscode/bridge/dapBreakpointCollector.ts",
-        "line": 14,
+        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
+        "line": 255,
         "enabled": true,
-        "desc": "步骤 3: collectCurrentBreakpoints 遍历 VS Code 宿主断点模型"
+        "desc": "步骤 3: collectCurrentBreakpoints 遍历 VS Code 宿主断点模型",
+        "contextSnippet": {
+          "current": "type: \"function\",",
+          "prev": "exportedBps.push({",
+          "next": "functionName: bp.functionName,",
+          "scopeAnchor": "collectCurrentBreakpoints",
+          "indent": 8
+        }
       },
       {
         "type": "line",
         "file": "src/domain/models/fingerprint.ts",
         "line": 86,
         "enabled": true,
-        "desc": "步骤 4: fromCodeSnippet 提取当前行及上下三行代码上下文指纹"
+        "desc": "步骤 4: fromCodeSnippet 提取当前行及上下三行代码上下文指纹",
+        "contextSnippet": {
+          "current": "}",
+          "prev": "return undefined;",
+          "next": "const snippet = extractContextSnippetFromLines(lines, targetLine - 1);",
+          "scopeAnchor": "constructor",
+          "indent": 4
+        }
       },
       {
         "type": "line",
         "file": "src/infra/storage/jsonFileSceneRepository.ts",
         "line": 92,
         "enabled": true,
-        "desc": "步骤 5: saveScenesConfig 原子写入 debug-scenes.json 磁盘文件"
+        "desc": "步骤 5: saveScenesConfig 原子写入 debug-scenes.json 磁盘文件",
+        "contextSnippet": {
+          "current": "export function saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void {",
+          "prev": "}",
+          "next": "const configPath = getScenesConfigPath(workspaceRoot);",
+          "scopeAnchor": "saveScenesConfig",
+          "indent": 0
+        }
       }
     ],
     "feat:tree-interaction-flow": [
@@ -193,21 +215,42 @@
         "file": "src/ui/commands/treeCommands.ts",
         "line": 185,
         "enabled": true,
-        "desc": "步骤 2: revealInConfigFile 在 debug-scenes.json 中快速定位选中断点"
+        "desc": "步骤 2: revealInConfigFile 在 debug-scenes.json 中快速定位选中断点",
+        "contextSnippet": {
+          "current": "treeView?: vscode.TreeView<any>,",
+          "prev": "treeDataProvider: SceneTreeDataProvider,",
+          "next": "): Promise<void> {",
+          "scopeAnchor": "executeMove",
+          "indent": 2
+        }
       },
       {
         "type": "line",
         "file": "src/ui/views/sceneTreeProvider.ts",
         "line": 178,
         "enabled": true,
-        "desc": "步骤 3: handleDrop 树节点拖拽重排事件捕获与目标位置推导"
+        "desc": "步骤 3: handleDrop 树节点拖拽重排事件捕获与目标位置推导",
+        "contextSnippet": {
+          "current": ": [];",
+          "prev": "? config.scenes[sceneName]",
+          "next": "const isActive = sceneStateManager.isSceneActive(sceneName);",
+          "scopeAnchor": "getTreeItem",
+          "indent": 6
+        }
       },
       {
         "type": "line",
         "file": "src/domain/models/scene.ts",
         "line": 160,
         "enabled": true,
-        "desc": "步骤 4: reorderBreakpoint 充血聚合根重排断点顺序并持久化"
+        "desc": "步骤 4: reorderBreakpoint 充血聚合根重排断点顺序并持久化",
+        "contextSnippet": {
+          "current": "return this.breakpoints.filter(",
+          "prev": "public getUnfingerprintedBreakpoints(): Breakpoint[] {",
+          "next": "(bp) => bp.type !== \"function\" && !bp.isFingerprinted() && bp.file && bp.line,",
+          "scopeAnchor": "getUnfingerprintedBreakpoints",
+          "indent": 4
+        }
       }
     ],
     "feat:clipboard-share-flow": [
@@ -216,21 +259,41 @@
         "file": "src/ui/commands/clipboardCommands.ts",
         "line": 14,
         "enabled": true,
-        "desc": "步骤 1: copySceneToClipboardCommand 选择场景并打包剪贴板 Payload"
+        "desc": "步骤 1: copySceneToClipboardCommand 选择场景并打包剪贴板 Payload",
+        "contextSnippet": {
+          "current": "*/",
+          "prev": "* 复制指定场景至系统剪贴板 (以标准 JSON 格式共享)",
+          "next": "export async function copySceneToClipboardCommand(target?: SceneNode | string): Promise<void> {",
+          "indent": 1
+        }
       },
       {
         "type": "line",
         "file": "src/domain/services/scenePayloadCodec.ts",
         "line": 16,
         "enabled": true,
-        "desc": "步骤 2: encode 格式化为携带 schema 的标准 JSON 传输对象"
+        "desc": "步骤 2: encode 格式化为携带 schema 的标准 JSON 传输对象",
+        "contextSnippet": {
+          "current": "export const SCHEMA_URL =",
+          "prev": "| { success: false; error: string };",
+          "next": "\"https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json\";",
+          "scopeAnchor": "ParsePayloadResult",
+          "indent": 0
+        }
       },
       {
         "type": "line",
         "file": "src/ui/commands/clipboardCommands.ts",
         "line": 41,
         "enabled": true,
-        "desc": "步骤 3: importSceneFromClipboardCommand 从系统剪贴板读取文本"
+        "desc": "步骤 3: importSceneFromClipboardCommand 从系统剪贴板读取文本",
+        "contextSnippet": {
+          "current": "placeHolder: vscode.l10n.t(\"Select a scene to copy to clipboard\"),",
+          "prev": "{",
+          "next": "},",
+          "scopeAnchor": "copySceneToClipboardCommand",
+          "indent": 10
+        }
       },
       {
         "type": "line",
@@ -253,37 +316,135 @@
         "file": "src/ui/views/sceneInlayHintsProvider.ts",
         "line": 48,
         "enabled": true,
-        "desc": "步骤 1: provideInlayHints 宿主拉取当前激活文档的行末注解"
+        "desc": "步骤 1: provideInlayHints 宿主拉取当前激活文档的行末注解",
+        "contextSnippet": {
+          "current": "this.refresh();",
+          "prev": "sceneStateManager.onDidChangeState(() => {",
+          "next": "}),",
+          "scopeAnchor": "constructor",
+          "indent": 8
+        }
       },
       {
         "type": "line",
         "file": "src/ui/views/sceneInlayHintsProvider.ts",
         "line": 65,
         "enabled": true,
-        "desc": "步骤 2: 遍历 activeScenes 筛选与当前文件路径匹配的场景断点"
+        "desc": "步骤 2: 遍历 activeScenes 筛选与当前文件路径匹配的场景断点",
+        "contextSnippet": {
+          "current": "}),",
+          "prev": "}",
+          "next": ");",
+          "scopeAnchor": "constructor",
+          "indent": 8
+        }
       },
       {
         "type": "line",
         "file": "src/ui/views/sceneInlayHintsProvider.ts",
         "line": 85,
         "enabled": true,
-        "desc": "步骤 3: 按行聚合多断点并构造无 kind 的 InlayHint 幽灵文本"
+        "desc": "步骤 3: 按行聚合多断点并构造无 kind 的 InlayHint 幽灵文本",
+        "contextSnippet": {
+          "current": "*/",
+          "prev": "* 构建断点步骤的丰富悬停 Markdown 信息",
+          "next": "private buildHintTooltip(stepItems: BreakpointStepItem[]): vscode.MarkdownString {",
+          "scopeAnchor": "refresh",
+          "indent": 3
+        }
       },
       {
         "type": "line",
-        "file": "src/ui/views/inlayHintsPrompt.ts",
-        "line": 24,
+        "file": "src/ui/utils/inlayHintsCoordinator.ts",
+        "line": 29,
         "enabled": true,
-        "desc": "步骤 4: promptInlayHintsModeIfFirstTime 首次激活常驻引导判定"
+        "desc": "步骤 4: promptInlayHintsModeIfFirstTime 首次激活常驻引导判定",
+        "contextSnippet": {
+          "current": "export async function promptInlayHintsModeIfFirstTime(globalState?: vscode.Memento): Promise<void> {",
+          "prev": "*/",
+          "next": "try {",
+          "scopeAnchor": "promptInlayHintsModeIfFirstTime",
+          "indent": 0
+        }
+      }
+    ],
+    "test": [
+      {
+        "type": "line",
+        "file": "src/ui/commands/index.ts",
+        "line": 37,
+        "enabled": true,
+        "desc": "测试一下",
+        "contextSnippet": {
+          "current": "[\"sceneBreakpoints.addBreakpoint\", addBreakpointCommand],",
+          "next": "[\"sceneBreakpoints.applyScene\", applySceneCommand],",
+          "scopeAnchor": "registerAllCommands",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/ui/commands/index.ts",
+        "line": 43,
+        "enabled": true,
+        "desc": "测试2",
+        "contextSnippet": {
+          "current": "[\"sceneBreakpoints.copySceneToClipboard\", copySceneToClipboardCommand],",
+          "next": "[\"sceneBreakpoints.importSceneFromClipboard\", importSceneFromClipboardCommand],",
+          "scopeAnchor": "registerAllCommands",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/ui/commands/index.ts",
+        "line": 44,
+        "enabled": true,
+        "desc": "测试3",
+        "contextSnippet": {
+          "current": "[\"sceneBreakpoints.importSceneFromClipboard\", importSceneFromClipboardCommand],",
+          "prev": "[\"sceneBreakpoints.copySceneToClipboard\", copySceneToClipboardCommand],",
+          "scopeAnchor": "registerAllCommands",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/ui/commands/index.ts",
+        "line": 51,
+        "enabled": true,
+        "desc": "测试33",
+        "contextSnippet": {
+          "current": "context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));",
+          "prev": "for (const [commandId, handler] of commands) {",
+          "next": "}",
+          "scopeAnchor": "registerAllCommands",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/ui/commands/index.ts",
+        "line": 55,
+        "enabled": true,
+        "desc": "112312",
+        "contextSnippet": {
+          "current": "registerTreeCommands(context, deps.treeDataProvider, deps.treeView);",
+          "prev": "if (deps?.treeDataProvider) {",
+          "next": "}",
+          "scopeAnchor": "registerAllCommands",
+          "indent": 4
+        }
       }
     ]
   },
+  "activeScenes": [
+    "test",
+    "arch:activation-flow"
+  ],
   "bindings": {
     "Launch Extension": [
       "arch:activation-flow"
     ]
-  },
-  "activeScenes": [
-    "arch:activation-flow"
-  ]
+  }
 }

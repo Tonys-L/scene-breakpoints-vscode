@@ -5,6 +5,7 @@ import { runArchitectureGuardTests } from "./unit/architecture/architecture_guar
 import { runArrayUtilsTests } from "./unit/shared/utils/array_utils.test.mjs";
 import { runStringSimilarityTests } from "./unit/shared/utils/string_similarity.test.mjs";
 import { runTextUtilsTests } from "./unit/shared/utils/text_utils.test.mjs";
+import { runPathUtilsTests } from "./unit/shared/utils/path_utils.test.mjs";
 
 // Domain Layer Unit Tests (models & services)
 import { runFingerprintVoTests } from "./unit/domain/models/fingerprint.test.mjs";
@@ -18,10 +19,14 @@ import { runScenePayloadCodecTests } from "./unit/domain/services/scene_payload_
 
 // Application Layer Unit Tests (coordinators & services)
 import { runSceneServiceTests } from "./unit/application/scene_manager.test.mjs";
+import { runSceneActivationPipelineTests } from "./unit/application/scene_activation_pipeline.test.mjs";
 import { runCoordinatorsTests } from "./unit/application/breakpoint_manager.test.mjs";
+import { runMutateCatalogTests } from "./unit/application/mutate_catalog.test.mjs";
 import { runStateTests } from "./unit/application/scene_state_manager.test.mjs";
 import { runEventBusTests } from "./unit/application/event_bus.test.mjs";
 import { runSerialQueueTests } from "./unit/application/serial_queue.test.mjs";
+import { runActiveBreakpointIndexTests } from "./unit/application/active_breakpoint_index.test.mjs";
+import { runAgentSkillServiceTests } from "./unit/application/agent_skill_service.test.mjs";
 
 // Infra Layer Unit Tests (storage, bridge & listeners)
 import { runEchoLoopGuardTests } from "./unit/infra/storage/echo_loop_guard.test.mjs";
@@ -29,19 +34,22 @@ import { runSceneRepositoryTests } from "./unit/infra/storage/json_file_scene_re
 import { runAtomicFileJsonStoreTests } from "./unit/infra/storage/atomic_file_json_store.test.mjs";
 import { runFileLineReaderTests } from "./unit/infra/storage/file_line_reader.test.mjs";
 import { runBreakpointBridgeTests } from "./unit/infra/vscode/vscode_breakpoint_bridge.test.mjs";
-import { runDapBridgeTests } from "./unit/infra/vscode/bridge/dap_bridge.test.mjs";
+import { runDapBridgeTests } from "./unit/infra/vscode/dap_echo_guard.test.mjs";
 import { runListenersRegistryTests } from "./unit/infra/vscode/listeners/listeners_registry.test.mjs";
 
 // UI Layer Unit Tests (locators, views, commands & utils)
-import { runTreeviewLocatorTests } from "./unit/ui/locators/treeview_locator.test.mjs";
+import { runSceneJsonLocatorTests } from "./unit/ui/locators/scene_json_locator.test.mjs";
 import { runCodeLensProviderTests } from "./unit/ui/views/scene_code_lens_provider.test.mjs";
 import { runInlayHintsProviderTests } from "./unit/ui/views/scene_inlay_hints_provider.test.mjs";
+import { runInlayHintsCoordinatorTests } from "./unit/ui/views/inlay_hints_coordinator.test.mjs";
 import { runStatusBarViewTests } from "./unit/ui/views/status_bar_view.test.mjs";
 import { runTreeViewTests } from "./unit/ui/views/scene_tree_provider.test.mjs";
 import { runTemplateProviderTests } from "./unit/ui/views/template_content_provider.test.mjs";
 import { runCommandsRegistryTests } from "./unit/ui/commands/commands_registry.test.mjs";
 import { runCommandsExecutionTests } from "./unit/ui/commands/commands_execution.test.mjs";
 import { runCommandRunnerTests } from "./unit/ui/utils/command_runner.test.mjs";
+import { runPromptHelpersTests } from "./unit/ui/utils/prompt_helpers.test.mjs";
+import { runAgentRuleManagerTests } from "./unit/ui/utils/agent_rule_manager.test.mjs";
 
 // Script & Verification Tests
 import { runExtractChangelogTests } from "./unit/scripts/extract_changelog.test.mjs";
@@ -69,6 +77,8 @@ try {
 	console.log("");
 	runTextUtilsTests();
 	console.log("");
+	runPathUtilsTests();
+	console.log("");
 
 	// 2. 领域层纯单元测试 (Domain Models & Services 1:1 镜像)
 	await runFingerprintVoTests();
@@ -92,13 +102,21 @@ try {
 	// 3. 应用层服务编排测试 (Application 1:1 镜像)
 	await runSceneServiceTests();
 	console.log("");
+	await runSceneActivationPipelineTests();
+	console.log("");
 	await runCoordinatorsTests();
+	console.log("");
+	await runMutateCatalogTests();
 	console.log("");
 	runStateTests();
 	console.log("");
 	await runEventBusTests();
 	console.log("");
 	await runSerialQueueTests();
+	console.log("");
+	await runActiveBreakpointIndexTests();
+	console.log("");
+	await runAgentSkillServiceTests();
 	console.log("");
 
 	// 4. 基础设施存储与原生桥接测试 (Infra Storage & VSCode 1:1 镜像)
@@ -118,17 +136,23 @@ try {
 	console.log("");
 
 	// 5. 开发者交互展示层测试 (UI Locators, Views & Commands 1:1 镜像)
-	runTreeviewLocatorTests();
+	runSceneJsonLocatorTests();
 	console.log("");
 	await runCodeLensProviderTests();
 	console.log("");
 	await runInlayHintsProviderTests();
+	console.log("");
+	await runInlayHintsCoordinatorTests();
 	console.log("");
 	runStatusBarViewTests();
 	console.log("");
 	await runTreeViewTests();
 	console.log("");
 	await runCommandRunnerTests();
+	console.log("");
+	await runPromptHelpersTests();
+	console.log("");
+	await runAgentRuleManagerTests();
 	console.log("");
 	runTemplateProviderTests();
 	console.log("");
@@ -150,7 +174,7 @@ try {
 
 	const duration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 30 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
+	console.log(`🎉 全部 32 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
 	console.log("=======================================================\n");
 } catch (error) {
 	console.error("\n❌ 测试套件执行失败：\n", error);

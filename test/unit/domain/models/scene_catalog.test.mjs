@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Scene } from "#src/domain/models/scene.ts";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog.ts";
 import { Breakpoint } from "#src/domain/models/breakpoint.ts";
-import { findBreakpointLineInJson } from "#src/ui/locators/treeviewLocator.ts";
+import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator.ts";
 
 export function runSceneAndCatalogTests() {
 	console.log("  ▶ [Scene & Catalog] 运行场景实体与目录聚合根全维单元测试套件 (TDD)...");

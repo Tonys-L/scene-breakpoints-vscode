@@ -9,4 +9,5 @@ export interface ILineReader {
 	 * @returns 行数组 (0-indexed) 或 undefined (当文件不存在或读取失败时)
 	 */
 	readLines(filePath: string): Promise<string[] | undefined>;
+	clearCache?(): void;
 }

@@ -85,4 +85,89 @@ suite("Suite 06: 编辑器行末注解 Inlay Hints 渲染", () => {
       await config.update("inlayHints.enabled", undefined, vscode.ConfigurationTarget.Global);
     }
   });
+
+  test("TC-HINT-02: 可见文本编辑器失焦状态下场景激活与清空注解即刻呈现与消除", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, "src", "sample.ts");
+    const doc = await vscode.workspace.openTextDocument(fileUri);
+    const editor = await vscode.window.showTextDocument(doc, { preview: false });
+    assert.ok(editor, "sample.ts 必须成功作为可见文本编辑器打开");
+
+    const range = new vscode.Range(0, 0, doc.lineCount, 0);
+
+    // 1. 确保初始处于清空状态
+    await vscode.commands.executeCommand("sceneBreakpoints.clearAll");
+    await new Promise((r) => setTimeout(r, 250));
+
+    let hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+      "vscode.executeInlayHintProvider",
+      doc.uri,
+      range,
+    );
+    assert.strictEqual(hints?.length ?? 0, 0, "初始清空状态下 Inlay Hints 必须为 0");
+
+    // 2. 模拟用户在左侧侧边栏操作：通过 tree item 激活场景（此时焦点在侧边栏）
+    // 构造模拟的 SceneNode
+    await vscode.commands.executeCommand("sceneBreakpoints.applySceneItem", { sceneName: "login-flow" });
+    await new Promise((r) => setTimeout(r, 250));
+
+    // 验证激活后立即获取 Inlay Hints
+    hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+      "vscode.executeInlayHintProvider",
+      doc.uri,
+      range,
+    );
+    assert.strictEqual(hints?.length, 2, `激活 login-flow 后必须立即提供 2 个 Inlay Hints, actual=${hints?.length}`);
+
+    // 3. 添加新断点到当前激活场景 (addBreakpoint)
+    const origQuickPick = vscode.window.showQuickPick;
+    const origInputBox = vscode.window.showInputBox;
+    let callIndex = 0;
+    (vscode.window as any).showQuickPick = async (items: any) => {
+      callIndex++;
+      if (callIndex === 1) {
+        return items.find((i: any) => i.sceneName === "login-flow") || items[0];
+      }
+      return items.find((i: any) => i.type === "line") || items[0];
+    };
+    (vscode.window as any).showInputBox = async () => "动态添加的新断点";
+    try {
+      await vscode.commands.executeCommand("sceneBreakpoints.addBreakpoint");
+      await new Promise((r) => setTimeout(r, 400));
+    } finally {
+      vscode.window.showQuickPick = origQuickPick;
+      vscode.window.showInputBox = origInputBox;
+    }
+
+    hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+      "vscode.executeInlayHintProvider",
+      doc.uri,
+      range,
+    );
+    console.log("[DEBUG TC-HINT-02] After add breakpoint, hints count:", hints?.length);
+
+    // 4. 点击取消激活 (toggleSceneActivation)
+    await vscode.commands.executeCommand("sceneBreakpoints.toggleSceneActivation", { sceneName: "login-flow" });
+    await new Promise((r) => setTimeout(r, 250));
+
+    hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+      "vscode.executeInlayHintProvider",
+      doc.uri,
+      range,
+    );
+    console.log("[DEBUG TC-HINT-02] After cancel activation, hints count:", hints?.length);
+    assert.strictEqual(hints?.length ?? 0, 0, `取消激活后 Inlay Hints 必须立即归零, actual=${hints?.length}`);
+
+    // 5. 后续再次激活 (applySceneItem)
+    await vscode.commands.executeCommand("sceneBreakpoints.applySceneItem", { sceneName: "login-flow" });
+    await new Promise((r) => setTimeout(r, 250));
+
+    hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+      "vscode.executeInlayHintProvider",
+      doc.uri,
+      range,
+    );
+    console.log("[DEBUG TC-HINT-02] After re-activate, hints count:", hints?.length);
+    assert.ok(hints && hints.length > 0, `再次激活后 Inlay Hints 必须立即显示, actual=${hints?.length}`);
+  });
 });

@@ -1,9 +1,4 @@
 {
-  "bindings": {
-    "Launch Test Session": [
-      "login-flow"
-    ]
-  },
   "scenes": {
     "login-flow": [
       {
@@ -11,15 +6,29 @@
         "file": "src/sample.ts",
         "line": 3,
         "enabled": true,
-        "desc": "检查 normalized email"
+        "desc": "检查 normalized email",
+        "contextSnippet": {
+          "current": "if (!normalized) {",
+          "prev": "const normalized = email.trim().toLowerCase();",
+          "next": "throw new Error(\"Invalid email\");",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       },
       {
         "type": "condition",
         "file": "src/sample.ts",
         "line": 6,
-        "condition": "pass === \"secret123\"",
         "enabled": true,
-        "desc": "验证密码"
+        "condition": "pass === \"secret123\"",
+        "desc": "验证密码",
+        "contextSnippet": {
+          "current": "const isAuth = pass === \"secret123\";",
+          "prev": "}",
+          "next": "return isAuth;",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       }
     ],
     "discount-flow": [
@@ -28,7 +37,14 @@
         "file": "src/sample.ts",
         "line": 12,
         "enabled": true,
-        "desc": "VIP 折扣分支"
+        "desc": "VIP 折扣分支",
+        "contextSnippet": {
+          "current": "if (level === \"vip\") {",
+          "prev": "let rate = 1.0;",
+          "next": "rate = 0.8;",
+          "scopeAnchor": "calculateDiscount",
+          "indent": 2
+        }
       }
     ],
     "full-type-scene": [
@@ -37,31 +53,59 @@
         "file": "src/sample.ts",
         "line": 3,
         "enabled": true,
-        "desc": "物理行断点"
+        "desc": "物理行断点",
+        "contextSnippet": {
+          "current": "if (!normalized) {",
+          "prev": "const normalized = email.trim().toLowerCase();",
+          "next": "throw new Error(\"Invalid email\");",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       },
       {
         "type": "condition",
         "file": "src/sample.ts",
         "line": 6,
-        "condition": "pass === \"secret123\"",
         "enabled": true,
-        "desc": "条件断点"
+        "condition": "pass === \"secret123\"",
+        "desc": "条件断点",
+        "contextSnippet": {
+          "current": "const isAuth = pass === \"secret123\";",
+          "prev": "}",
+          "next": "return isAuth;",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       },
       {
         "type": "hitCount",
         "file": "src/sample.ts",
         "line": 13,
-        "hitCondition": ">5",
         "enabled": true,
-        "desc": "命中频次断点"
+        "hitCondition": ">5",
+        "desc": "命中频次断点",
+        "contextSnippet": {
+          "current": "rate = 0.8;",
+          "prev": "if (level === \"vip\") {",
+          "next": "} else if (level === \"svip\") {",
+          "scopeAnchor": "calculateDiscount",
+          "indent": 4
+        }
       },
       {
         "type": "logpoint",
         "file": "src/sample.ts",
         "line": 15,
-        "logMessage": "Discount calculated: {price}",
         "enabled": true,
-        "desc": "日志断点"
+        "logMessage": "Discount calculated: {price}",
+        "desc": "日志断点",
+        "contextSnippet": {
+          "current": "rate = 0.7;",
+          "prev": "} else if (level === \"svip\") {",
+          "next": "}",
+          "scopeAnchor": "calculateDiscount",
+          "indent": 4
+        }
       },
       {
         "type": "function",
@@ -76,7 +120,14 @@
         "file": "src/sample.ts",
         "line": 3,
         "enabled": false,
-        "desc": "冲突 A: 禁用"
+        "desc": "冲突 A: 禁用",
+        "contextSnippet": {
+          "current": "if (!normalized) {",
+          "prev": "const normalized = email.trim().toLowerCase();",
+          "next": "throw new Error(\"Invalid email\");",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       }
     ],
     "conflict-b": [
@@ -85,7 +136,14 @@
         "file": "src/sample.ts",
         "line": 3,
         "enabled": true,
-        "desc": "冲突 B: 启用"
+        "desc": "冲突 B: 启用",
+        "contextSnippet": {
+          "current": "if (!normalized) {",
+          "prev": "const normalized = email.trim().toLowerCase();",
+          "next": "throw new Error(\"Invalid email\");",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       }
     ],
     "ultra-long-scenario-authentication-pipeline": [
@@ -93,7 +151,14 @@
         "type": "line",
         "file": "src/sample.ts",
         "line": 2,
-        "enabled": true
+        "enabled": true,
+        "contextSnippet": {
+          "current": "const normalized = email.trim().toLowerCase();",
+          "prev": "export async function loginUser(email: string, pass: string): Promise<boolean> {",
+          "next": "if (!normalized) {",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       }
     ],
     "ultra-long-scenario-order-settlement-pipeline": [
@@ -101,7 +166,14 @@
         "type": "line",
         "file": "src/sample.ts",
         "line": 4,
-        "enabled": true
+        "enabled": true,
+        "contextSnippet": {
+          "current": "throw new Error(\"Invalid email\");",
+          "prev": "if (!normalized) {",
+          "next": "}",
+          "scopeAnchor": "loginUser",
+          "indent": 4
+        }
       }
     ],
     "ultra-long-scenario-payment-gateway-pipeline": [
@@ -109,8 +181,20 @@
         "type": "line",
         "file": "src/sample.ts",
         "line": 5,
-        "enabled": true
+        "enabled": true,
+        "contextSnippet": {
+          "current": "}",
+          "prev": "throw new Error(\"Invalid email\");",
+          "next": "const isAuth = pass === \"secret123\";",
+          "scopeAnchor": "loginUser",
+          "indent": 2
+        }
       }
+    ]
+  },
+  "bindings": {
+    "Launch Test Session": [
+      "login-flow"
     ]
   }
 }

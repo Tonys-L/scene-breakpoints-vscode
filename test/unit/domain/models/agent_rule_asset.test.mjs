@@ -133,6 +133,16 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 		assert.strictEqual(hasherInvoked, true, "当传入合法的 IHashService 时必须优先调用注入的 hasher");
 		assert.ok(hash.startsWith("mocked-hash-for-"));
 
+		// 支持纯函数形式的 Hasher
+		let fnHasherInvoked = false;
+		const fnHasher = (text) => {
+			fnHasherInvoked = true;
+			return `fn-hash-${text.slice(0, 5)}`;
+		};
+		const fnHash = asset.computeFingerprint(fnHasher);
+		assert.strictEqual(fnHasherInvoked, true, "当传入纯函数 Hasher 时必须直接调用该函数");
+		assert.strictEqual(fnHash, "fn-hash-# Tit");
+
 		// hasher 非函数或空对象时，降级走默认 pureSha256
 		const fallbackHash = asset.computeFingerprint({});
 		assert.strictEqual(typeof fallbackHash, "string");
@@ -169,6 +179,17 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 		const resWithBoth = asset.evaluateLifecycle(sameTemplate, "2.0.0-custom", thirdParamHasher);
 		assert.strictEqual(thirdParamHasherCalled, true);
 		assert.strictEqual(resWithBoth.detectedVersion, "2.0.0-custom");
+
+		// 8.3 第二参数直接传入纯函数 Hasher
+		let secondParamFnCalled = false;
+		const directFnHasher = (txt) => {
+			secondParamFnCalled = true;
+			return "hash-from-second-param-fn";
+		};
+		const resWithFn = asset.evaluateLifecycle(sameTemplate, directFnHasher);
+		assert.strictEqual(secondParamFnCalled, true, "第二参数传入纯函数 Hasher 时应当被识别为 actualHasher");
+		assert.strictEqual(resWithFn.status, "UpToDate");
+		assert.strictEqual(resWithFn.localHash, "hash-from-second-param-fn");
 	}
 
 	// 9. pureSha256 边界与非 ASCII 中文字符编码校验

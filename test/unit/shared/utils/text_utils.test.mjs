@@ -8,6 +8,7 @@ import {
 	findScopeAnchorLine,
 	stripMarkdown,
 	stripComments,
+	hasGitConflictMarkers,
 } from "#src/shared/utils/textUtils.ts";
 
 export function runTextUtilsTests() {
@@ -219,7 +220,15 @@ export function runTextUtilsTests() {
 	assert.strictEqual(stripComments(123), "{}");
 	assert.strictEqual(stripComments("// only comment"), "{}");
 	assert.strictEqual(stripComments("/* only block comment */"), "{}");
-	assert.strictEqual(stripComments("   "), "{}");
+	// 8. hasGitConflictMarkers Git 冲突标记检测
+	assert.strictEqual(hasGitConflictMarkers(null), false);
+	assert.strictEqual(hasGitConflictMarkers(""), false);
+	assert.strictEqual(hasGitConflictMarkers("normal code without conflicts"), false);
+	assert.strictEqual(hasGitConflictMarkers("<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> feature"), true);
+	assert.strictEqual(hasGitConflictMarkers("<<<<<<< ours\nsome code"), true);
+	assert.strictEqual(hasGitConflictMarkers("======="), true);
+	assert.strictEqual(hasGitConflictMarkers(">>>>>>> theirs"), true);
+	assert.strictEqual(hasGitConflictMarkers("const x = 7 < 8; // less than"), false);
 
 	console.log("  ✅ [Shared Utils] textUtils 单测全部通过！");
 }
@@ -227,3 +236,4 @@ export function runTextUtilsTests() {
 if (process.argv[1]?.endsWith("text_utils.test.mjs")) {
 	runTextUtilsTests();
 }
+

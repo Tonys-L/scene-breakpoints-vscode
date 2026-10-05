@@ -2,9 +2,9 @@ export * from "./views/sceneTreeProvider";
 export * from "./views/statusBarView";
 export * from "./views/sceneCodeLensProvider";
 export * from "./views/sceneInlayHintsProvider";
-export * from "./views/inlayHintsPrompt";
+export * from "./utils/inlayHintsCoordinator";
 export * from "./commands/index";
-export * from "./locators/treeviewLocator";
-export * from "./views/treeInteractionListener";
+export * from "./locators/sceneJsonLocator";
 export * from "./views/templateContentProvider";
-export * from "./utils/workspaceRoot";
+export { getWorkspaceRoot, runWithWorkspace, runWithActiveEditor } from "./utils/commandRunner";
+

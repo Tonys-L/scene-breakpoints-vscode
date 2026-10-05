@@ -1,8 +1,8 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
-import { LaunchBindingResolver } from "#src/infra/vscode/launchBindingResolver";
+import { LaunchBindingResolver } from "#src/domain/services/launchBindingResolver";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import type { SourceSceneBreakpoint } from "#src/domain/types";
+import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
+import { appEventBus } from "#src/application/eventBus";
 import { loadScenesConfig } from "#src/infra/storage/jsonFileSceneRepository";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 import { handleExternalScenesFileChange } from "./configFileWatcherListener";
@@ -24,7 +24,7 @@ export function registerDebugLaunchService(): vscode.Disposable {
 				.get<boolean>("autoActivateOnLaunch", true);
 
 			if (autoActivate && config) {
-				const workspaceRoot = getWorkspaceRoot(false);
+				const workspaceRoot = getWorkspaceRoot();
 				if (workspaceRoot) {
 					const scenesConfig = loadScenesConfig(workspaceRoot);
 					const targetScenes = LaunchBindingResolver.resolveScenes(
@@ -51,27 +51,27 @@ export function registerDebugLaunchService(): vscode.Disposable {
 	});
 }
 
-export type PausedLocationHandler = (file: string, line: number) => Promise<void> | void;
+interface DapMessagePayload {
+	type?: string;
+	command?: string;
+	event?: string;
+	body?: {
+		threadId?: number;
+		allThreadsContinued?: boolean;
+		stackFrames?: Array<{
+			line?: number;
+			source?: { path?: string };
+		}>;
+	};
+}
 
-function createRevealAndClearCallbacks(param1?: any, param2?: any) {
+function createRevealAndClearCallbacks() {
 	const revealPausedBreakpoint = async (file: string, line: number): Promise<void> => {
-		if (typeof param1 === "function") {
-			await param1(file, line);
-		} else if (param1 && typeof param1.onPausedLocation === "function") {
-			await param1.onPausedLocation(file, line);
-		} else if (param2 && typeof param2.revealPausedLocation === "function") {
-			await param2.revealPausedLocation(param1, file, line);
-		} else if (param1 && typeof param1.revealPausedLocation === "function") {
-			await param1.revealPausedLocation(param2, file, line);
-		}
+		appEventBus.emit("debug:paused", { file, line });
 	};
 
 	const clearPausedBreakpoint = (): void => {
-		if (param2 && typeof param2.clearPausedLocation === "function") {
-			param2.clearPausedLocation();
-		} else if (param1 && typeof param1.clearPausedLocation === "function") {
-			param1.clearPausedLocation();
-		}
+		appEventBus.emit("debug:resumed", undefined);
 	};
 
 	return { revealPausedBreakpoint, clearPausedBreakpoint };
@@ -86,7 +86,7 @@ function createDapTrackerFactory(
 			let sessionPausedThreadId: number | undefined;
 
 			return {
-				onDidSendMessage(msg: any) {
+				onDidSendMessage(msg: DapMessagePayload) {
 					if (
 						msg?.type === "response" &&
 						msg.command === "stackTrace" &&
@@ -127,30 +127,16 @@ function createEditorCheckListener(
 ): vscode.Disposable[] {
 	const checkEditor = (editor?: vscode.TextEditor): void => {
 		if (!vscode.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") return;
-		const workspaceRoot = getWorkspaceRoot(false);
+		const workspaceRoot = getWorkspaceRoot();
 		if (!workspaceRoot) return;
 
 		const activeScenes = sceneStateManager.getActiveScenes();
 		if (activeScenes.length === 0) return;
 
-		const config = loadScenesConfig(workspaceRoot);
 		const currentFile = editor.document.uri.fsPath;
 		const currentLine = editor.selection.active.line + 1;
 
-		const isHitInScene = activeScenes.some((scene) => {
-			const list = config.scenes[scene] || [];
-			return list.some((bp) => {
-				if (bp.type === "function") return false;
-				const src = bp as SourceSceneBreakpoint;
-				if (Number(src.line) !== currentLine) return false;
-				const full = path.isAbsolute(src.file) ? src.file : path.join(workspaceRoot, src.file);
-				const n1 = currentFile.replace(/\\/g, "/").toLowerCase();
-				const n2 = full.replace(/\\/g, "/").toLowerCase();
-				const n3 = src.file.replace(/\\/g, "/").toLowerCase();
-				return n1 === n2 || n1.endsWith("/" + n3) || n1.endsWith(n3);
-			});
-		});
-
+		const isHitInScene = activeBreakpointIndex.isHitInActiveScenes(currentFile, currentLine, workspaceRoot);
 		if (isHitInScene) {
 			void revealPausedBreakpoint(currentFile, currentLine);
 		}
@@ -164,19 +150,19 @@ function createEditorCheckListener(
 
 /**
  * 2. 调试运行时单步暂停与断点命中断点协同服务 (Debug Pause Lifecycle)
- * 职责：在调试运行时捕获断点命中与单步暂停事件，向观察者下发高亮位置与驱动跟随
+ * 职责：在调试运行时捕获断点命中与单步暂停事件，通过 appEventBus 广播 debug:paused / debug:resumed 事件
  */
-export function registerDebugPauseService(
-	param1?: any,
-	param2?: any,
-): vscode.Disposable {
+export function registerDebugPauseService(): vscode.Disposable {
 	const disposables: vscode.Disposable[] = [];
-	const { revealPausedBreakpoint, clearPausedBreakpoint } = createRevealAndClearCallbacks(param1, param2);
+	const { revealPausedBreakpoint, clearPausedBreakpoint } = createRevealAndClearCallbacks();
 
 	disposables.push(createDapTrackerFactory(revealPausedBreakpoint, clearPausedBreakpoint));
 	disposables.push(...createEditorCheckListener(revealPausedBreakpoint));
 
-	const stackItemListener = (vscode.debug as any).onDidChangeActiveStackItem?.(async (item: any) => {
+	const debugExt = vscode.debug as unknown as {
+		onDidChangeActiveStackItem?: (cb: (item: { source?: { path?: string }; line?: number }) => Promise<void>) => vscode.Disposable;
+	};
+	const stackItemListener = debugExt.onDidChangeActiveStackItem?.(async (item) => {
 		if (item && item.source?.path && typeof item.line === "number") {
 			await revealPausedBreakpoint(item.source.path, item.line);
 		}
@@ -203,7 +189,7 @@ export function registerSessionLifecycleService(): vscode.Disposable {
 		sceneStateManager.clearLastAppliedTopologyHash();
 		if (sceneStateManager.isPendingTopologyUpdate()) {
 			sceneStateManager.setPendingTopologyUpdate(false);
-			const workspaceRoot = getWorkspaceRoot(false);
+			const workspaceRoot = getWorkspaceRoot();
 			if (workspaceRoot) {
 				await handleExternalScenesFileChange(workspaceRoot);
 			}
@@ -214,13 +200,10 @@ export function registerSessionLifecycleService(): vscode.Disposable {
 /**
  * 调试全生命周期统一注册
  */
-export function registerDebugLifecycleServices(
-	treeView?: any,
-	treeDataProvider?: any,
-): vscode.Disposable {
+export function registerDebugLifecycleServices(): vscode.Disposable {
 	return vscode.Disposable.from(
 		registerDebugLaunchService(),
-		registerDebugPauseService(treeView, treeDataProvider),
+		registerDebugPauseService(),
 		registerSessionLifecycleService(),
 	);
 }

@@ -1,4 +1,5 @@
-import type { IHashService } from "#src/domain/ports/hasher";
+import type { Hasher } from "#src/domain/ports/hasher";
+export type { Hasher } from "#src/domain/ports/hasher";
 
 /**
  * 纯 TypeScript 零外部依赖 SHA-256 实现
@@ -142,8 +143,11 @@ export class AgentRuleAsset {
 	 * 计算规范化核心正文的 SHA-256 唯一指纹
 	 * 默认使用纯 TS 实现，亦可通过 hasher 端口注入外部实现
 	 */
-	public computeFingerprint(hasher?: IHashService): string {
+	public computeFingerprint(hasher?: Hasher): string {
 		const normalized = this.getNormalizedBody();
+		if (typeof hasher === "function") {
+			return hasher(normalized);
+		}
 		if (hasher && typeof hasher.sha256 === "function") {
 			return hasher.sha256(normalized);
 		}
@@ -157,11 +161,11 @@ export class AgentRuleAsset {
 	 */
 	public evaluateLifecycle(
 		latestTemplate: string,
-		hasherOrVersion?: IHashService | string,
-		hasher?: IHashService,
+		hasherOrVersion?: Hasher | string,
+		hasher?: Hasher,
 	): RuleLifecycleResult {
 		const targetVersion = typeof hasherOrVersion === "string" ? hasherOrVersion : LATEST_RULE_VERSION;
-		const actualHasher = typeof hasherOrVersion === "object" && hasherOrVersion !== null && "sha256" in hasherOrVersion
+		const actualHasher = typeof hasherOrVersion === "function" || (typeof hasherOrVersion === "object" && hasherOrVersion !== null && "sha256" in hasherOrVersion)
 			? hasherOrVersion
 			: hasher;
 

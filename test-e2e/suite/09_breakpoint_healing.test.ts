@@ -29,10 +29,18 @@ suite("Suite 09: 智能断点自然漂移自愈与持久化回写", () => {
 
   teardown(async () => {
     await vscode.commands.executeCommand("sceneBreakpoints.clearAll");
+    await new Promise((resolve) => setTimeout(resolve, 100));
     if (initialConfigContent) {
       const workspaceFolders = vscode.workspace.workspaceFolders!;
       const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
-      require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+      for (let retry = 0; retry < 5; retry++) {
+        try {
+          fs.writeFileSync(configPath, initialConfigContent, "utf-8");
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   });

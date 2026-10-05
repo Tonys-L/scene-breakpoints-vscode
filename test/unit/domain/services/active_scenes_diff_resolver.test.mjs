@@ -1,10 +1,14 @@
 import assert from "node:assert";
-import { ActiveScenesDiffResolver } from "#src/domain/services/activeScenesDiffResolver.ts";
+import {
+	computeTopologyHash,
+	extractTargetScenes,
+	filterGhostScenes,
+	resolveActiveScenesDiff,
+} from "#src/domain/services/activeScenesDiffResolver.ts";
 
-export const computeBreakpointsTopologyHash = ActiveScenesDiffResolver.computeTopologyHash;
-export const extractTargetActiveScenes = ActiveScenesDiffResolver.extractTargetScenes;
-export const filterGhostScenes = ActiveScenesDiffResolver.filterGhostScenes;
-export const resolveActiveScenesDiff = ActiveScenesDiffResolver.resolveActiveScenesDiff;
+export const computeBreakpointsTopologyHash = computeTopologyHash;
+export const extractTargetActiveScenes = extractTargetScenes;
+export { filterGhostScenes, resolveActiveScenesDiff };
 
 /**
  * 声明式场景激活全维测试套件
@@ -53,7 +57,6 @@ export function runAiActivationTests() {
 
 		assert.deepStrictEqual(filterGhostScenes(["login-flow"], null), [], "scenesDict 为空时应安全返回空数组");
 		assert.deepStrictEqual(filterGhostScenes([], scenesDict), [], "targetScenes 为空时应安全返回空数组");
-		assert.deepStrictEqual(ActiveScenesDiffResolver.extractTargetActiveScenes(["test"]), ["test"], "静态方法别名必须正确导出");
 
 		console.log("    ✔ filterGhostScenes 幽灵场景防御测试通过");
 	}
@@ -226,13 +229,6 @@ export function runAiActivationTests() {
 		assert.strictEqual(computeBreakpointsTopologyHash(srcFull), "src:src/calc.ts:15:condition:a > 1:== 2:log me:true");
 		assert.strictEqual(computeBreakpointsTopologyHash(srcEmptyFields), "src:src/calc.ts:15:line::::true");
 		assert.strictEqual(computeBreakpointsTopologyHash(srcNoFile), "src::15:line::::true");
-
-		// 场景 4.9: 实例代理方法一致性
-		const resolverInstance = new ActiveScenesDiffResolver();
-		assert.strictEqual(
-			resolverInstance.computeTopologyHash(bpsOriginal),
-			computeBreakpointsTopologyHash(bpsOriginal),
-		);
 
 		console.log("    ✔ computeBreakpointsTopologyHash 核心断点拓扑 Diff 验证通过");
 	}

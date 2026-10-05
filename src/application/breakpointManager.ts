@@ -1,9 +1,9 @@
 import type { IBreakpointBridge, ISceneRepository } from "#src/domain/ports";
 import { Breakpoint } from "#src/domain/models/breakpoint";
-import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { sceneStateManager } from "./sceneStateManager";
-import { SerialQueue } from "./serialQueue";
+import { applicationSerialQueue, type SerialQueue } from "./serialQueue";
 import { getDependencies } from "./dependencies";
+import { mutateCatalog } from "./mutateCatalog";
 import { appEventBus } from "./eventBus";
 import type { SceneBreakpoint } from "#src/domain/types";
 
@@ -14,7 +14,7 @@ import type { SceneBreakpoint } from "#src/domain/types";
 export interface BreakpointOpOptions {
 	sceneRepository?: ISceneRepository;
 	breakpointBridge?: IBreakpointBridge;
-	loopGuard?: { markInternalSaving: () => void };
+	syncActive?: boolean;
 }
 
 export interface AddBreakpointResult {
@@ -33,34 +33,13 @@ export interface ToggleBreakpointResult {
  * 职责：负责场景内断点的生命周期、启闭切换、即刻点亮、重排与编辑器变更同步，受单写者串行队列保护 (INV-010)
  */
 export class BreakpointManager {
-	constructor(private readonly queue: SerialQueue = new SerialQueue()) {}
+	constructor(private readonly queue: SerialQueue = applicationSerialQueue) {}
 
 	private resolveDeps(opts?: BreakpointOpOptions) {
 		const defaultDeps = getDependencies();
-		const sceneRepository = opts?.sceneRepository || defaultDeps.sceneRepository;
-		if (!sceneRepository) {
-			throw new Error("BreakpointManager: sceneRepository must be configured");
-		}
 		return {
-			sceneRepository,
 			breakpointBridge: opts?.breakpointBridge || defaultDeps.breakpointBridge,
-			loopGuard: opts?.loopGuard || defaultDeps.loopGuard,
 		};
-	}
-
-	private saveAndNotify(
-		sceneRepository: ISceneRepository,
-		workspaceRoot: string,
-		catalog: SceneCatalog,
-		loopGuard?: { markInternalSaving: () => void },
-		sceneName?: string,
-	): void {
-		loopGuard?.markInternalSaving();
-		sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
-		appEventBus.emit("scenes:changed", { workspaceRoot });
-		if (sceneName) {
-			appEventBus.emit("breakpoints:changed", { workspaceRoot, sceneName });
-		}
 	}
 
 	/**
@@ -73,38 +52,50 @@ export class BreakpointManager {
 		options?: BreakpointOpOptions,
 	): Promise<AddBreakpointResult> {
 		return this.queue.enqueue(async () => {
-			const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
+			let totalBreakpoints = 0;
+			const success = await mutateCatalog(
+				workspaceRoot,
+				(catalog) => {
+					const scene = catalog.getOrCreateScene(targetScene);
+					scene.upsertBreakpoint(new Breakpoint(breakpoint));
+					totalBreakpoints = scene.getBreakpoints().length;
+					return true;
+				},
+				{
+					...options,
+					syncActive: false, // 由下方单点即刻点亮接管
+					notify: { sceneName: targetScene },
+					queue: this.queue,
+				},
+			);
 
-			// 1. 唯一性查重覆盖 (INV-001)
-			const scene = catalog.getOrCreateScene(targetScene);
-			scene.upsertBreakpoint(new Breakpoint(breakpoint));
+			if (!success) {
+				return { success: false, totalBreakpoints: 0 };
+			}
 
-			// 2. 持久化写盘与事件广播
-			this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, targetScene);
-
-			// 3. 即刻点亮 (Immediate Highlight)：若当前场景已激活，立即注入宿主调试器运行时并更新基准计数
+			// 即刻点亮 (Immediate Highlight)：若当前场景已激活，立即注入宿主调试器运行时并更新基准计数
 			let isImmediatelyApplied = false;
 			const activeScenes = sceneStateManager.getActiveScenes();
 			if (activeScenes.includes(targetScene)) {
+				const { breakpointBridge } = this.resolveDeps(options);
 				const isSuccess = breakpointBridge ? await breakpointBridge.applySingleBreakpointToEditor(workspaceRoot, breakpoint) : false;
 				if (isSuccess !== false) {
 					sceneStateManager.incrementActiveBaseline();
 					isImmediatelyApplied = true;
+					appEventBus.emit("breakpoints:changed", { workspaceRoot, sceneName: targetScene });
 				}
 			}
 
 			return {
 				success: true,
-				totalBreakpoints: scene.getBreakpoints().length,
+				totalBreakpoints,
 				isImmediatelyApplied,
 			};
 		});
 	}
 
 	/**
-	 * 移除场景内指定索引断点
+	 * 移除场景内指定索引断点，若属于激活场景自动联动 DAP 桥接器同步移除 (修复失步缺陷)
 	 */
 	public async removeBreakpoint(
 		workspaceRoot: string,
@@ -112,19 +103,19 @@ export class BreakpointManager {
 		index: number,
 		options?: BreakpointOpOptions,
 	): Promise<boolean> {
-		return this.queue.enqueue(async () => {
-			const { sceneRepository, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scene = catalog.getScene(sceneName);
-			if (!scene) return false;
-
-			const success = scene.removeBreakpoint(index);
-			if (success) {
-				this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, sceneName);
-			}
-			return success;
-		});
+		return mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scene = catalog.getScene(sceneName);
+				if (!scene) return false;
+				return scene.removeBreakpoint(index);
+			},
+			{
+				...options,
+				notify: { sceneName },
+				queue: this.queue,
+			},
+		);
 	}
 
 	/**
@@ -137,42 +128,34 @@ export class BreakpointManager {
 		targetEnabled?: boolean,
 		options?: BreakpointOpOptions,
 	): Promise<ToggleBreakpointResult> {
-		return this.queue.enqueue(async () => {
-			const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scene = catalog.getScene(sceneName);
-			if (!scene) {
-				return { success: false };
-			}
+		let newEnabled: boolean | undefined;
 
-			const bp = scene.getBreakpoint(index);
-			if (!bp) {
-				return { success: false };
-			}
+		const success = await mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scene = catalog.getScene(sceneName);
+				if (!scene) return false;
+				const bp = scene.getBreakpoint(index);
+				if (!bp) return false;
+				newEnabled = targetEnabled !== undefined ? targetEnabled : !bp.enabled;
+				bp.enabled = newEnabled;
+				return true;
+			},
+			{
+				...options,
+				notify: { sceneName },
+				queue: this.queue,
+			},
+		);
 
-			const newEnabled = targetEnabled !== undefined ? targetEnabled : !bp.enabled;
-			bp.enabled = newEnabled;
+		if (!success || newEnabled === undefined) {
+			return { success: false };
+		}
 
-			this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, sceneName);
-
-			// 若属于激活场景，即刻反向同步编辑器断点显隐
-			if (breakpointBridge) {
-				const activeScenes = sceneStateManager.getActiveScenes();
-				if (activeScenes.includes(sceneName)) {
-					await breakpointBridge.syncBreakpointEnabledToEditor(
-						workspaceRoot,
-						bp.toJSON(),
-						newEnabled,
-					);
-				}
-			}
-
-			return {
-				success: true,
-				newEnabled,
-			};
-		});
+		return {
+			success: true,
+			newEnabled,
+		};
 	}
 
 	/**
@@ -184,33 +167,20 @@ export class BreakpointManager {
 		enabled: boolean,
 		options?: BreakpointOpOptions,
 	): Promise<boolean> {
-		return this.queue.enqueue(async () => {
-			const { sceneRepository, breakpointBridge, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scene = catalog.getScene(sceneName);
-			if (!scene) return false;
-
-			scene.setAllEnabled(enabled);
-
-			this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, sceneName);
-
-			// 若处于激活状态，联动同步宿主编辑器所有断点状态
-			if (breakpointBridge) {
-				const activeScenes = sceneStateManager.getActiveScenes();
-				if (activeScenes.includes(sceneName)) {
-					for (const bp of scene.getBreakpoints()) {
-						await breakpointBridge.syncBreakpointEnabledToEditor(
-							workspaceRoot,
-							bp.toJSON(),
-							enabled,
-						);
-					}
-				}
-			}
-
-			return true;
-		});
+		return mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scene = catalog.getScene(sceneName);
+				if (!scene) return false;
+				scene.setAllEnabled(enabled);
+				return true;
+			},
+			{
+				...options,
+				notify: { sceneName },
+				queue: this.queue,
+			},
+		);
 	}
 
 	/**
@@ -223,19 +193,19 @@ export class BreakpointManager {
 		direction: "up" | "down" | "top" | "bottom",
 		options?: BreakpointOpOptions,
 	): Promise<boolean> {
-		return this.queue.enqueue(async () => {
-			const { sceneRepository, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scene = catalog.getScene(sceneName);
-			if (!scene) return false;
-
-			const success = scene.moveBreakpoint(index, direction);
-			if (success) {
-				this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, sceneName);
-			}
-			return success;
-		});
+		return mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scene = catalog.getScene(sceneName);
+				if (!scene) return false;
+				return scene.moveBreakpoint(index, direction);
+			},
+			{
+				...options,
+				notify: { sceneName },
+				queue: this.queue,
+			},
+		);
 	}
 
 	/**
@@ -248,19 +218,19 @@ export class BreakpointManager {
 		targetIndex: number,
 		options?: BreakpointOpOptions,
 	): Promise<boolean> {
-		return this.queue.enqueue(async () => {
-			const { sceneRepository, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scene = catalog.getScene(sceneName);
-			if (!scene) return false;
-
-			const success = scene.reorderBreakpoint(sourceIndex, targetIndex);
-			if (success) {
-				this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard, sceneName);
-			}
-			return success;
-		});
+		return mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scene = catalog.getScene(sceneName);
+				if (!scene) return false;
+				return scene.reorderBreakpoint(sourceIndex, targetIndex);
+			},
+			{
+				...options,
+				notify: { sceneName },
+				queue: this.queue,
+			},
+		);
 	}
 
 	/**
@@ -272,32 +242,32 @@ export class BreakpointManager {
 		activeScenes?: string[],
 		options?: BreakpointOpOptions,
 	): Promise<boolean> {
-		return this.queue.enqueue(async () => {
-			if (!changes || changes.length === 0) return false;
+		if (!changes || changes.length === 0) return false;
 
-			const { sceneRepository, loopGuard } = this.resolveDeps(options);
-			const config = sceneRepository.loadScenesConfig(workspaceRoot);
-			const catalog = new SceneCatalog(config);
-			const scenesToSync = activeScenes || catalog.getActiveScenes();
-			if (scenesToSync.length === 0) return false;
+		return mutateCatalog(
+			workspaceRoot,
+			(catalog) => {
+				const scenesToSync = activeScenes || catalog.getActiveScenes();
+				if (scenesToSync.length === 0) return false;
 
-			let hasChanged = false;
-			for (const sName of scenesToSync) {
-				const scene = catalog.getScene(sName);
-				if (!scene) continue;
-				for (const change of changes) {
-					if (scene.syncBreakpointEnabled(change)) {
-						hasChanged = true;
+				let hasChanged = false;
+				for (const sName of scenesToSync) {
+					const scene = catalog.getScene(sName);
+					if (!scene) continue;
+					for (const change of changes) {
+						if (scene.syncBreakpointEnabled(change)) {
+							hasChanged = true;
+						}
 					}
 				}
-			}
-
-			if (hasChanged) {
-				this.saveAndNotify(sceneRepository, workspaceRoot, catalog, loopGuard);
-			}
-
-			return hasChanged;
-		});
+				return hasChanged;
+			},
+			{
+				...options,
+				syncActive: false, // 外部编辑器驱动的同步，禁止反向回环再次刷 DAP (INV-008)
+				queue: this.queue,
+			},
+		);
 	}
 }
 

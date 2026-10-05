@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { evaluateCrapMetrics } from "./compute-crap.mjs";
+
 
 /**
  * 约束自动化执行守卫 (Automated Executable Guardrails)
@@ -488,7 +490,45 @@ export function verifyAllGuardrails(workspaceRoot = process.cwd()) {
 		successes.push("代码覆盖率硬门禁：本地已挂载 check-coverage 规则（CI 执行 npm run test:coverage 时全量触发）");
 	}
 
+	// =========================================================================
+	// 17. CRAP 变更风险反模式硬门禁 (CRAP Metric Guard) (INV-029 / GR-014)
+	// =========================================================================
+	const lcovFile = path.join(workspaceRoot, "coverage", "lcov.info");
+	if (fs.existsSync(lcovFile)) {
+		try {
+			const crapMetrics = evaluateCrapMetrics(workspaceRoot);
+			const CRAP_AVG_MAX = 5.0;
+			const CRAP_EXTREME_BASELINE = 14;
+
+			if (crapMetrics.avgCrap > CRAP_AVG_MAX) {
+				errors.push(
+					`CRAP 变更风险指标劣化：全工程平均 CRAP (${crapMetrics.avgCrap}) 超出 ${CRAP_AVG_MAX} 上限！请拆分高复杂度或补充单测。`
+				);
+			}
+
+			if (crapMetrics.extremeAntiPatterns.length > CRAP_EXTREME_BASELINE) {
+				errors.push(
+					`CRAP 严重反模式盲区新增：检测到 CRAP > 16.4 的高危函数从基线 ${CRAP_EXTREME_BASELINE} 增至 ${crapMetrics.extremeAntiPatterns.length}！严禁新增未测复杂逻辑。`
+				);
+			}
+
+			if (
+				crapMetrics.avgCrap <= CRAP_AVG_MAX &&
+				crapMetrics.extremeAntiPatterns.length <= CRAP_EXTREME_BASELINE
+			) {
+				successes.push(
+					`CRAP 变更风险硬门禁：全工程平均 CRAP (${crapMetrics.avgCrap} <= 5.0) 极度健康，严重反模式函数 (<= 14) 无净增`
+				);
+			}
+		} catch (err) {
+			errors.push(`CRAP 变更风险分析执行异常：${err.message}`);
+		}
+	} else {
+		successes.push("CRAP 变更风险硬门禁：本地已挂载 CRAP 门禁规则（CI 执行 npm run test:coverage 时全量触发）");
+	}
+
 	return { errors, successes };
+
 }
 
 // CLI 执行入口

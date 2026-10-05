@@ -36,7 +36,7 @@
 | 命名后缀 | 本质特征 | 核心职责 | 典型应用 |
 |---|---|---|---|
 | **Manager（管理器）** | **面向实体/状态主权**（持有或维护生命周期状态） | 1. 负责具体实体或资源集合的生命周期管理（CRUD、增删查改、启闭状态）<br>2. 维持实体数据一致性与持久化同步 | `SceneManager`<br>`BreakpointManager`<br>`SceneStateManager` |
-| **Service（服务）** | **面向无状态流程/跨模块协同**（算法计算、外部管道流） | 1. 负责跨多个模块的无状态工作流、算法管道或外部输入同步<br>2. 不私有独占实体数据主权，纯以输入参数驱动处理 | `AgentSyncService`<br>`HashService`<br>`HealingEngine` |
+| **Service（服务）** | **面向无状态流程/跨模块协同**（算法计算、外部管道流） | 1. 负责跨多个模块的无状态工作流、算法管道或外部输入同步<br>2. 不私有独占实体数据主权，纯以输入参数驱动处理 | `AgentSyncService`<br>`AgentSkillService`<br>`HashService`<br>`HealingEngine` |
 
 #### 依赖方向与职责边界
 
@@ -61,7 +61,7 @@ src/
 │   ├── services/                   # 无状态领域服务与算法 (HealingEngine, ScenePayloadCodec, ActiveScenesDiffResolver)
 │   └── ports/                      # 业务能力契约端口 (IBreakpointBridge, ISceneRepository, ILineReader, IHashService)
 ├── application/                    # [应用用例层] 纯 TS 实体管理器与流程服务，受 SerialQueue 保护
-│   └── (sceneManager: 场景CRUD, breakpointManager: 断点管理, agentSyncService: AI/Diff协同, sceneStateManager: 会话状态机)
+│   └── (sceneManager: 场景CRUD, breakpointManager: 断点管理, agentSyncService: AI/Diff协同, agentSkillService: 规则/技能运维, sceneStateManager: 会话状态机)
 ├── ui/                             # [开发者展示层] 视觉交互与宿主命令控制器 (commands/, views/, locators/)
 ├── infra/                          # [基础设施层] 外部技术适配器 (storage 原子写盘与 echoLoopGuard, vscode DAP断点桥接与监听器)
 └── extension.ts                    # [组装根 Composition Root] 唯一胶水入口，专职适配器实例化与依赖倒置注入
@@ -81,6 +81,16 @@ src/
 - **真实源码导入**：单测必须通过 `#src/*` 导入真实生产源码，严禁私有假绿测试副本与中间解构代理。
 - **分层立体覆盖**：全量自动化测试（`test/run-all.mjs`）覆盖工具、领域、应用、存储、UI 与 E2E 真实宿主沙箱。
 
+#### 4. 架构防摇摆与深浅模块裁决工程规范 (ADR-004)
+
+为杜绝 AI 助手在多轮扫描中陷入“过度合并为上帝对象”与“过度拆散为碎片”的摆锤震荡，所有重构、合并与抽取必须强制通过以下 5 步客观裁决协议：
+
+1. **测试一：变更节拍与性能热点隔离测试 (Cadence & Hotpath Isolation Test)**：高频只读热点（如每毫秒被 InlayHints / DAP 命中检索的内存投影 `ActiveBreakpointIndex`）与低频写事务（用户交互、磁盘原子落盘 `SceneManager`），**物理强制隔离**。严禁以“减少小文件”为由强行合并。
+2. **测试二：依赖层级与框架边界测试 (Dependency Level & Framework Boundary Test)**：直接依赖外部平台 API / 宿主协议（Node `fs`、VS Code API、DAP 协议）的基础设施代码，严禁与纯领域规则、纯应用编排或纯 UI 逻辑混在一个文件。
+3. **测试三：充血实体主权与防上帝对象测试 (Sovereign Entity vs. God Object Test)**：领域实体与聚合根（`Scene`、`Breakpoint`、`SceneCatalog`）拥有数据与操作自治主权。管理器专职跨实体生命周期编排，**严禁将实体的业务方法掏空并平铺到外层 Manager 中制造上帝对象**。
+4. **测试四：共变性与删除测试 (Co-variation & Deletion Test)**：删除/合并一个模块若未消除固有复杂度，而是导致单文件行数逼近/超过硬门禁（GR-013: 400 行）或圈复杂度剧增（触发 CRAP 立方惩罚），则**拆分完全正当**，严禁逆向合体。
+5. **测试五：伪中间人与正当门面判定 (Middleman vs. Legitimate Facade Test)**：无任何参数转换、防御校验或逻辑聚合的**纯空壳透传桩（Hollow Stubs）坚决剔除**，调用方直接对接真实单例；保留具有统一子系统交互与降噪价值的高阶门面。
+
 ---
 
 ## 业务不变量
@@ -88,20 +98,20 @@ src/
 | 编号 | 不变量描述 | 检查与保障位置 |
 |------|-----------|--------------|
 | **INV-001** | **断点场景内局部唯一性 (Upsert)**：同场景中相同文件+行号或函数名仅保留一条记录，后录入安全覆盖先前配置。 | `src/domain/models/scene.ts` (`upsertBreakpoint`) |
-| **INV-002** | **场景激活纯净隔离性 (Zero-Flicker Diff)**：激活目标场景时，通过增量 Diff 算法精准移除工作区非目标场景的差量残留断点，原地保留重合断点，杜绝无关断点残留与闪烁。 | `src/infra/vscode/bridge/dapDiffApplier.ts` |
+| **INV-002** | **场景激活纯净隔离性 (Zero-Flicker Diff)**：激活目标场景时，通过增量 Diff 算法精准移除工作区非目标场景的差量残留断点，原地保留重合断点，杜绝无关断点残留与闪烁。 | `src/infra/vscode/vscodeBreakpointBridge.ts` |
 | **INV-003** | **自愈算法置信度门禁与本体守卫**：候选行软相似度 $\ge 70\%$ 且置信度 $\ge 60\%$；严禁跨函数作用域漂移。未达标安全标记为 `unmatched`。 | `src/domain/services/healingEngine.ts` |
-| **INV-004** | **权威持久化 SSOT 与状态机投影**：磁盘 `debug-scenes.json` 为跨会话与 AI 协同唯一静态持久化 SSOT；`SceneStateManager` 为运行时易失会话状态管理中心（内存投影）。 | `src/application/sceneStateManager.ts` |
-| **INV-005** | **场景切换原子防竞态 (Race Guard)**：装载/切换断点期间原子锁 `isApplying` 为 `true`，拦截监听器误置空，杜绝状态栏闪烁。 | `src/infra/vscode/bridge/dapHelpers.ts` 与 `breakpointSyncListener.ts` |
-| **INV-006** | **防御性输入与容灾守卫**：处理外部配置、非法对象或无工作区模式时，建立类型守卫与空值兜底，严禁未捕获运行时异常。 | `src/infra/storage/jsonFileSceneRepository.ts` |
+| **INV-004** | **权威持久化 SSOT 与状态机投影**：磁盘 `debug-scenes.json` 为跨会话与 AI 协同唯一静态持久化 SSOT；`SceneStateManager` 与 `ActiveBreakpointIndex` 为运行时易失会话状态与活动断点内存投影。 | `src/application/sceneStateManager.ts` 与 `src/application/activeBreakpointIndex.ts` |
+| **INV-005** | **场景切换原子防竞态 (Race Guard)**：装载/切换断点期间原子锁 `isApplying` 为 `true`，拦截监听器误置空，杜绝状态栏闪烁。 | `src/infra/vscode/vscodeBreakpointBridge.ts` 与 `breakpointSyncListener.ts` |
+| **INV-006** | **防御性输入与容灾守卫**：处理外部配置、非法对象或无工作区模式时，建立类型守卫与空值兜底，严禁未捕获运行时异常。 | `src/domain/services/scenePayloadCodec.ts` 与 `src/infra/storage/jsonFileSceneRepository.ts` |
 | **INV-007** | **启动项推导优先级与幂等守卫**：启动推导遵循 `env` > `bindings` > 同名推导；推导结果一致时幂等静默放行。 | `src/domain/services/launchBindingResolver.ts` |
 | **INV-008** | **断点全双工同步与防回环 (Echo Loop Guard)**：反向同步受 `markInternalSaving` 守卫保护，阻断死循环；仅同步当前激活态场景。 | `src/infra/storage/echoLoopGuard.ts` 与 `breakpointSyncListener.ts` |
 | **INV-009** | **幽灵场景拦截守卫**：目标场景必须在配置中真实存在；未定义场景强行拦截，严禁写盘与清空断点。 | `src/domain/models/sceneCatalog.ts` 与 `src/application/sceneManager.ts` |
-| **INV-010** | **单向回写时序与串行化保证**：写盘标记 $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 刷新内存投影；应用层受 `SerialQueue` 串行保护。 | `src/application/sceneManager.ts` 与 `src/application/serialQueue.ts` |
+| **INV-010** | **单向回写时序与串行化保证**：写盘标记 $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 刷新内存投影；应用层受 `SerialQueue` 与 `mutateCatalog` 事务管道串行保护。 | `src/application/mutateCatalog.ts` 与 `src/application/serialQueue.ts` |
 | **INV-011** | **多场景合并先到先得**：首个声明的断点生效；`enabled: false` 显式参与去重，后出现的同位置断点直接忽略。 | `src/domain/models/scene.ts` (`Scene.merge`) 与 `src/domain/models/sceneCatalog.ts` |
 | **INV-012** | **调试会话保护与拓扑 Diff 防线**：调试进行中外部改动断点挂起调度；核心哈希未变时阻断 DAP 重刷，会话结束补发。 | `src/application/agentSyncService.ts` |
 | **INV-013** | **Skill 正文指纹唯一性**：基于剥离 Frontmatter 后的纯净正文 SHA-256 判定版本；覆写前自动生成 `.bak` 备份。 | `src/domain/models/agentRuleAsset.ts` |
 | **INV-027** | **冷启动自愈与崩溃隔离守卫 (Disaster Self-Healing Guard)**：物理持久化写入采用动态并发临时文件 (`tmp.${pid}.${ts}.${rand}`) + 原子覆盖 (`renameSync`)；主文件 0 字节或损坏时，优先从合法临时候选副本自愈恢复，严禁中断扩展生命周期。 | `src/infra/storage/atomicFileJsonStore.ts` |
-| **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；禁止命令层跨模块强依赖视图的内部私有刷新方法。 | `src/application/eventBus.ts` |
+| **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停与恢复统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` |
 
 ---
 
@@ -124,6 +134,8 @@ src/
 | **GR-011 (INV-024)** | **严禁空 catch 静默吞错守卫** | 验证脚本 AST 扫描 | 全工程禁止空 `catch {}`，异常必须显式上下文记录或重新抛出，杜绝黑盒故障 |
 | **GR-012 (INV-025)** | **Git 冲突标记与私有路径防泄漏守卫** | 验证脚本文本扫描 | 严禁残留冲突标记（`<<<<<<<` 等）或私有绝对路径，确保分发包绝对纯净 |
 | **GR-013 (INV-026)** | **ESLint 工业级静态代码规范硬门禁** | `.eslintrc.json` 与验证脚本 | 语法规范与类型安全 0 errors、0 warnings；单文件 $\le 400$ 行 (`max-lines`)，单函数 $\le 80$ 行 (`max-lines-per-function`) AST 物理硬门禁 |
+| **GR-014 (INV-029)** | **CRAP 变更风险反模式硬门禁** | `scripts/verify-guardrails.mjs` 与 `compute-crap.mjs` | 全工程平均 CRAP $\le 5.0$；严重反模式函数 ($> 16.4$) 严禁净增；物理阻断 AI 引入高复杂度未测盲区 |
+
 
 ---
 

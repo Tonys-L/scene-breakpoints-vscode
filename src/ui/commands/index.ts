@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
+import { addBreakpointCommand } from "./addBreakpointCommand";
 import {
-	addBreakpointCommand,
 	applySceneCommand,
 	clearAllCommand,
 	exportSceneCommand,
@@ -56,6 +56,7 @@ export function registerAllCommands(
 	}
 }
 
+export * from "./addBreakpointCommand";
 export * from "./sceneCommands";
 export * from "./menuCommands";
 export * from "./clipboardCommands";

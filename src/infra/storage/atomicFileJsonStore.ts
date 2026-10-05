@@ -1,8 +1,41 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ISelfHealingStore, StorageIntegrityReport, StoreRecoveryOptions } from "./selfHealingStore.js";
+import { hasGitConflictMarkers } from "#src/shared/utils/textUtils";
 
-const CONFLICT_REGEX = /^(<{7}|={7}|>{7})\s+/m;
+/**
+ * 自愈审计结果报告
+ */
+export interface StorageIntegrityReport<T> {
+	/** 状态：健康直出 / 灾难自愈成功 / 彻底损坏回退默认 / 初始空配置 */
+	status: "healthy" | "healed" | "fallback" | "empty";
+	/** 最终交付给业务的合法数据实体 */
+	data: T;
+	/** 自愈审计诊断信息（用于日志和用户提示） */
+	recoveryMessage?: string;
+}
+
+/**
+ * 存储恢复与自愈选项
+ */
+export interface StoreRecoveryOptions<T> {
+	/** 数据合法性校验断言（可选） */
+	validate?: (data: unknown) => data is T;
+	/** 自定义内容反序列化/预处理函数（如支持 JSONC 注释剥离，缺省为 JSON.parse） */
+	parse?: (rawText: string) => any;
+	/** 遇到彻底损坏且无任何备份可救时的安全默认回退值构造器 */
+	fallback: () => T;
+	/** 自愈成功触发回调（用于抛出通知或遥测） */
+	onHealed?: (message: string) => void;
+}
+
+/**
+ * 通用冷启动自愈存储机制契约 (The Mechanism Interface)
+ * 屏蔽物理介质，向业务层提供统一的三相自愈与安全写入保证
+ */
+export interface ISelfHealingStore<T, TTarget = string> {
+	load(target: TTarget, options: StoreRecoveryOptions<T>): StorageIntegrityReport<T>;
+	save(target: TTarget, data: T): void;
+}
 
 function logWarning(msg: string, err: unknown): void {
 	const detail = err instanceof Error ? err.message : String(err);
@@ -80,7 +113,7 @@ export class AtomicFileJsonStore<T> implements ISelfHealingStore<T, string> {
 			if (!content || !content.trim()) {
 				return null; // 0 字节文件触发自愈
 			}
-			if (CONFLICT_REGEX.test(content)) {
+			if (hasGitConflictMarkers(content)) {
 				return null; // 检测到 Git 冲突标记，触发自愈或防灾
 			}
 
@@ -140,7 +173,7 @@ export class AtomicFileJsonStore<T> implements ISelfHealingStore<T, string> {
 	private tryParseCandidate(candPath: string, options: StoreRecoveryOptions<T>): T | null {
 		try {
 			const raw = fs.readFileSync(candPath, "utf-8");
-			if (!raw || !raw.trim() || CONFLICT_REGEX.test(raw)) return null;
+			if (!raw || !raw.trim() || hasGitConflictMarkers(raw)) return null;
 			const parser = options.parse || JSON.parse;
 			const parsed = parser(raw);
 			if (options.validate && !options.validate(parsed)) return null;

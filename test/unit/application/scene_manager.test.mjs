@@ -127,7 +127,6 @@ export async function runSceneServiceTests() {
 		assert.strictEqual(validResult.loadedCount, 1);
 		assert.strictEqual(repo.config.activeScenes[0], "auth", "必须已持久化写入 activeScenes 权威 SSOT");
 		assert.strictEqual(sceneStateManager.getActiveScene(), "auth", "状态机内存投影必须同步更新");
-		assert.strictEqual(loopGuard.marked, true, "必须标记 internalSaving 防回环");
 
 		// 大小写容错校准：目标场景名自动校准为字典中声明的原始名称 (INV-009)
 		const caseResult = await activateScene(
@@ -415,7 +414,6 @@ export async function runSceneServiceTests() {
 
 		assert.strictEqual(res.success, true);
 		assert.strictEqual(res.enrichedCount, 1, "激活结果必须包含 enrichedCount");
-		assert.strictEqual(loopGuard.marked, true, "持久化必须标记内部保存守卫");
 		assert.strictEqual(repo.saveCount, 1, "必须触发权威 SSOT 磁盘保存");
 		assert.ok(
 			repo.config.scenes["demo-flow"][0].contextSnippet,
@@ -490,7 +488,6 @@ export async function runSceneServiceTests() {
 
 		assert.strictEqual(res.success, true);
 		assert.strictEqual(res.enrichedCount, 2, "多场景激活必须统计所有补齐的指纹数");
-		assert.strictEqual(loopGuard.marked, true, "多场景持久化必须标记内部写盘守卫");
 		assert.ok(repo.saveCount >= 1, "多场景激活必须成功触发磁盘存盘");
 
 		assert.ok(
@@ -554,12 +551,11 @@ export async function runSceneServiceTests() {
 		const res = await syncSvc.enrichAllSceneFingerprints(workspaceRoot, {
 			sceneRepository: repo,
 			loopGuard,
-			fileLinesReader: async (fPath) => mockFiles[fPath.replace(/\\/g, "/")],
+			lineReader: { readLines: async (fPath) => mockFiles[fPath.replace(/\\/g, "/")] },
 		});
 
 		assert.strictEqual(res.enrichedCount, 2, "必须成功为 2 个未激活场景的断点预补齐指纹");
 		assert.strictEqual(res.persisted, true, "预补齐后必须触发存盘");
-		assert.strictEqual(loopGuard.marked, true, "必须标记内部写盘守卫防止回环");
 
 		assert.strictEqual(
 			repo.config.scenes["unactivated-scene-1"][0].contextSnippet?.current,
@@ -574,10 +570,29 @@ export async function runSceneServiceTests() {
 		const res2 = await syncSvc.enrichAllSceneFingerprints(workspaceRoot, {
 			sceneRepository: repo,
 			loopGuard,
-			fileLinesReader: async (fPath) => mockFiles[fPath.replace(/\\/g, "/")],
+			lineReader: { readLines: async (fPath) => mockFiles[fPath.replace(/\\/g, "/")] },
 		});
 		assert.strictEqual(res2.enrichedCount, 0, "再次巡检无需补齐");
 		assert.strictEqual(res2.persisted, false, "无需二次写盘");
+
+		// 9.1 测试 ILineReader 端口对象传入场景
+		const lineReaderMock = {
+			async readLines(fPath) {
+				return mockFiles[fPath.replace(/\\/g, "/")];
+			},
+		};
+		const repoWithMissing = new MockSceneRepository({
+			scenes: {
+				"missing-fp": [{ file: "src/calc.ts", line: 2, type: "line" }],
+			},
+		});
+		const resLineReader = await syncSvc.enrichAllSceneFingerprints(workspaceRoot, {
+			sceneRepository: repoWithMissing,
+			loopGuard,
+			lineReader: lineReaderMock,
+		});
+		assert.strictEqual(resLineReader.enrichedCount, 1, "通过 ILineReader 必须成功预补齐指纹");
+		assert.strictEqual(resLineReader.persisted, true);
 	}
 
 	// ----------------------------------------------------
@@ -756,7 +771,7 @@ export async function runSceneServiceTests() {
 				sceneRepository: repo,
 				breakpointBridge: bridge,
 				loopGuard,
-				fileLinesReader: async (_path) => mockFileLines,
+				lineReader: { readLines: async (_path) => mockFileLines },
 			},
 		);
 

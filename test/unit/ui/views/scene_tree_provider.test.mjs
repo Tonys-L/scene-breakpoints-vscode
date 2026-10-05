@@ -14,7 +14,7 @@ import {
 import { sceneStateManager } from "#src/application/sceneStateManager.ts";
 import { configureDependencies } from "#src/application/dependencies.ts";
 import { saveScenesConfig, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository.ts";
-import { findBreakpointLineInJson } from "#src/ui/locators/treeviewLocator.ts";
+import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator.ts";
 
 export async function runTreeViewTests() {
 	console.log("  ▶ [TreeView] 运行调试面板树视图与节点领域模型测试套件（直连生产源码）...");
@@ -406,7 +406,19 @@ export async function runTreeViewTests() {
 		assert.ok(parentNode instanceof SceneNode);
 		assert.strictEqual(parentNode.sceneName, "checkout-flow");
 
-		// G. 传入未知节点
+		// G. 测试深接口 getBreakpointNodes 直接查询场景断点
+		const directBpNodes = await provider.getBreakpointNodes("checkout-flow");
+		assert.strictEqual(directBpNodes.length, 2);
+		assert.strictEqual(directBpNodes[0].index, 0);
+		assert.strictEqual(typeof directBpNodes[0].isUnmatched(), "boolean");
+
+		// H. 测试 SceneNode 展开状态封装方法
+		SceneNode.markExpanded("test-expanded-scene");
+		assert.strictEqual(SceneNode.isExpanded("test-expanded-scene"), true);
+		SceneNode.markCollapsed("test-expanded-scene");
+		assert.strictEqual(SceneNode.isExpanded("test-expanded-scene"), false);
+
+		// I. 传入未知节点
 		const unknownChildren = await provider.getChildren(new PlaceholderNode("test"));
 		assert.deepStrictEqual(unknownChildren, []);
 

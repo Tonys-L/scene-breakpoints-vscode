@@ -5,7 +5,7 @@ import type { ILineReader } from "#src/domain/ports/lineReader";
 export interface FileLineReaderOptions {
 	workspaceRoot?: string;
 	cache?: Map<string, string[]>;
-	getDocumentLines?: (filePath: string) => string[] | undefined;
+	getDocumentLines?: (filePath: string) => Promise<string[] | undefined> | string[] | undefined;
 }
 
 /**
@@ -14,7 +14,7 @@ export interface FileLineReaderOptions {
 export class FileLineReader implements ILineReader {
 	private readonly workspaceRoot?: string;
 	private readonly cache: Map<string, string[]>;
-	private readonly getDocumentLines?: (filePath: string) => string[] | undefined;
+	private readonly getDocumentLines?: (filePath: string) => Promise<string[] | undefined> | string[] | undefined;
 
 	constructor(options: FileLineReaderOptions = {}) {
 		this.workspaceRoot = options.workspaceRoot;
@@ -40,7 +40,7 @@ export class FileLineReader implements ILineReader {
 		// 2. 尝试从活动编辑器文档提供者获取 (命中未保存的脏缓冲区)
 		let lines: string[] | undefined;
 		if (this.getDocumentLines) {
-			lines = this.getDocumentLines(fullPath);
+			lines = await this.getDocumentLines(fullPath);
 		}
 
 		// 3. 读取磁盘物理文件

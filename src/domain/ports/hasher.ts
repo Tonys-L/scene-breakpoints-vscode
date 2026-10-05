@@ -8,3 +8,7 @@ export interface IHashService {
 	 */
 	sha256(content: string): string;
 }
+
+export type HashFunction = (content: string) => string;
+export type Hasher = IHashService | HashFunction;
+

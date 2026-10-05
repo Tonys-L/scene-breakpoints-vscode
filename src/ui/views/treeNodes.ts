@@ -2,22 +2,67 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
+import { isSameFsPath, isFilePathMatch } from "#src/shared/utils/pathUtils";
 
 export type SceneTreeItem = SceneNode | BreakpointNode | PlaceholderNode;
+
+/**
+ * 侧边栏树视图展开/折叠状态管理器 (Presentation State)
+ * 职责：负责记录与维持用户在 UI 交互中展开或折叠的场景集合
+ */
+export class TreeViewState {
+	public readonly expandedScenes = new Set<string>();
+
+	public markExpanded(sceneName: string): void {
+		this.expandedScenes.add(sceneName);
+	}
+
+	public markCollapsed(sceneName: string): void {
+		this.expandedScenes.delete(sceneName);
+	}
+
+	public isExpanded(sceneName: string): boolean {
+		return this.expandedScenes.has(sceneName);
+	}
+
+	public clearExpanded(): void {
+		this.expandedScenes.clear();
+	}
+}
+
+export const treeViewState = new TreeViewState();
 
 /**
  * 场景节点 (SceneNode)：代表一组场景断点集合的折叠容器
  */
 export class SceneNode extends vscode.TreeItem {
-	public static readonly expandedScenes = new Set<string>();
+	public static get expandedScenes(): Set<string> {
+		return treeViewState.expandedScenes;
+	}
+
+	public static isExpanded(sceneName: string): boolean {
+		return treeViewState.isExpanded(sceneName);
+	}
+
+	public static markExpanded(sceneName: string): void {
+		treeViewState.markExpanded(sceneName);
+	}
+
+	public static markCollapsed(sceneName: string): void {
+		treeViewState.markCollapsed(sceneName);
+	}
+
+	public static clearExpanded(): void {
+		treeViewState.clearExpanded();
+	}
 
 	constructor(
 		public readonly sceneName: string,
 		public readonly breakpointCount: number,
 		public readonly isActive: boolean,
 		public readonly isDirty: boolean,
+		isExpanded: boolean = treeViewState.isExpanded(sceneName) || isActive,
 	) {
-		const isExpanded = SceneNode.expandedScenes.has(sceneName) || isActive;
 		super(
 			sceneName,
 			isExpanded ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed,
@@ -46,6 +91,48 @@ export class SceneNode extends vscode.TreeItem {
 	}
 }
 
+export interface BreakpointNodeOptions {
+	isUnmatched?: boolean;
+}
+
+/**
+ * 纯函数：根据断点属性推导 SVG 矢量图标文件名
+ */
+export function resolveBreakpointIconFileName(
+	breakpointType: string,
+	isEnabled: boolean,
+	isPaused: boolean,
+	isUnmatched: boolean,
+	sourceType?: string,
+): string {
+	if (isPaused) return "bp-paused.svg";
+
+	if (isUnmatched) {
+		return isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
+	}
+
+	let iconBase = "bp-line";
+	if (breakpointType === "function") {
+		iconBase = "bp-func";
+	} else {
+		switch (sourceType) {
+			case "condition":
+				iconBase = "bp-cond";
+				break;
+			case "hitCount":
+				iconBase = "bp-hit";
+				break;
+			case "logpoint":
+				iconBase = "bp-log";
+				break;
+			default:
+				iconBase = "bp-line";
+				break;
+		}
+	}
+	return `${iconBase}-${isEnabled ? "enabled" : "disabled"}.svg`;
+}
+
 /**
  * 断点节点 (BreakpointNode)：代表具体的一处代码行断点或函数断点
  */
@@ -57,6 +144,7 @@ export class BreakpointNode extends vscode.TreeItem {
 		private readonly workspaceRoot: string,
 		private readonly extensionPath: string,
 		private pausedLocation: { file: string; line: number } | null = null,
+		private readonly options?: BreakpointNodeOptions,
 	) {
 		const isFunc = breakpoint.type === "function";
 		const label = isFunc
@@ -105,14 +193,19 @@ export class BreakpointNode extends vscode.TreeItem {
 		if (Number(srcBp.line) !== Number(this.pausedLocation.line)) {
 			return false;
 		}
-		const fullFilePath = path.isAbsolute(srcBp.file) ? srcBp.file : path.join(this.workspaceRoot, srcBp.file);
-		if (isSamePath(fullFilePath, this.pausedLocation.file)) {
-			return true;
+		return isFilePathMatch(this.pausedLocation.file, srcBp.file, this.workspaceRoot);
+	}
+
+	public isUnmatched(): boolean {
+		if (this.breakpoint.type === "function") return false;
+		if (this.options?.isUnmatched !== undefined) {
+			return this.options.isUnmatched;
 		}
-		// 容错：尾部路径匹配（应对 monorepo/符号链接/路径前缀差异）
-		const p1 = this.pausedLocation.file.replace(/\\/g, "/").toLowerCase();
-		const p2 = srcBp.file.replace(/\\/g, "/").toLowerCase();
-		return p1.endsWith("/" + p2) || p1.endsWith(p2);
+		const srcBp = this.breakpoint as SourceSceneBreakpoint;
+		return (
+			sceneStateManager.isSceneActive(this.sceneName) &&
+			sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line)
+		);
 	}
 
 	public updateAppearance(): void {
@@ -126,7 +219,14 @@ export class BreakpointNode extends vscode.TreeItem {
 
 		this.buildDescriptionAndTooltip(isPaused, hintText);
 
-		const iconFileName = this.resolveIconFileName(isEnabled, isPaused);
+		const srcBp = this.breakpoint.type !== "function" ? (this.breakpoint as SourceSceneBreakpoint) : undefined;
+		const iconFileName = resolveBreakpointIconFileName(
+			this.breakpoint.type,
+			isEnabled,
+			isPaused,
+			this.isUnmatched(),
+			srcBp?.type,
+		);
 		this.iconPath = vscode.Uri.file(path.join(this.extensionPath, "media", "icons", iconFileName));
 		this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
 	}
@@ -144,9 +244,7 @@ export class BreakpointNode extends vscode.TreeItem {
 		}
 
 		const srcBp = this.breakpoint as SourceSceneBreakpoint;
-		const isUnmatched =
-			sceneStateManager.isSceneActive(this.sceneName) &&
-			sceneStateManager.isBreakpointUnmatched(srcBp.file, srcBp.line);
+		const isUnmatched = this.isUnmatched();
 
 		let extra = srcBp.desc;
 		if (!extra) {
@@ -176,53 +274,12 @@ export class BreakpointNode extends vscode.TreeItem {
 		md.appendMarkdown(`\n\n---\n*💡 ${hintText}*`);
 		this.tooltip = md;
 	}
-
-	private resolveIconFileName(isEnabled: boolean, isPaused: boolean): string {
-		if (isPaused) return "bp-paused.svg";
-
-		const isUnmatched =
-			this.breakpoint.type !== "function" &&
-			sceneStateManager.isSceneActive(this.sceneName) &&
-			sceneStateManager.isBreakpointUnmatched(
-				(this.breakpoint as SourceSceneBreakpoint).file,
-				(this.breakpoint as SourceSceneBreakpoint).line,
-			);
-		if (isUnmatched) {
-			return isEnabled ? "bp-unmatched-enabled.svg" : "bp-unmatched-disabled.svg";
-		}
-
-		let iconBase = "bp-line";
-		if (this.breakpoint.type === "function") {
-			iconBase = "bp-func";
-		} else {
-			const srcBp = this.breakpoint as SourceSceneBreakpoint;
-			switch (srcBp.type) {
-				case "condition":
-					iconBase = "bp-cond";
-					break;
-				case "hitCount":
-					iconBase = "bp-hit";
-					break;
-				case "logpoint":
-					iconBase = "bp-log";
-					break;
-				default:
-					iconBase = "bp-line";
-					break;
-			}
-		}
-		return `${iconBase}-${isEnabled ? "enabled" : "disabled"}.svg`;
-	}
 }
 
 /**
- * 路径比对标准化辅助函数
+ * 路径比对标准化辅助函数 (向后兼容别名)
  */
-export function isSamePath(p1: string, p2: string): boolean {
-	const n1 = path.normalize(p1).toLowerCase();
-	const n2 = path.normalize(p2).toLowerCase();
-	return n1 === n2;
-}
+export const isSamePath = isSameFsPath;
 
 /**
  * 空态占位节点 (PlaceholderNode)：用于展示空列表引导与提示

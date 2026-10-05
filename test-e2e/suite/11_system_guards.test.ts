@@ -29,10 +29,18 @@ suite("Suite 11: 系统级拓扑守卫、防回环与容灾防线", () => {
 
   teardown(async () => {
     await vscode.commands.executeCommand("sceneBreakpoints.clearAll");
+    await new Promise((resolve) => setTimeout(resolve, 100));
     if (initialConfigContent) {
       const workspaceFolders = vscode.workspace.workspaceFolders!;
       const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
-      require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+      for (let retry = 0; retry < 5; retry++) {
+        try {
+          fs.writeFileSync(configPath, initialConfigContent, "utf-8");
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
@@ -62,7 +70,7 @@ suite("Suite 11: 系统级拓扑守卫、防回环与容灾防线", () => {
       // 弹性等待 FileWatcher 防抖与 DAP 响应式重装配 (最多 3500ms)
       const startTime = Date.now();
       while (Date.now() - startTime < 3500) {
-        if ((vscode.debug.breakpoints.length as number) === 1) {
+        if ((vscode.debug.breakpoints.length as number) === 1 && api.getStatusBarItem()?.text?.includes("[discount-flow]")) {
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -281,6 +289,151 @@ suite("Suite 11: 系统级拓扑守卫、防回环与容灾防线", () => {
       assert.ok(fs.existsSync(configPath));
     } finally {
       if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
+    }
+  });
+
+  test("TC-CONF-02: allowAiFileActivation 开关受控 (INV-008)", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+
+    // 1. 确保将 allowAiFileActivation 设为 false
+    await vscode.workspace
+      .getConfiguration("sceneBreakpoints")
+      .update("allowAiFileActivation", false, vscode.ConfigurationTarget.Workspace);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // 2. 先激活 login-flow
+    await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["login-flow"]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.strictEqual(vscode.debug.breakpoints.length, 2, "初始应激活 login-flow 的 2 个断点");
+
+    try {
+      // 3. 外部直接修改磁盘配置文件，将 activeScenes 变更为 ["discount-flow"]
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const json = JSON.parse(raw);
+      json.activeScenes = ["discount-flow"];
+      fs.writeFileSync(configPath, JSON.stringify(json, null, 2), "utf-8");
+
+      // 等待外部文件监听与防抖处理完成
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      // 4. 断言：因为 allowAiFileActivation = false，外部修改被静默忽略！
+      // DAP 断点仍然是 login-flow 的 2 个断点，且状态栏依然显示 login-flow
+      assert.strictEqual(vscode.debug.breakpoints.length, 2, "AI激活开关关闭时严禁自动下发外部场景");
+      const statusBar = api.getStatusBarItem();
+      assert.ok(statusBar.text.includes("[login-flow]"), "状态栏必须维持原有激活场景");
+    } finally {
+      // 还原磁盘配置
+      fs.writeFileSync(configPath, initialConfigContent, "utf-8");
+    }
+  });
+
+  test("TC-SESS-01: 调试会话保护（策略 A 挂起与补发）(INV-012)", async () => {
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
+
+    // 1. 开启 allowAiFileActivation 开关
+    await vscode.workspace
+      .getConfiguration("sceneBreakpoints")
+      .update("allowAiFileActivation", true, vscode.ConfigurationTarget.Workspace);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // 2. 初始激活 discount-flow (1 个断点，行 12)
+    await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["discount-flow"]);
+    // 必须等待内部写盘安全窗 (600ms) 释放，确保后续外部改写能被 FileWatcher 正常捕获
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    assert.strictEqual(vscode.debug.breakpoints.length, 1);
+    const initialBp = vscode.debug.breakpoints[0] as vscode.SourceBreakpoint;
+    assert.strictEqual(initialBp.location.range.start.line + 1, 12);
+
+    // 3. 模拟进入活跃调试会话 (activeDebugSession 存在)
+    let mockSession: any = { id: "test-session-inv012", type: "node", name: "Mock Session" };
+    const origSessionProp = Object.getOwnPropertyDescriptor(vscode.debug, "activeDebugSession");
+    Object.defineProperty(vscode.debug, "activeDebugSession", {
+      get: () => mockSession,
+      configurable: true,
+    });
+
+    try {
+      // 4. 调试中外部改写磁盘配置：向 discount-flow 中追加第 2 个断点 (改变拓扑)
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const json = JSON.parse(raw);
+      json.scenes["discount-flow"].push({
+        type: "line",
+        file: "src/sample.ts",
+        line: 20,
+        enabled: true,
+        desc: "调试中外部追加断点",
+      });
+      fs.writeFileSync(configPath, JSON.stringify(json, null, 2), "utf-8");
+
+      // 弹性等待 FileWatcher 防抖 (最多 3500ms)
+      const startTime = Date.now();
+      while (Date.now() - startTime < 3500) {
+        if (api.sceneStateManager.isPendingTopologyUpdate()) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+
+      // 5. 核心断言 1：调试会话保护生效！
+      // 外部改写绝不打断调试心流，DAP 真实断点维持 1 个不变（未重刷追加第 2 个）
+      assert.strictEqual(vscode.debug.breakpoints.length, 1, "调试进行中必须拦截 DAP 重刷追加，保护心流");
+      assert.strictEqual(api.sceneStateManager.isPendingTopologyUpdate(), true, "状态机必须标记 pendingTopologyUpdate 为 true");
+
+      // 6. 模拟调试会话终止：清除活跃会话并触发会话终止生命周期补偿
+      mockSession = undefined;
+      api.sceneStateManager.clearLastAppliedTopologyHash();
+      api.sceneStateManager.setPendingTopologyUpdate(false);
+      await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["discount-flow"]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // 7. 核心断言 2：会话销毁后拓扑平滑补发，DAP 断点更新至全部 2 个断点
+      assert.strictEqual(vscode.debug.breakpoints.length, 2, "调试会话结束后必须补偿装配最新全量拓扑");
+    } finally {
+      if (origSessionProp) {
+        Object.defineProperty(vscode.debug, "activeDebugSession", origSessionProp);
+      }
+      await vscode.workspace
+        .getConfiguration("sceneBreakpoints")
+        .update("allowAiFileActivation", false, vscode.ConfigurationTarget.Workspace);
+      fs.writeFileSync(configPath, initialConfigContent, "utf-8");
+    }
+  });
+
+  test("TC-CONF-04: 单文件无工作区防御性守卫 (INV-006)", async () => {
+    // 监听 showWarningMessage
+    const origWarn = vscode.window.showWarningMessage;
+    let warningPopped = false;
+    let warnedMessage = "";
+    (vscode.window as any).showWarningMessage = async (msg: string, ...args: any[]) => {
+      warningPopped = true;
+      warnedMessage = msg;
+      return undefined;
+    };
+
+    // 临时伪造 workspaceFolders 为 undefined（模拟无工作区状态）
+    const origFolders = Object.getOwnPropertyDescriptor(vscode.workspace, "workspaceFolders");
+    Object.defineProperty(vscode.workspace, "workspaceFolders", {
+      value: undefined,
+      configurable: true,
+    });
+
+    try {
+      // 触发需工作区命令
+      await vscode.commands.executeCommand("sceneBreakpoints.createNewScene");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      assert.strictEqual(warningPopped, true, "无工作区时触发命令必须弹出温和警告拦截");
+      assert.ok(
+        warnedMessage.toLowerCase().includes("workspace") || warnedMessage.includes("工作区"),
+        "提示内容应包含 workspace 关键词",
+      );
+    } finally {
+      (vscode.window as any).showWarningMessage = origWarn;
+      if (origFolders) {
+        Object.defineProperty(vscode.workspace, "workspaceFolders", origFolders);
+      }
     }
   });
 });

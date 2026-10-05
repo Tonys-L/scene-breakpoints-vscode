@@ -1,17 +1,17 @@
 import assert from "node:assert";
 import { SceneCatalog, Scene, Breakpoint } from "#src/domain/models/index.ts";
-import { LaunchBindingResolver } from "#src/infra/vscode/launchBindingResolver.ts";
+import { LaunchBindingResolver, resolveLaunchBoundScenes } from "#src/domain/services/launchBindingResolver.ts";
 
-export const resolveLaunchBoundScenes = LaunchBindingResolver.resolveScenes;
+export { resolveLaunchBoundScenes };
 import {
 	stripJsonComments,
 	hasGitConflictMarkers,
-	sanitizeScenesConfig,
 } from "#src/infra/storage/jsonFileSceneRepository.ts";
 import {
 	encodeScenePayload as serializeScenePayload,
 	decodeScenePayload as parseScenePayload,
 	ScenePayloadCodec,
+	sanitizeScenesConfig,
 } from "#src/domain/services/scenePayloadCodec.ts";
 const stripMarkdownCodeBlocks = (text) => ScenePayloadCodec.stripMarkdown(text);
 import { EchoLoopGuard } from "#src/infra/storage/echoLoopGuard.ts";

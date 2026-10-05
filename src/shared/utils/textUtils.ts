@@ -146,3 +146,12 @@ export function stripComments(jsonStr: string): string {
 	return stripped.length > 0 ? stripped : "{}";
 }
 
+/**
+ * 检测文本中是否包含未解决的 Git 合并冲突标记 (<<<<<<<, =======, >>>>>>>) (纯工具)
+ */
+export function hasGitConflictMarkers(text: string): boolean {
+	if (typeof text !== "string") return false;
+	return /^[<]{7}\s|^[=]{7}$|^[>]{7}\s/m.test(text);
+}
+
+

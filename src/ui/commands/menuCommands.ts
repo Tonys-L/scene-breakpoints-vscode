@@ -8,6 +8,7 @@ import {
 	exportSceneCommand,
 } from "./sceneCommands";
 import { importSceneFromClipboardCommand } from "./clipboardCommands";
+import { isInlayHintsAlwaysOn, toggleInlayHintsMode } from "#src/ui/utils/inlayHintsCoordinator";
 
 export interface MenuQuickPickItem extends vscode.QuickPickItem {
 	action?: "switch" | "clear" | "export" | "importClipboard" | "multiSelect" | "openConfig" | "toggleInlayHintsMode";
@@ -21,8 +22,7 @@ export interface MenuQuickPickItem extends vscode.QuickPickItem {
  * 构造置顶管理指令项
  */
 function buildManagementMenuItems(): MenuQuickPickItem[] {
-	const currentInlay = vscode.workspace.getConfiguration("editor.inlayHints").get<string>("enabled");
-	const isAlwaysOn = currentInlay === "on";
+	const isAlwaysOn = isInlayHintsAlwaysOn();
 
 	return [
 		{
@@ -127,14 +127,7 @@ async function executeMenuAction(selected: MenuQuickPickItem, workspaceRoot: str
 			break;
 		}
 		case "toggleInlayHintsMode": {
-			const conf = vscode.workspace.getConfiguration("editor.inlayHints");
-			const cur = conf.get<string>("enabled");
-			const next = cur === "on" ? "offUnlessPressed" : "on";
-			await conf.update("enabled", next, vscode.ConfigurationTarget.Global);
-			const msg = next === "on"
-				? vscode.l10n.t("Line Annotations (Inlay Hints) are now Always-On.")
-				: vscode.l10n.t("Line Annotations (Inlay Hints) now show on holding Ctrl+Alt.");
-			void vscode.window.showInformationMessage(msg);
+			await toggleInlayHintsMode();
 			break;
 		}
 	}

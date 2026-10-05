@@ -10,6 +10,10 @@ export function run(): Promise<void> {
     timeout: 30000,
   });
 
+  if (process.env.MOCHA_GREP) {
+    mocha.grep(process.env.MOCHA_GREP);
+  }
+
   const testsRoot = path.resolve(__dirname, "suite");
 
   return new Promise<void>((resolve, reject) => {

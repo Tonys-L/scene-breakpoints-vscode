@@ -2,10 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { echoLoopGuard } from "./echoLoopGuard";
-import { AtomicFileJsonStore } from "./atomicFileJsonStore";
-import type { ISelfHealingStore } from "./selfHealingStore";
+import { AtomicFileJsonStore, type ISelfHealingStore } from "./atomicFileJsonStore";
+import { stripComments, hasGitConflictMarkers } from "#src/shared/utils/textUtils";
 import type { ScenesConfig } from "#src/domain/types";
 import type { ISceneRepository } from "#src/domain/ports/sceneRepository";
+import { sanitizeScenesConfig } from "#src/domain/services/scenePayloadCodec";
 
 /**
  * 存储层用户通知抽象 (消除基础设施直接对 VS Code 弹窗硬绑定)
@@ -42,68 +43,8 @@ export function getScenesConfigPath(workspaceRoot: string): string {
 	return path.join(workspaceRoot, ".vscode", "debug-scenes.json");
 }
 
-
-export function stripJsonComments(jsonStr: string): string {
-	if (typeof jsonStr !== "string") return "{}";
-	const stripped = jsonStr
-		.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, (_match, stringLiteral) => {
-			return stringLiteral ? stringLiteral : "";
-		})
-		.replace(/,\s*([\]}])/g, "$1")
-		.trim();
-	return stripped.length > 0 ? stripped : "{}";
-}
-
-export function hasGitConflictMarkers(text: string): boolean {
-	if (typeof text !== "string") return false;
-	return /^[<]{7}\s|^[=]{7}$|^[>]{7}\s/m.test(text);
-}
-
-export function sanitizeScenesConfig(parsed: any): ScenesConfig {
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return { scenes: {} };
-	}
-	const candidateScenes = (parsed.scenes && typeof parsed.scenes === "object" && !Array.isArray(parsed.scenes))
-		? parsed.scenes
-		: parsed;
-
-	const cleanScenes: Record<string, any[]> = {};
-	for (const [k, v] of Object.entries(candidateScenes)) {
-		if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
-			cleanScenes[k] = (v as any[]).filter((it) => it && typeof it === "object");
-		}
-	}
-
-	let cleanActiveScenes: string[] | undefined;
-	const rawActiveScenes = parsed.activeScenes || candidateScenes.activeScenes;
-	if (Array.isArray(rawActiveScenes)) {
-		cleanActiveScenes = rawActiveScenes
-			.map((it) => String(it).trim())
-			.filter(Boolean);
-	}
-
-	let cleanBindings: Record<string, string | string[]> | undefined;
-	const rawBindings = parsed.bindings || candidateScenes.bindings;
-	if (rawBindings && typeof rawBindings === "object" && !Array.isArray(rawBindings)) {
-		cleanBindings = {};
-		for (const [bk, bv] of Object.entries(rawBindings)) {
-			if (typeof bv === "string" && bv.trim()) {
-				cleanBindings[bk] = bv.trim();
-			} else if (Array.isArray(bv)) {
-				cleanBindings[bk] = (bv as unknown[]).map((it) => String(it).trim()).filter(Boolean);
-			}
-		}
-	}
-
-	const result: ScenesConfig = { scenes: cleanScenes };
-	if (cleanBindings && Object.keys(cleanBindings).length > 0) {
-		result.bindings = cleanBindings;
-	}
-	if (cleanActiveScenes && cleanActiveScenes.length > 0) {
-		result.activeScenes = cleanActiveScenes;
-	}
-	return result;
-}
+export { hasGitConflictMarkers, sanitizeScenesConfig };
+export const stripJsonComments = stripComments;
 
 const atomicStore: ISelfHealingStore<ScenesConfig, string> = new AtomicFileJsonStore<ScenesConfig>();
 

@@ -2,19 +2,16 @@ import * as vscode from "vscode";
 import { breakpointManager } from "#src/application";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-
-
-import type { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
+import { dapEchoGuard } from "#src/infra/vscode/dapEchoGuard";
+import { appEventBus } from "#src/application/eventBus";
 
 /**
  * 断点全双工同步与脏状态服务 (Breakpoint Sync Listener)
  * 职责：专职负责监听 VS Code 编辑器原生断点变动事件，受原子锁与内部写盘防回环保护，调度 syncBreakpointChanges 同步至激活场景并检查脏状态
  */
-export function registerBreakpointSyncService(
-	treeDataProvider: SceneTreeDataProvider,
-): vscode.Disposable {
+export function registerBreakpointSyncService(): vscode.Disposable {
 	return vscode.debug.onDidChangeBreakpoints(async (event) => {
-		if (sceneStateManager.isApplyingScene()) {
+		if (dapEchoGuard.isApplyingBreakpoints() || sceneStateManager.isApplyingScene()) {
 			return;
 		}
 
@@ -27,7 +24,7 @@ export function registerBreakpointSyncService(
 		if (event.changed && event.changed.length > 0) {
 			const activeScenes = sceneStateManager.getActiveScenes();
 			if (activeScenes.length > 0) {
-				const workspaceRoot = getWorkspaceRoot(false);
+				const workspaceRoot = getWorkspaceRoot();
 				if (workspaceRoot) {
 					const syncItems = event.changed
 						.map((bp: any) => {
@@ -55,7 +52,7 @@ export function registerBreakpointSyncService(
 					);
 
 					if (hasUpdated) {
-						treeDataProvider.refresh();
+						appEventBus.emit("breakpoints:changed", { workspaceRoot });
 					}
 				}
 			}

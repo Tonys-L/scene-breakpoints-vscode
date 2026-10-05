@@ -1,11 +1,9 @@
-import * as path from "node:path";
 import * as vscode from "vscode";
-import { getWorkspaceRoot } from "#src/ui/utils/workspaceRoot";
-import { sceneManager, breakpointManager, appEventBus } from "#src/application";
+import { getWorkspaceRoot } from "#src/ui/utils/commandRunner";
+import { sceneManager, breakpointManager, appEventBus, activeBreakpointIndex } from "#src/application";
 
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import type { SourceSceneBreakpoint } from "#src/domain/types";
-import { BreakpointNode, PlaceholderNode, SceneNode, type SceneTreeItem } from "./treeNodes";
+import { BreakpointNode, PlaceholderNode, SceneNode, treeViewState, type SceneTreeItem } from "./treeNodes";
 
 // 重新导出节点类型，保证下游与现有单测 100% 零破坏兼容
 export * from "./treeNodes";
@@ -25,13 +23,33 @@ export class SceneTreeDataProvider
 	private _pausedLocation: { file: string; line: number } | null = null;
 	private _sceneNodesMap = new Map<string, SceneNode>();
 	private _activeBreakpointNodes: BreakpointNode[] = [];
+	private _boundTreeView?: vscode.TreeView<SceneTreeItem>;
+	private readonly _expandedSceneNames = new Set<string>();
 	private readonly _busDisposables: { dispose(): void }[] = [];
+
+	public markSceneExpanded(sceneName: string): void {
+		this._expandedSceneNames.add(sceneName);
+	}
+
+	public markSceneCollapsed(sceneName: string): void {
+		this._expandedSceneNames.delete(sceneName);
+	}
+
+	public isSceneExpanded(sceneName: string): boolean {
+		return this._expandedSceneNames.has(sceneName);
+	}
 
 	constructor(private readonly extensionPath: string = "") {
 		this._busDisposables.push(
 			appEventBus.on("scenes:changed", () => this.refresh()),
 			appEventBus.on("scene:activated", () => this.refresh()),
 			appEventBus.on("breakpoints:changed", () => this.refresh()),
+			appEventBus.on("debug:paused", async ({ file, line }) => {
+				await this.revealPausedLocation(file, line);
+			}),
+			appEventBus.on("debug:resumed", () => {
+				this.clearPausedLocation();
+			}),
 		);
 	}
 
@@ -147,6 +165,32 @@ export class SceneTreeDataProvider
 		return element;
 	}
 
+	/**
+	 * 获取指定场景内的所有断点树节点（深接口）
+	 * 供 getChildren 与命令层查询使用，避免外部伪造 SceneNode 实例
+	 */
+	public async getBreakpointNodes(sceneName: string): Promise<BreakpointNode[]> {
+		const workspaceRoot = getWorkspaceRoot(false);
+		if (!workspaceRoot) return [];
+		const config = sceneManager.loadScenesConfig(workspaceRoot);
+		const list = (config.scenes && Array.isArray(config.scenes[sceneName]))
+			? config.scenes[sceneName]
+			: [];
+		const isActive = sceneStateManager.isSceneActive(sceneName);
+		return list.map((bp, idx) => {
+			const isUnmatched = bp.type !== "function" && isActive && sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
+			return new BreakpointNode(
+				sceneName,
+				idx,
+				bp,
+				workspaceRoot,
+				this.extensionPath,
+				this._pausedLocation,
+				{ isUnmatched },
+			);
+		});
+	}
+
 	public async getChildren(element?: SceneTreeItem): Promise<SceneTreeItem[]> {
 		const workspaceRoot = getWorkspaceRoot(false);
 		if (!workspaceRoot) {
@@ -173,7 +217,8 @@ export class SceneTreeDataProvider
 			return sceneNames.map((name) => {
 				const bps = (config.scenes && Array.isArray(config.scenes[name])) ? config.scenes[name] : [];
 				const isActive = activeScenes.includes(name);
-				const node = new SceneNode(name, bps.length, isActive, isDirty && isActive);
+				const isExpanded = this.isSceneExpanded(name) || isActive;
+				const node = new SceneNode(name, bps.length, isActive, isDirty && isActive, isExpanded);
 				this._sceneNodesMap.set(name, node);
 				return node;
 			});
@@ -181,16 +226,10 @@ export class SceneTreeDataProvider
 
 		// 子节点：返回指定场景内的断点列表
 		if (element instanceof SceneNode) {
-			const config = sceneManager.loadScenesConfig(workspaceRoot);
-			const list = (config.scenes && Array.isArray(config.scenes[element.sceneName]))
-				? config.scenes[element.sceneName]
-				: [];
-			if (list.length === 0) {
+			const nodes = await this.getBreakpointNodes(element.sceneName);
+			if (nodes.length === 0) {
 				return [new PlaceholderNode(vscode.l10n.t("No breakpoints in this scene"))];
 			}
-			const nodes = list.map((bp, idx) =>
-				new BreakpointNode(element.sceneName, idx, bp, workspaceRoot, this.extensionPath, this._pausedLocation),
-			);
 			// 记录缓存以备 reveal 定位
 			this._activeBreakpointNodes = this._activeBreakpointNodes
 				.filter((n) => n.sceneName !== element.sceneName)
@@ -205,55 +244,52 @@ export class SceneTreeDataProvider
 	 * 统一高亮与自动展开调试运行时命中的断点节点 (UI 呈现深接口)
 	 */
 	public async revealPausedLocation(
-		treeView: vscode.TreeView<SceneTreeItem>,
-		file: string,
-		line: number,
+		treeViewOrFile: vscode.TreeView<SceneTreeItem> | string,
+		fileOrLine?: string | number,
+		lineOrNothing?: number,
 	): Promise<void> {
+		let treeView: vscode.TreeView<SceneTreeItem> | undefined;
+		let file: string;
+		let line: number;
+
+		if (typeof treeViewOrFile === "string") {
+			file = treeViewOrFile;
+			line = typeof fileOrLine === "number" ? fileOrLine : 0;
+			treeView = this._boundTreeView;
+		} else {
+			treeView = treeViewOrFile;
+			file = typeof fileOrLine === "string" ? fileOrLine : "";
+			line = typeof lineOrNothing === "number" ? lineOrNothing : 0;
+		}
+
 		const workspaceRoot = getWorkspaceRoot(false);
 		if (!workspaceRoot) {
 			this.setPausedLocation(file, line);
 			return;
 		}
 
-		const config = sceneManager.loadScenesConfig(workspaceRoot);
 		const activeScenes = sceneStateManager.getActiveScenes();
 		if (activeScenes.length === 0) return;
 
-		const fullTarget = path.normalize(file).toLowerCase();
-		let isHit = false;
-		let hitSceneName: string | undefined;
-
-		for (const sceneName of activeScenes) {
-			const bps = config.scenes[sceneName] || [];
-			const hit = bps.some((b) => {
-				if (b.type === "function") return false;
-				const src = b as SourceSceneBreakpoint;
-				if (Number(src.line) !== line) return false;
-				const fp = path.normalize(
-					path.isAbsolute(src.file) ? src.file : path.join(workspaceRoot, src.file),
-				).toLowerCase();
-				const rawSrc = path.normalize(src.file).toLowerCase().replace(/\\/g, "/");
-				const targetNorm = fullTarget.replace(/\\/g, "/");
-				return fp === fullTarget || targetNorm.endsWith("/" + rawSrc) || targetNorm.endsWith(rawSrc);
-			});
-
-			if (hit) {
-				isHit = true;
-				hitSceneName = sceneName;
-				break;
-			}
+		if (!activeBreakpointIndex.isUpToDate(workspaceRoot, activeScenes)) {
+			const config = sceneManager.loadScenesConfig(workspaceRoot);
+			activeBreakpointIndex.syncFromConfig(workspaceRoot, config, activeScenes);
 		}
 
+		const activeBp = activeBreakpointIndex.findActiveBreakpoint(file, line, workspaceRoot);
+
 		// 核心守卫：若当前位置不属于任何已激活的场景断点，绝不冲刷既有断点高亮
-		if (!isHit) {
+		if (!activeBp) {
 			return;
 		}
 
+		const hitSceneName = activeBp.sceneName;
 		this.setPausedLocation(file, line);
 
 		let pausedNode = this.findPausedBreakpointNode();
-		if (!pausedNode && hitSceneName) {
+		if (!pausedNode && hitSceneName && treeView) {
 			// 若当前所属场景尚未展开，主动触发展开
+			const config = sceneManager.loadScenesConfig(workspaceRoot);
 			const bps = config.scenes[hitSceneName] || [];
 			const parentNode = new SceneNode(hitSceneName, bps.length, true, false);
 			try {
@@ -265,7 +301,7 @@ export class SceneTreeDataProvider
 			}
 		}
 
-		if (pausedNode) {
+		if (pausedNode && treeView) {
 			try {
 				await treeView.reveal(pausedNode, { select: true, focus: false });
 			} catch {
@@ -273,4 +309,77 @@ export class SceneTreeDataProvider
 			}
 		}
 	}
+
+	/**
+	 * 绑定 VS Code TreeView 原生视图实例
+	 * 统一接管展开/折叠状态持久化记忆、复选框点击局部静默刷新与领域状态变更监听
+	 */
+	public bindView(treeView: vscode.TreeView<SceneTreeItem>): vscode.Disposable {
+		this._boundTreeView = treeView;
+		const disposables: vscode.Disposable[] = [];
+
+		// 1. 记录用户手动展开/折叠的场景状态，防止任何刷新导致折叠状态被重置
+		disposables.push(
+			treeView.onDidExpandElement((e) => {
+				if (e.element instanceof SceneNode) {
+					this.markSceneExpanded(e.element.sceneName);
+					treeViewState.markExpanded(e.element.sceneName);
+				}
+			}),
+			treeView.onDidCollapseElement((e) => {
+				if (e.element instanceof SceneNode) {
+					this.markSceneCollapsed(e.element.sceneName);
+					treeViewState.markCollapsed(e.element.sceneName);
+				}
+			}),
+		);
+
+		// 2. 状态机全局变更时响应式重绘树视图
+		disposables.push(
+			sceneStateManager.onDidChangeState(() => {
+				this.refresh();
+			}),
+		);
+
+		// 3. 监听用户点击树节点原生复选框事件 (对齐 VS Code 原生 Breakpoints 面板)
+		disposables.push(
+			treeView.onDidChangeCheckboxState(async (e) => {
+				const workspaceRoot = getWorkspaceRoot(true);
+				if (!workspaceRoot) return;
+
+				for (const [item, state] of e.items) {
+					if (item instanceof BreakpointNode && item.sceneName && typeof item.index === "number") {
+						const newEnabled = state === vscode.TreeItemCheckboxState.Checked;
+						const result = await breakpointManager.toggleBreakpoint(
+							workspaceRoot,
+							item.sceneName,
+							item.index,
+							newEnabled,
+						);
+
+						if (result.success) {
+							item.breakpoint.enabled = result.newEnabled;
+							item.updateAppearance();
+							this.refresh(item);
+						}
+					}
+				}
+			}),
+		);
+
+		return vscode.Disposable.from(...disposables);
+	}
 }
+
+/**
+ * 树视图交互与复选框协同控制器快捷装配函数 (向后兼容)
+ */
+export function registerTreeInteractionService(
+	treeView: vscode.TreeView<SceneTreeItem>,
+	treeDataProvider: SceneTreeDataProvider,
+): vscode.Disposable {
+	return treeDataProvider.bindView(treeView);
+}
+
+export const registerTreeInteractionCoordinator = registerTreeInteractionService;
+

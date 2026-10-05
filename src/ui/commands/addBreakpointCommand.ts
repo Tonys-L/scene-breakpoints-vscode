@@ -3,6 +3,9 @@ import * as vscode from "vscode";
 import { sceneManager, breakpointManager } from "#src/application";
 import { extractContextSnippet } from "#src/domain/services/healingEngine";
 import type { BreakpointType, FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
+import { promptSceneName } from "#src/ui/utils/promptHelpers";
+import { runWithActiveEditor } from "#src/ui/utils/commandRunner";
+import { flushVisibleEditors } from "#src/ui/views/sceneInlayHintsProvider";
 
 /**
  * 在当前编辑器光标所在行向指定场景添加断点
@@ -39,15 +42,11 @@ async function promptTargetScene(workspaceRoot: string): Promise<string | undefi
 
 	let targetScene = selectedSceneItem.sceneName;
 	if (targetScene === "__NEW__") {
-		const newSceneName = await vscode.window.showInputBox({
+		const newSceneName = await promptSceneName({
 			prompt: vscode.l10n.t("Enter new scene identifier (e.g. user-login or auth-verify)"),
-			validateInput: (value) => (!value || !value.trim() ? vscode.l10n.t("Scene name cannot be empty") : null),
 		});
 		if (!newSceneName) return undefined;
-		targetScene = newSceneName.trim();
-		if (!config.scenes[targetScene]) {
-			config.scenes[targetScene] = [];
-		}
+		targetScene = newSceneName;
 	}
 	return targetScene;
 }
@@ -152,33 +151,37 @@ function createBreakpointEntry(
 }
 
 export async function addBreakpointCommand(): Promise<void> {
-	const editor = vscode.window.activeTextEditor;
-	if (!editor) {
-		void vscode.window.showWarningMessage(vscode.l10n.t("No active editor file detected"));
-		return;
-	}
+	await runWithActiveEditor(async (editor, workspaceRoot) => {
+		const fullFilePath = editor.document.fileName;
+		const relativeFilePath = path.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
+		const fileNameOnly = path.basename(fullFilePath);
+		const currentLine = editor.selection.active.line + 1; // 1-indexed
 
-	const fullFilePath = editor.document.fileName;
-	const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-	const workspaceRoot = workspaceFolder ? workspaceFolder.uri.fsPath : path.dirname(editor.document.fileName);
-	const relativeFilePath = path.relative(workspaceRoot, fullFilePath).replace(/\\/g, "/");
-	const fileNameOnly = path.basename(fullFilePath);
-	const currentLine = editor.selection.active.line + 1; // 1-indexed
+		const targetScene = await promptTargetScene(workspaceRoot);
+		if (!targetScene) return;
 
-	const targetScene = await promptTargetScene(workspaceRoot);
-	if (!targetScene) return;
+		const bpType = await promptBreakpointType();
+		if (!bpType) return;
 
-	const bpType = await promptBreakpointType();
-	if (!bpType) return;
+		const params = await promptBreakpointParams(bpType, fileNameOnly, currentLine);
+		if (!params) return;
 
-	const params = await promptBreakpointParams(bpType, fileNameOnly, currentLine);
-	if (!params) return;
+		const newEntry = createBreakpointEntry(params, editor, relativeFilePath, fileNameOnly, currentLine);
+		await breakpointManager.addBreakpoint(workspaceRoot, targetScene, newEntry);
 
-	const newEntry = createBreakpointEntry(params, editor, relativeFilePath, fileNameOnly, currentLine);
-	await breakpointManager.addBreakpoint(workspaceRoot, targetScene, newEntry);
+		const summaryLabel = bpType === "function" ? (params.functionName || "") : `${fileNameOnly}:${currentLine}`;
+		void vscode.window.showInformationMessage(
+			vscode.l10n.t("Saved breakpoint to scene [{0}]: {1}:{2} {3}", targetScene, summaryLabel, bpType, newEntry.desc ? `("${newEntry.desc}")` : ""),
+		);
 
-	const summaryLabel = bpType === "function" ? (params.functionName || "") : `${fileNameOnly}:${currentLine}`;
-	void vscode.window.showInformationMessage(
-		vscode.l10n.t("Saved breakpoint to scene [{0}]: {1}:{2} {3}", targetScene, summaryLabel, bpType, newEntry.desc ? `("${newEntry.desc}")` : ""),
-	);
+		try {
+			await vscode.window.showTextDocument(editor.document, {
+				selection: editor.selection,
+				preserveFocus: false,
+			});
+			flushVisibleEditors();
+		} catch {
+			// 忽略非关键焦点恢复异常
+		}
+	});
 }

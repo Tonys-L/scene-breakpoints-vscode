@@ -15,9 +15,10 @@ async function main() {
     console.log(`🧪 Test Runner: ${extensionTestsPath}`);
     console.log(`📂 Sandbox Workspace: ${testWorkspace}`);
 
-    const extensionTestsEnv = process.env.NODE_V8_COVERAGE
-      ? { ...process.env, NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }
-      : undefined;
+    const extensionTestsEnv = {
+      ...process.env,
+      ...(process.env.NODE_V8_COVERAGE ? { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE } : {}),
+    };
 
     await runTests({
       extensionDevelopmentPath,
