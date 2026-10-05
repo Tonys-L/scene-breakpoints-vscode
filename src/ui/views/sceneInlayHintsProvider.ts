@@ -111,6 +111,66 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 	}
 
 	/**
+	 * 构建单行断点注解的装饰项配置
+	 */
+	private createLineDecoration(
+		document: vscode.TextDocument,
+		bpLine: number,
+		stepItems: BreakpointStepItem[],
+	): vscode.DecorationOptions | undefined {
+		const zeroBasedLine = bpLine - 1;
+		if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return undefined;
+
+		const lineLength = document.lineAt(zeroBasedLine).text.length;
+		const pos = new vscode.Position(zeroBasedLine, lineLength);
+
+		const labelParts = stepItems.map((item) => {
+			const base = `[${item.sceneName} #${item.stepIndex}]`;
+			const desc = item.breakpoint.desc?.trim();
+			return desc ? `${base} ${desc}` : base;
+		});
+
+		return {
+			range: new vscode.Range(pos, pos),
+			renderOptions: {
+				after: {
+					contentText: ` 💡 ${labelParts.join(" | ")}`,
+					color: new vscode.ThemeColor("editorInlayHint.foreground"),
+					backgroundColor: new vscode.ThemeColor("editorInlayHint.background"),
+				},
+			},
+			hoverMessage: this.buildHintTooltip(stepItems),
+		};
+	}
+
+	/**
+	 * 对单个文本编辑器执行行末注解装饰渲染
+	 */
+	private renderSingleEditorDecorations(
+		editor: vscode.TextEditor,
+		deco: vscode.TextEditorDecorationType,
+	): void {
+		const uri = editor.document.uri;
+		if (uri.scheme !== "file" && uri.scheme !== "untitled") return;
+
+		const lineToStepsMap = this.getGroupedBreakpointsForDocument(uri.fsPath);
+		if (!lineToStepsMap || lineToStepsMap.size === 0) {
+			editor.setDecorations(deco, []);
+			return;
+		}
+
+		const decorations: vscode.DecorationOptions[] = [];
+		for (const [bpLine, stepItems] of lineToStepsMap.entries()) {
+			const itemDeco = this.createLineDecoration(editor.document, bpLine, stepItems);
+			if (itemDeco) {
+				decorations.push(itemDeco);
+			}
+		}
+
+		editor.setDecorations(deco, decorations);
+	}
+
+	/**
 	 * 主动向可见文本编辑器推送断点行末注解装饰，
 	 * 彻底绕过 Monaco 内核对失焦编辑器的重绘惰性节流屏障，实现 0ms 响应式同步。
 	 */
@@ -135,43 +195,7 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 
 		for (const editor of targetEditors) {
 			try {
-				const uri = editor.document.uri;
-				if (uri.scheme !== "file" && uri.scheme !== "untitled") continue;
-
-				const lineToStepsMap = this.getGroupedBreakpointsForDocument(uri.fsPath);
-				if (!lineToStepsMap || lineToStepsMap.size === 0) {
-					editor.setDecorations(deco, []);
-					continue;
-				}
-
-				const decorations: vscode.DecorationOptions[] = [];
-				for (const [bpLine, stepItems] of lineToStepsMap.entries()) {
-					const zeroBasedLine = bpLine - 1;
-					if (zeroBasedLine < 0 || zeroBasedLine >= editor.document.lineCount) continue;
-
-					const lineLength = editor.document.lineAt(zeroBasedLine).text.length;
-					const pos = new vscode.Position(zeroBasedLine, lineLength);
-
-					const labelParts = stepItems.map((item) => {
-						const base = `[${item.sceneName} #${item.stepIndex}]`;
-						const desc = item.breakpoint.desc?.trim();
-						return desc ? `${base} ${desc}` : base;
-					});
-
-					decorations.push({
-						range: new vscode.Range(pos, pos),
-						renderOptions: {
-							after: {
-								contentText: ` 💡 ${labelParts.join(" | ")}`,
-								color: new vscode.ThemeColor("editorInlayHint.foreground"),
-								backgroundColor: new vscode.ThemeColor("editorInlayHint.background"),
-							},
-						},
-						hoverMessage: this.buildHintTooltip(stepItems),
-					});
-				}
-
-				editor.setDecorations(deco, decorations);
+				this.renderSingleEditorDecorations(editor, deco);
 			} catch {
 				// 容错：忽略单个编辑器装饰异常
 			}
@@ -179,40 +203,23 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 	}
 
 	/**
-	 * 解析并确保当前活跃断点内存索引有效，返回与指定文档关联的按行聚合断点映射
+	 * 解析当前有效的激活场景列表（含冷启动自动降级与显式状态区分）
 	 */
-	private getGroupedBreakpointsForDocument(
-		docFsPath: string,
-	): Map<number, BreakpointStepItem[]> | undefined {
-		if (!this.enabledGetter()) {
-			return undefined;
-		}
-
-		const wsRoot = this.workspaceRootGetter();
+	private resolveActiveScenes(): string[] {
 		let activeScenes = sceneStateManager.getActiveScenes();
-
-		let config: ScenesConfig | undefined;
 		if (activeScenes.length === 0 && !sceneStateManager.hasExplicitState()) {
-			config = this.configLoader();
+			const config = this.configLoader();
 			if (config && Array.isArray(config.activeScenes) && config.activeScenes.length > 0) {
 				activeScenes = config.activeScenes;
 			}
 		}
+		return activeScenes;
+	}
 
-		if (activeScenes.length === 0) {
-			return undefined;
-		}
-
-		if (!activeBreakpointIndex.isUpToDate(wsRoot || "", activeScenes)) {
-			config = config ?? this.configLoader();
-			if (config && config.scenes) {
-				activeBreakpointIndex.sync(wsRoot || "", config.scenes, activeScenes);
-			}
-		}
-
-		const indexedBps = activeBreakpointIndex.getBreakpointsForDocument(docFsPath, wsRoot);
-		if (indexedBps.length === 0) return undefined;
-
+	/**
+	 * 将已索引断点聚合为按物理行号索引的步骤映射表
+	 */
+	private groupBreakpointsByLine(indexedBps: BreakpointStepItem[]): Map<number, BreakpointStepItem[]> {
 		const lineToStepsMap = new Map<number, BreakpointStepItem[]>();
 		for (const item of indexedBps) {
 			const bpLine = item.breakpoint.line;
@@ -221,6 +228,31 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 			lineToStepsMap.set(bpLine, existing);
 		}
 		return lineToStepsMap;
+	}
+
+	/**
+	 * 解析并确保当前活跃断点内存索引有效，返回与指定文档关联的按行聚合断点映射
+	 */
+	private getGroupedBreakpointsForDocument(
+		docFsPath: string,
+	): Map<number, BreakpointStepItem[]> | undefined {
+		if (!this.enabledGetter()) return undefined;
+
+		const activeScenes = this.resolveActiveScenes();
+		if (activeScenes.length === 0) return undefined;
+
+		const wsRoot = this.workspaceRootGetter();
+		if (!activeBreakpointIndex.isUpToDate(wsRoot || "", activeScenes)) {
+			const config = this.configLoader();
+			if (config && config.scenes) {
+				activeBreakpointIndex.sync(wsRoot || "", config.scenes, activeScenes);
+			}
+		}
+
+		const indexedBps = activeBreakpointIndex.getBreakpointsForDocument(docFsPath, wsRoot);
+		if (indexedBps.length === 0) return undefined;
+
+		return this.groupBreakpointsByLine(indexedBps);
 	}
 
 	/**
