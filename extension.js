@@ -2414,7 +2414,7 @@ function pureSha256(ascii) {
   }
   return result;
 }
-var LATEST_SKILL_VERSION = "1.0.8";
+var LATEST_SKILL_VERSION = "1.0.9";
 var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 var OFFICIAL_SKILL_HISTORY = {
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",

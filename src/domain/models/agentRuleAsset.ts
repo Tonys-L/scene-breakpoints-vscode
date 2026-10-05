@@ -83,7 +83,7 @@ export function pureSha256(ascii: string): string {
 /**
  * 插件当前内置的最新 AI 规则资产版本号 (默认与 package.json 对齐)
  */
-export const LATEST_SKILL_VERSION = "1.0.8";
+export const LATEST_SKILL_VERSION = "1.0.9";
 export const LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 
 /**

@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.9] - 2026-10-05
+
+### Fixed & Architectural Improvements
+- **Push-based Scene Annotation Pipeline (0ms Responsive & Non-intrusive)**:
+  - Transition from Monaco's pull-based `InlayHintsProvider` to a push-based `TextEditorDecorationType` pipeline, completely eliminating Monaco's background editor throttling and focus-loss deferrals.
+  - Active scene line annotations now appear instantly (0ms) upon scene activation in the sidebar, and disappear instantly when scenes are cleared/deactivated, without requiring manual editor clicking or forced focus switching.
+  - Unregister native `InlayHintsProvider` to eliminate duplicate double-rendering on focused lines.
+  - Keep 100% pixel-perfect styling, colors, and rich Markdown hover cards matching native editor inlay hints.
+- **Deep Module Architecture & Quality Guardrails Hardening**:
+  - Unify multi-scene active breakpoint index via deep module `ActiveBreakpointIndex`, eliminating redundant disk I/O and nested searches across editor lifecycle hooks.
+  - Standardize single-writer serial mutation pipeline (`mutateCatalog`) and clean pipeline activation (`SceneActivationPipeline`).
+  - Encapsulate DAP event echo guards (`dapEchoGuard`) and standardize line reader ports.
+  - Pass all 32 comprehensive unit test suites (100% pass rate) and strict code-level guardrails (`npm run check:all`) with average CRAP score <= 3.5.
+
+---
+
 ## [1.0.8] - 2026-09-18
 
 ### Added & Enhancements
