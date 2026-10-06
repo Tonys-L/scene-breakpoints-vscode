@@ -15,6 +15,7 @@
 | **全双工防回环同步** | • 树视图、DAP 断点与本地 JSON 三向实时同步<br>• 时间窗与哈希守卫（INV-008 EchoLoopGuard）阻断回环死锁 | ❌ 仅反向同步当前处于激活态的场景，严禁污染非激活场景 | `echoLoopGuard`<br>`breakpointSyncListener` |
 | **启动项联动激活** | • 捕获调试启动并按优先级（`env` > `bindings` > 同名）推导场景<br>• 幽灵场景（未在配置中定义）强行拦截（INV-009） | ❌ 仅作为预装配拦截，不修改用户的 `launch.json` 规则 | `launchBindingResolver`<br>`debugLifecycleListener` |
 | **AI 声明式编排** | • AI 直接声明式读写 `debug-scenes.json` 激活场景<br>• 8 大主流 VS Code AI 规则一键分发与正文哈希版本诊断 | ❌ 受用户 `allowAiFileActivation` 开关授权控制<br>❌ 插件自身不内置大模型运行时 | `agentSyncService`<br>`skillCommands` |
+| **场景引用组合解析** | • 组合激活经 `sceneResolver` 深度优先展开引用为纯断点流，声明时序 100% 保真（INV-030）<br>• 成环在写盘/DAP 前拦截；悬空降级警告跳过；`enabled: false` 整棵子树摘除<br>• 自愈回写按 ownerScene（断点定义场景）路由，同源多引用单次回写 | ❌ 不支持跨文件/跨工作区引用（同 `debug-scenes.json` 内按 name 解析）<br>❌ 引用子树在树视图中只读，断点须回源场景编辑 | `sceneResolver`<br>`sceneActivationPipeline` |
 
 ---
 
@@ -25,4 +26,12 @@
 | **断点下发** | 断点规则清洗、合并计算与增量 Diff | 实际向调试器注入断点并拦截运行 | 依赖抽象 `IBreakpointBridge` |
 | **配置存储** | 场景元数据验证、自愈计算与原子落盘 | 提供磁盘文件系统 I/O | 依赖抽象 `ISceneRepository` |
 | **人机交互** | 树视图节点构建、命令分发与状态展示 | 提供 UI 控件、事件循环与剪贴板 | 依赖 `src/ui/*` 适配层隔离 |
+
+---
+
+## 变更记录
+
+| 日期 | 变更内容 | 变更人 | 关联变更 |
+|------|----------|--------|----------|
+| 2026-10-06 | 核心能力矩阵新增"场景引用组合解析"能力边界（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / flows.md / glossary.md / adr/005 / e2e-scenarios.md |
 

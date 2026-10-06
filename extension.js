@@ -178,7 +178,7 @@ var ActiveBreakpointIndex = class {
       if (!Array.isArray(sceneBps)) continue;
       let stepIndex = 0;
       for (const bp of sceneBps) {
-        if (!bp || typeof bp !== "object" || bp.type === "function") continue;
+        if (!bp || typeof bp !== "object" || bp.type === "function" || bp.type === "scene") continue;
         stepIndex++;
         const srcBp = bp;
         if (!srcBp.file || typeof srcBp.line !== "number" || srcBp.line <= 0) continue;
@@ -728,6 +728,7 @@ var Fingerprint = class _Fingerprint {
 
 // src/domain/models/breakpoint.ts
 var Breakpoint = class _Breakpoint {
+  kind = "breakpoint";
   type;
   file;
   line;
@@ -789,11 +790,10 @@ var Breakpoint = class _Breakpoint {
     this.fingerprint = fingerprint;
   }
   /**
-   * 启闭切换
+   * 启闭切换 (SceneStep 协议实现)
    */
   toggle() {
     this.enabled = !this.enabled;
-    return this.enabled;
   }
   /**
    * 设置启用状态
@@ -873,10 +873,11 @@ var Breakpoint = class _Breakpoint {
     return this.enrich(lines);
   }
   /**
-   * 物理位置比对与跨平台路径归一化匹配
+   * 物理位置比对与跨平台路径归一化匹配 (SceneStep 协议实现)
+   * 非 Breakpoint（引用节点等）直接返回 false —— 引用与断点永不判等
    */
   matches(other) {
-    if (!other) return false;
+    if (!(other instanceof _Breakpoint)) return false;
     if (this.type === "function") {
       return other.type === "function" && other.functionName === this.functionName;
     }
@@ -888,7 +889,7 @@ var Breakpoint = class _Breakpoint {
     return currentFile.toLowerCase() === otherFile.toLowerCase() && this.line === other.line;
   }
   /**
-   * 导出为符合 schema.json 规范的纯 DTO 对象
+   * 导出为符合 schema.json 规范的纯 DTO 对象 (SceneStep 协议实现)
    */
   toJSON() {
     if (this.type === "function") {
@@ -925,144 +926,191 @@ var Breakpoint = class _Breakpoint {
   }
 };
 
+// src/domain/models/sceneRef.ts
+var SceneRef = class _SceneRef {
+  constructor(name, desc, enabled = true) {
+    this.name = name;
+    this.desc = desc;
+    this.enabled = enabled;
+  }
+  name;
+  desc;
+  enabled;
+  kind = "scene-ref";
+  matches(other) {
+    return other instanceof _SceneRef && other.name === this.name;
+  }
+  toggle() {
+    this.enabled = !this.enabled;
+  }
+  /** 缺省不落盘：enabled === true 与 desc === undefined 时不写键，保持 JSON 最小形状 */
+  toJSON() {
+    const out = { type: "scene", name: this.name };
+    if (this.desc !== void 0) out.desc = this.desc;
+    if (this.enabled === false) out.enabled = false;
+    return out;
+  }
+  /** 工厂：从 DTO 构造（name 非空校验，非法返回 undefined 交由调用方丢弃） */
+  static from(dto) {
+    const name = dto?.name?.trim();
+    if (!name) return void 0;
+    return new _SceneRef(name, dto.desc?.trim() || void 0, dto.enabled !== false);
+  }
+};
+
 // src/domain/models/scene.ts
 var Scene = class _Scene {
   name;
-  breakpoints;
-  constructor(name, initialBreakpoints = []) {
+  steps;
+  constructor(name, initialSteps = []) {
     this.name = (name || "").trim();
-    this.breakpoints = initialBreakpoints.map((b) => b instanceof Breakpoint ? b : new Breakpoint(b));
+    this.steps = initialSteps.map((s) => _Scene.adaptStep(s)).filter((s) => !!s);
+  }
+  /** 实体/DTO 统一适配：SceneStep 直存；引用 DTO 走 SceneRef.from（非法丢弃）；其余构造 Breakpoint */
+  static adaptStep(input) {
+    if (input instanceof Breakpoint || input instanceof SceneRef) return input;
+    if (!input || typeof input !== "object") return void 0;
+    if (input.type === "scene") return SceneRef.from(input);
+    return new Breakpoint(input);
   }
   /**
-   * 获取当前场景内的断点列表（只读副本引用）
+   * 获取当前场景内的步骤列表（声明世界唯一读取口；只读视图）
+   * 编译器强制消费者经收窄点（resolver）消费断点，杜绝"忘记展开引用"静默缺陷
    */
-  getBreakpoints() {
-    return this.breakpoints;
+  getSteps() {
+    return this.steps;
   }
   /**
-   * 获取指定索引位置的断点
+   * 获取指定索引位置的步骤
    */
-  getBreakpoint(index) {
-    if (index < 0 || index >= this.breakpoints.length) {
+  getStep(index) {
+    if (index < 0 || index >= this.steps.length) {
       return void 0;
     }
-    return this.breakpoints[index];
+    return this.steps[index];
   }
   /**
-   * 全量替换场景内的断点列表（常用于全量覆盖模式）
+   * 全量替换场景内的步骤列表（常用于全量覆盖模式）
    */
-  setBreakpoints(newBreakpoints = []) {
-    this.breakpoints = newBreakpoints.map((b) => b instanceof Breakpoint ? b : new Breakpoint(b));
+  setSteps(newSteps = []) {
+    this.steps = newSteps.map((s) => _Scene.adaptStep(s)).filter((s) => !!s);
   }
   /**
-   * 清空场景内全部断点
+   * 清空场景内全部步骤
    */
-  clearBreakpoints() {
-    this.breakpoints = [];
+  clearSteps() {
+    this.steps = [];
   }
   /**
-   * 向场景添加断点，遵循同位置唯一性查重覆盖契约 (INV-001)
+   * 向场景添加步骤，遵循同位置唯一性查重覆盖契约 (INV-001)
+   * matches 命中替换、否则尾部追加；返回值标识是否为新增（true=追加，false=覆盖）
    */
-  upsertBreakpoint(newBp) {
-    const bpInstance = newBp instanceof Breakpoint ? newBp : new Breakpoint(newBp);
-    const existIdx = this.breakpoints.findIndex((it) => it.matches(bpInstance));
+  upsertStep(step) {
+    const existIdx = this.steps.findIndex((it) => it.matches(step));
     if (existIdx >= 0) {
-      this.breakpoints[existIdx] = bpInstance;
-    } else {
-      this.breakpoints.push(bpInstance);
-    }
-  }
-  /**
-   * 从场景中移除指定索引位置的断点
-   */
-  removeBreakpoint(index) {
-    if (index < 0 || index >= this.breakpoints.length) {
+      this.steps[existIdx] = step;
       return false;
     }
-    this.breakpoints.splice(index, 1);
+    this.steps.push(step);
     return true;
   }
   /**
-   * 调整断点在场景内的排列次序（上移/下移/置顶/置底）
+   * 从场景中移除指定索引位置的步骤
    */
-  moveBreakpoint(index, direction) {
-    if (index < 0 || index >= this.breakpoints.length) {
+  removeStep(index) {
+    if (index < 0 || index >= this.steps.length) {
+      return false;
+    }
+    this.steps.splice(index, 1);
+    return true;
+  }
+  /**
+   * 调整步骤在场景内的排列次序（上移/下移/置顶/置底）
+   */
+  moveStep(index, direction) {
+    if (index < 0 || index >= this.steps.length) {
       return false;
     }
     if (direction === "top") {
       if (index === 0) return false;
-      const [item] = this.breakpoints.splice(index, 1);
-      this.breakpoints.unshift(item);
+      const [item] = this.steps.splice(index, 1);
+      this.steps.unshift(item);
       return true;
     }
     if (direction === "bottom") {
-      if (index === this.breakpoints.length - 1) return false;
-      const [item] = this.breakpoints.splice(index, 1);
-      this.breakpoints.push(item);
+      if (index === this.steps.length - 1) return false;
+      const [item] = this.steps.splice(index, 1);
+      this.steps.push(item);
       return true;
     }
     const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= this.breakpoints.length) {
+    if (targetIndex < 0 || targetIndex >= this.steps.length) {
       return false;
     }
-    const temp = this.breakpoints[index];
-    this.breakpoints[index] = this.breakpoints[targetIndex];
-    this.breakpoints[targetIndex] = temp;
+    const temp = this.steps[index];
+    this.steps[index] = this.steps[targetIndex];
+    this.steps[targetIndex] = temp;
     return true;
   }
   /**
-   * 拖拽重排断点至目标索引位置 (reorder)
+   * 拖拽重排步骤至目标索引位置 (reorder)
    */
-  reorderBreakpoint(sourceIndex, targetIndex) {
-    if (sourceIndex < 0 || sourceIndex >= this.breakpoints.length || targetIndex < 0 || targetIndex >= this.breakpoints.length || sourceIndex === targetIndex) {
+  reorderStep(sourceIndex, targetIndex) {
+    if (sourceIndex < 0 || sourceIndex >= this.steps.length || targetIndex < 0 || targetIndex >= this.steps.length || sourceIndex === targetIndex) {
       return false;
     }
-    const [item] = this.breakpoints.splice(sourceIndex, 1);
-    this.breakpoints.splice(targetIndex, 0, item);
+    const [item] = this.steps.splice(sourceIndex, 1);
+    this.steps.splice(targetIndex, 0, item);
     return true;
   }
   /**
-   * 切换场景中指定索引断点的启用/禁用状态
+   * 切换场景中指定索引步骤的启用/禁用状态（多态分发：断点与引用均为一等公民）
    */
-  toggleBreakpointEnabled(index) {
-    if (index < 0 || index >= this.breakpoints.length) {
+  toggleStep(index) {
+    if (index < 0 || index >= this.steps.length) {
       return false;
     }
-    const bp = this.breakpoints[index];
-    bp.enabled = !bp.enabled;
+    this.steps[index].toggle();
     return true;
   }
-  toggleBreakpoint(index) {
-    return this.toggleBreakpointEnabled(index);
-  }
   /**
-   * 批量设置场景内所有断点的启用/禁用状态
+   * 批量设置场景内所有步骤的启用/禁用状态
    */
-  setAllEnabled(targetEnabled) {
+  setAllStepsEnabled(targetEnabled) {
     let hasChanged = false;
-    for (const bp of this.breakpoints) {
-      if (bp.enabled !== targetEnabled) {
-        bp.enabled = targetEnabled;
-        hasChanged = true;
+    for (const step of this.steps) {
+      if (step instanceof Breakpoint) {
+        if (step.enabled !== targetEnabled) {
+          step.setEnabled(targetEnabled);
+          hasChanged = true;
+        }
+      } else if (step instanceof SceneRef) {
+        if (step.enabled !== targetEnabled) {
+          step.toggle();
+          hasChanged = true;
+        }
       }
     }
     return hasChanged;
   }
   /**
-   * 获取当前场景中所有尚未提取有效指纹的物理断点
+   * 获取当前场景中所有尚未提取有效指纹的物理断点（聚合根内部 kind 收窄）
    */
   getUnfingerprintedBreakpoints() {
-    return this.breakpoints.filter(
+    return this.steps.filter((s) => s.kind === "breakpoint").filter(
       (bp) => bp.type !== "function" && !bp.isFingerprinted() && bp.file && bp.line
     );
   }
   /**
    * 将自愈修正后的断点集合回填到当前场景中，返回是否有断点发生了更新
+   * 仅具象断点参与自愈回填匹配（引用节点无物理身份）
    */
   backfillHealed(healedBreakpoints) {
     if (!healedBreakpoints?.length) return false;
     let hasChanged = false;
-    for (const bp of this.breakpoints) {
+    for (const step of this.steps) {
+      if (!(step instanceof Breakpoint)) continue;
+      const bp = step;
       if (bp.type === "function") continue;
       const matched = healedBreakpoints.find((h) => bp.matchesHealedTarget(h));
       if (matched && bp.applyHealed(matched)) {
@@ -1073,12 +1121,15 @@ var Scene = class _Scene {
   }
   /**
    * 同步单个断点目标的启用/禁用状态（支持函数断点名匹配与文件路径归一化匹配）
+   * 仅具象断点参与 DAP 启停同步（引用无物理身份）
    */
   syncBreakpointEnabled(target) {
     let changed = false;
     const targetEnabled = target.enabled ?? true;
     if (target.functionName) {
-      for (const bp of this.breakpoints) {
+      for (const step of this.steps) {
+        if (!(step instanceof Breakpoint)) continue;
+        const bp = step;
         if (bp.type === "function" && bp.functionName === target.functionName) {
           if (bp.enabled !== targetEnabled) {
             bp.setEnabled(targetEnabled);
@@ -1090,7 +1141,9 @@ var Scene = class _Scene {
     }
     if (target.file && typeof target.line === "number") {
       const normTarget = target.file.replace(/\\/g, "/").toLowerCase();
-      for (const bp of this.breakpoints) {
+      for (const step of this.steps) {
+        if (!(step instanceof Breakpoint)) continue;
+        const bp = step;
         if (bp.type === "function" || bp.line !== target.line || !bp.file) continue;
         const normBp = bp.file.replace(/\\/g, "/").toLowerCase();
         if (normBp === normTarget || normTarget.endsWith("/" + normBp) || normBp.endsWith("/" + normTarget)) {
@@ -1104,20 +1157,31 @@ var Scene = class _Scene {
     return changed;
   }
   /**
-   * 深度克隆生成场景副本
+   * 深度克隆生成场景副本（断点走 clone，引用重建，保持声明结构）
    */
   clone(newName) {
-    const clonedBps = this.breakpoints.map((b) => b.clone());
-    return new _Scene(newName, clonedBps);
+    const clonedSteps = this.steps.map((s) => {
+      if (s instanceof Breakpoint) return s.clone();
+      if (s instanceof SceneRef) return new SceneRef(s.name, s.desc, s.enabled);
+      return s;
+    });
+    return new _Scene(newName, clonedSteps);
   }
   /**
-   * 将多个场景按“先到先得”排重策略 (INV-004, INV-011) 合并生成一个新的场景实体
+   * 快速判定：场景是否含引用节点（激活管道/树视图决定是否走解析路径）
+   */
+  hasSceneRefs() {
+    return this.steps.some((s) => s.kind === "scene-ref");
+  }
+  /**
+   * 将多个场景按“先到先得”排重策略 (INV-011) 合并生成一个新的场景实体
+   * 输入约束为视图场景（仅吸收具象断点，引用不参与合并，防止声明污染）
    */
   static merge(scenes, mergedName = "merged") {
     const mergedBreakpoints = [];
     for (const scene of scenes) {
       if (!scene) continue;
-      for (const bp of scene.getBreakpoints()) {
+      for (const bp of scene.getConcreteBreakpoints()) {
         const exists = mergedBreakpoints.some((it) => it.matches(bp));
         if (!exists) {
           mergedBreakpoints.push(bp);
@@ -1128,21 +1192,29 @@ var Scene = class _Scene {
   }
   /**
    * 将另一场景或断点集合按“先到先得”排重策略合并吸收至当前场景中
+   * 仅吸收具象断点（引用不跨场景吸收，防止声明污染）
    */
   mergeFrom(other) {
-    const incoming = other instanceof _Scene ? other.getBreakpoints() : other;
+    const incoming = other instanceof _Scene ? other.getConcreteBreakpoints() : other;
     for (const bp of incoming) {
-      const exists = this.breakpoints.some((it) => it.matches(bp));
+      const exists = this.steps.some((it) => it.matches(bp));
       if (!exists) {
-        this.breakpoints.push(bp);
+        this.steps.push(bp);
       }
     }
   }
   /**
-   * 导出为纯数据断点数组 DTO
+   * 具象断点投影（私有辅助，仅供 Scene 内部与视图场景合并使用）：
+   * 返回 steps 中 kind === "breakpoint" 的实体数组。不作为公开 API —— 公开读取口只有 getSteps()。
+   */
+  getConcreteBreakpoints() {
+    return this.steps.filter((s) => s.kind === "breakpoint");
+  }
+  /**
+   * 导出为纯数据步骤数组 DTO（断点与引用项混合的声明态）
    */
   toJSON() {
-    return this.breakpoints.map((b) => b.toJSON());
+    return this.steps.map((s) => s.toJSON());
   }
 };
 
@@ -1283,11 +1355,11 @@ var SceneCatalog = class _SceneCatalog {
     if (targetFile) {
       const normTargetFile = targetFile.replace(/\\/g, "/").toLowerCase();
       const clonedBreakpoints = [];
-      for (const bp of sourceScene.getBreakpoints()) {
-        if (bp.type === "function") continue;
-        const bpFile = (bp.file || "").replace(/\\/g, "/").toLowerCase();
+      for (const step of sourceScene.getSteps()) {
+        if (!(step instanceof Breakpoint)) continue;
+        const bpFile = (step.file || "").replace(/\\/g, "/").toLowerCase();
         if (bpFile === normTargetFile || bpFile.endsWith("/" + normTargetFile)) {
-          clonedBreakpoints.push(bp.clone());
+          clonedBreakpoints.push(step.clone());
         }
       }
       this.scenes.set(trimmedTarget, new Scene(trimmedTarget, clonedBreakpoints));
@@ -1372,6 +1444,74 @@ var SceneCatalog = class _SceneCatalog {
   }
 };
 
+// src/domain/services/sceneResolver.ts
+var MAX_REF_DEPTH = 32;
+var CircularReferenceError = class extends Error {
+  constructor(cyclePath) {
+    super(`Circular scene reference: ${cyclePath.join(" \u2192 ")}`);
+    this.cyclePath = cyclePath;
+  }
+  cyclePath;
+  name = "CircularReferenceError";
+};
+function breakpointKey(bp) {
+  if (bp.type === "function") return `fn:${bp.functionName}`;
+  const normFile = (bp.file ?? "").replace(/\\/g, "/").toLowerCase();
+  return `src:${normFile}:${bp.line}`;
+}
+function dfs(catalog, sceneName, refPath, seen, output, warnings) {
+  const scene = catalog.getScene(sceneName);
+  if (!scene) return;
+  for (const step of scene.getSteps()) {
+    if (step.kind === "breakpoint") {
+      const bp = step;
+      const key = breakpointKey(bp);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push({ breakpoint: bp, ownerScene: sceneName, refPath });
+      continue;
+    }
+    const ref = step;
+    if (!ref.enabled) {
+      warnings.push({ code: "disabled-ref", refName: ref.name, refPath });
+      continue;
+    }
+    if (!catalog.hasScene(ref.name)) {
+      warnings.push({ code: "dangling-ref", refName: ref.name, refPath });
+      continue;
+    }
+    if (refPath.includes(ref.name)) {
+      const start = refPath.indexOf(ref.name);
+      throw new CircularReferenceError([...refPath.slice(start), ref.name]);
+    }
+    if (refPath.length >= MAX_REF_DEPTH) {
+      throw new CircularReferenceError([...refPath, ref.name]);
+    }
+    dfs(catalog, ref.name, [...refPath, ref.name], seen, output, warnings);
+  }
+}
+function expandScenes(catalog, sceneNames) {
+  const output = [];
+  const warnings = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const name of sceneNames) {
+    const root = catalog.getScene(name);
+    if (!root) continue;
+    if (root.hasSceneRefs()) {
+      dfs(catalog, name, [name], seen, output, warnings);
+    } else {
+      for (const step of root.getSteps()) {
+        const bp = step;
+        const key = breakpointKey(bp);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        output.push({ breakpoint: bp, ownerScene: name, refPath: [name] });
+      }
+    }
+  }
+  return { steps: output, warnings };
+}
+
 // src/shared/utils/arrayUtils.ts
 function uniqueStrings(raw) {
   let arr = [];
@@ -1441,9 +1581,7 @@ function resolveActiveScenesDiff(params) {
 
 // src/application/mutateCatalog.ts
 function getMergedActiveBreakpoints(catalog, activeScenes) {
-  const validScenes = activeScenes.map((name) => catalog.getScene(name)).filter((s) => !!s);
-  if (validScenes.length === 0) return [];
-  return Scene.merge(validScenes).getBreakpoints().map((b) => b.toJSON());
+  return expandScenes(catalog, activeScenes).steps.map((s) => s.breakpoint.raw);
 }
 async function syncActiveBreakpointsIfNeeded(workspaceRoot, catalog, activeScenes, breakpointBridge) {
   if (activeScenes.length === 0) return;
@@ -1719,12 +1857,13 @@ function syncDiskActiveScenesIfNeeded(workspaceRoot, catalog, currentDiskActives
     sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
   }
 }
-function persistHealedBackfill(workspaceRoot, catalog, validTargetScenes, applyResult, mergedBreakpoints, sceneRepository) {
+function persistHealedBackfill(workspaceRoot, catalog, _validTargetScenes, applyResult, resolved, sceneRepository) {
   const candidateInstances = applyResult.healedBreakpoints?.length ? applyResult.healedBreakpoints.map(
     (b) => b instanceof Breakpoint ? b : new Breakpoint(b)
-  ) : mergedBreakpoints;
-  for (const sName of validTargetScenes) {
-    catalog.getScene(sName)?.backfillHealed(candidateInstances);
+  ) : resolved.map((s) => s.breakpoint);
+  const ownerScenes = [...new Set(resolved.map((s) => s.ownerScene))];
+  for (const owner of ownerScenes) {
+    catalog.getScene(owner)?.backfillHealed(candidateInstances);
   }
   sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
 }
@@ -1775,8 +1914,8 @@ async function executeSceneActivation(params) {
   }
   const validTargetScenes = actResult.validTargetScenes;
   const missingScenes = actResult.missingScenes;
-  const activeScenes = validTargetScenes.map((name) => catalog.getScene(name)).filter((s) => !!s);
-  const mergedBreakpoints = Scene.merge(activeScenes).getBreakpoints();
+  const { steps: resolvedSteps, warnings: resolveWarnings } = expandScenes(catalog, validTargetScenes);
+  const mergedBreakpoints = resolvedSteps.map((s) => s.breakpoint);
   const {
     healedCount: appHealedCount,
     enrichedCount: appEnrichedCount,
@@ -1785,7 +1924,7 @@ async function executeSceneActivation(params) {
   sceneStateManager.setUnmatchedBreakpoints(
     unmatchedBreakpoints.map((bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`)
   );
-  const bpsToLoad = mergedBreakpoints.map((b) => b.toJSON());
+  const bpsToLoad = mergedBreakpoints.map((b) => b.raw);
   const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
   syncDiskActiveScenesIfNeeded(workspaceRoot, catalog, config.activeScenes, validTargetScenes, sceneRepository);
   sceneStateManager.setApplyingState(true);
@@ -1804,9 +1943,12 @@ async function executeSceneActivation(params) {
   activeBreakpointIndex.sync(workspaceRoot, catalog.toJSON().scenes, validTargetScenes);
   sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
   if (healedCount > 0 || enrichedCount > 0) {
-    persistHealedBackfill(workspaceRoot, catalog, validTargetScenes, applyResult, mergedBreakpoints, sceneRepository);
+    persistHealedBackfill(workspaceRoot, catalog, validTargetScenes, applyResult, resolvedSteps, sceneRepository);
   }
   appEventBus.emit("scene:activated", { workspaceRoot, activeScenes: validTargetScenes });
+  if (resolveWarnings.length > 0) {
+    appEventBus.emit("scene:resolve-warnings", { workspaceRoot, warnings: resolveWarnings });
+  }
   return {
     success: true,
     validTargetScenes,
@@ -1904,9 +2046,9 @@ var SceneManager = class {
         (catalog) => {
           const scene = catalog.getOrCreateScene(targetScene);
           if (mode === "append") {
-            for (const bp of exportedBps) scene.upsertBreakpoint(new Breakpoint(bp));
+            for (const bp of exportedBps) scene.upsertStep(new Breakpoint(bp));
           } else {
-            scene.setBreakpoints(exportedBps.map((b) => new Breakpoint(b)));
+            scene.setSteps(exportedBps.map((b) => new Breakpoint(b)));
           }
           return true;
         },
@@ -1962,9 +2104,9 @@ var SceneManager = class {
     );
   }
   /**
-   * 从外部断点列表导入场景（支持覆盖与追加合并）
+   * 从外部步骤列表导入场景（支持覆盖与追加合并；断点与引用条目均按声明态适配）
    */
-  async importScene(workspaceRoot, sceneName, breakpoints, mode = "overwrite", options) {
+  async importScene(workspaceRoot, sceneName, items, mode = "overwrite", options) {
     const target = (sceneName || "").trim();
     if (!target) return false;
     return mutateCatalog(
@@ -1972,9 +2114,10 @@ var SceneManager = class {
       (catalog) => {
         const scene = catalog.getOrCreateScene(target);
         if (mode === "append") {
-          for (const bp of breakpoints) scene.upsertBreakpoint(new Breakpoint(bp));
+          const incoming = new Scene(target, items);
+          for (const step of incoming.getSteps()) scene.upsertStep(step);
         } else {
-          scene.setBreakpoints(breakpoints.map((b) => new Breakpoint(b)));
+          scene.setSteps(items);
         }
         return true;
       },
@@ -2031,8 +2174,8 @@ var BreakpointManager = class {
         workspaceRoot,
         (catalog) => {
           const scene = catalog.getOrCreateScene(targetScene);
-          scene.upsertBreakpoint(new Breakpoint(breakpoint));
-          totalBreakpoints = scene.getBreakpoints().length;
+          scene.upsertStep(new Breakpoint(breakpoint));
+          totalBreakpoints = scene.getSteps().length;
           return true;
         },
         {
@@ -2073,7 +2216,7 @@ var BreakpointManager = class {
       (catalog) => {
         const scene = catalog.getScene(sceneName);
         if (!scene) return false;
-        return scene.removeBreakpoint(index);
+        return scene.removeStep(index);
       },
       {
         ...options,
@@ -2092,10 +2235,11 @@ var BreakpointManager = class {
       (catalog) => {
         const scene = catalog.getScene(sceneName);
         if (!scene) return false;
-        const bp = scene.getBreakpoint(index);
-        if (!bp) return false;
-        newEnabled = targetEnabled !== void 0 ? targetEnabled : !bp.enabled;
-        bp.enabled = newEnabled;
+        const step = scene.getStep(index);
+        if (!step) return false;
+        const currentEnabled = step.toJSON().enabled !== false;
+        newEnabled = targetEnabled !== void 0 ? targetEnabled : !currentEnabled;
+        if (newEnabled !== currentEnabled) step.toggle();
         return true;
       },
       {
@@ -2121,7 +2265,7 @@ var BreakpointManager = class {
       (catalog) => {
         const scene = catalog.getScene(sceneName);
         if (!scene) return false;
-        scene.setAllEnabled(enabled);
+        scene.setAllStepsEnabled(enabled);
         return true;
       },
       {
@@ -2140,7 +2284,7 @@ var BreakpointManager = class {
       (catalog) => {
         const scene = catalog.getScene(sceneName);
         if (!scene) return false;
-        return scene.moveBreakpoint(index, direction);
+        return scene.moveStep(index, direction);
       },
       {
         ...options,
@@ -2158,7 +2302,7 @@ var BreakpointManager = class {
       (catalog) => {
         const scene = catalog.getScene(sceneName);
         if (!scene) return false;
-        return scene.reorderBreakpoint(sourceIndex, targetIndex);
+        return scene.reorderStep(sourceIndex, targetIndex);
       },
       {
         ...options,
@@ -2274,8 +2418,8 @@ var AgentSyncService = class {
    * 处理未发生场景增减但断点核心拓扑内容发生变更的情况
    */
   async handleTopologyDiff(workspaceRoot, catalog, currentActives, deps) {
-    const activeScenes = currentActives.map((name) => catalog.getScene(name)).filter((s) => !!s);
-    const merged = Scene.merge(activeScenes).getBreakpoints().map((bp) => bp.toJSON());
+    const { steps } = expandScenes(catalog, currentActives);
+    const merged = steps.map((s) => s.breakpoint.raw);
     const newTopologyHash = computeTopologyHash(merged);
     if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {
       return { action: "noop" };
@@ -2414,11 +2558,12 @@ function pureSha256(ascii) {
   }
   return result;
 }
-var LATEST_SKILL_VERSION = "1.0.9";
+var LATEST_SKILL_VERSION = "1.1.0";
 var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 var OFFICIAL_SKILL_HISTORY = {
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
-  "36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8"
+  "36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8",
+  "f5d5a0c498ee18a5fa089814bf51d876d4756877fb72bda425db1faf11755266": "1.1.0"
 };
 var OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 var AgentRuleAsset = class _AgentRuleAsset {
@@ -2883,6 +3028,9 @@ var BreakpointNode = class extends vscode2.TreeItem {
     this.pausedLocation = loc;
     this.updateAppearance();
   }
+  isReadonly() {
+    return this.options?.readonly === true;
+  }
   isPausedAtBreakpoint() {
     if (!this.pausedLocation || this.breakpoint.type === "function") {
       return false;
@@ -2903,9 +3051,9 @@ var BreakpointNode = class extends vscode2.TreeItem {
   }
   updateAppearance() {
     const isEnabled = this.breakpoint.enabled ?? true;
-    this.checkboxState = isEnabled ? vscode2.TreeItemCheckboxState.Checked : vscode2.TreeItemCheckboxState.Unchecked;
+    this.checkboxState = this.isReadonly() ? void 0 : isEnabled ? vscode2.TreeItemCheckboxState.Checked : vscode2.TreeItemCheckboxState.Unchecked;
     const isPaused = this.isPausedAtBreakpoint();
-    const hintText = vscode2.l10n.t("Tip: Drag to reorder, or use Alt+\u2191 / Alt+\u2193 to move");
+    const hintText = this.isReadonly() ? vscode2.l10n.t("Breakpoints inside a referenced scene are read-only. Edit them in the source scene.") : vscode2.l10n.t("Tip: Drag to reorder, or use Alt+\u2191 / Alt+\u2193 to move");
     this.buildDescriptionAndTooltip(isPaused, hintText);
     const srcBp = this.breakpoint.type !== "function" ? this.breakpoint : void 0;
     const iconFileName = resolveBreakpointIconFileName(
@@ -2916,7 +3064,7 @@ var BreakpointNode = class extends vscode2.TreeItem {
       srcBp?.type
     );
     this.iconPath = vscode2.Uri.file(path4.join(this.extensionPath, "media", "icons", iconFileName));
-    this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+    this.contextValue = this.isReadonly() ? "breakpointReadonly" : isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
   }
   buildDescriptionAndTooltip(isPaused, hintText) {
     if (this.breakpoint.type === "function") {
@@ -2980,6 +3128,112 @@ var PlaceholderNode = class extends vscode2.TreeItem {
     this.contextValue = "placeholderItem";
   }
 };
+function buildNodeId(parts) {
+  return parts.join("/");
+}
+var SceneRefTreeItem = class extends vscode2.TreeItem {
+  constructor(ctx, options) {
+    super(ctx.refName, vscode2.TreeItemCollapsibleState.Collapsed);
+    this.ctx = ctx;
+    this.id = buildNodeId(ctx.path);
+    this.description = options.isDangling ? vscode2.l10n.t('Dangling reference: scene "{0}" not found', ctx.refName) : options.desc ?? vscode2.l10n.t("{0} breakpoints", options.childCount);
+    this.contextValue = !options.enabled ? "sceneRefDisabled" : options.isDangling || options.childCount === 0 ? "sceneRefEmpty" : "sceneRef";
+    this.checkboxState = options.enabled ? vscode2.TreeItemCheckboxState.Checked : vscode2.TreeItemCheckboxState.Unchecked;
+    this.iconPath = options.isDangling ? new vscode2.ThemeIcon("error", new vscode2.ThemeColor("charts.red")) : options.enabled ? new vscode2.ThemeIcon("references") : new vscode2.ThemeIcon("circle-slash");
+    this.command = {
+      command: "sceneBreakpoints.revealRefSource",
+      title: vscode2.l10n.t("Reveal Referenced Scene Source"),
+      arguments: [ctx.refName, ctx.sceneName]
+    };
+  }
+  ctx;
+  /** 声明所在场景（toggle/remove/move 的路由目标） */
+  get sceneName() {
+    return this.ctx.sceneName;
+  }
+  /** 被引用场景名 */
+  get refName() {
+    return this.ctx.refName;
+  }
+  /** 在父 steps 中的声明索引（多态操作定位） */
+  get index() {
+    return this.ctx.index;
+  }
+};
+
+// src/ui/views/sceneRefProjection.ts
+function projectSteps(sceneName, steps, scenes, ctx) {
+  const refCounts = /* @__PURE__ */ new Map();
+  for (const item of steps) {
+    if (item && item.type === "scene") {
+      refCounts.set(item.name, (refCounts.get(item.name) ?? 0) + 1);
+    }
+  }
+  const emittedRefs = /* @__PURE__ */ new Map();
+  return steps.map((item, idx) => {
+    if (item && item.type === "scene") {
+      const sourceSteps = scenes[item.name];
+      const occurrence = (emittedRefs.get(item.name) ?? 0) + 1;
+      emittedRefs.set(item.name, occurrence);
+      const idSuffix = occurrence >= 2 ? `@${idx}` : "";
+      return new SceneRefTreeItem(
+        {
+          sceneName,
+          refName: item.name,
+          path: [...ctx.path, `ref:${item.name}${idSuffix}`],
+          index: idx
+        },
+        {
+          desc: item.desc,
+          enabled: item.enabled !== false,
+          childCount: Array.isArray(sourceSteps) ? sourceSteps.length : 0,
+          isDangling: !Array.isArray(sourceSteps)
+        }
+      );
+    }
+    const bpNode = new BreakpointNode(
+      sceneName,
+      idx,
+      item,
+      ctx.workspaceRoot,
+      ctx.extensionPath,
+      ctx.pausedLocation,
+      { readonly: ctx.readonly }
+    );
+    if (ctx.readonly) {
+      bpNode.id = buildNodeId([...ctx.path, `bp:${idx}`]);
+    }
+    return bpNode;
+  });
+}
+function projectSceneStepNodes(sceneName, workspaceRoot, extensionPath, pausedLocation) {
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
+  const steps = config.scenes[sceneName] ?? [];
+  return projectSteps(sceneName, steps, config.scenes, {
+    workspaceRoot,
+    extensionPath,
+    pausedLocation,
+    path: [`scene:${sceneName}`],
+    readonly: false
+  });
+}
+function projectRefChildNodes(refNode, workspaceRoot, extensionPath, pausedLocation) {
+  const config = sceneManager.loadScenesConfig(workspaceRoot);
+  const sourceSteps = config.scenes[refNode.ctx.refName];
+  if (!Array.isArray(sourceSteps)) return [];
+  return projectSteps(
+    refNode.ctx.refName,
+    sourceSteps,
+    config.scenes,
+    {
+      workspaceRoot,
+      extensionPath,
+      pausedLocation,
+      path: [...refNode.ctx.path],
+      readonly: true
+    }
+  );
+}
 
 // src/ui/views/sceneTreeProvider.ts
 var SceneTreeDataProvider = class {
@@ -3025,7 +3279,9 @@ var SceneTreeDataProvider = class {
     this._onDidChangeTreeData.dispose();
   }
   handleDrag(source, treeDataTransfer, _token) {
-    const bpNodes = source.filter((item) => item instanceof BreakpointNode);
+    const bpNodes = source.filter(
+      (item) => item instanceof BreakpointNode && !item.isReadonly()
+    );
     if (bpNodes.length > 0) {
       treeDataTransfer.set(
         "application/vnd.code.tree.sceneBreakpointsView",
@@ -3105,27 +3361,13 @@ var SceneTreeDataProvider = class {
     return element;
   }
   /**
-   * 获取指定场景内的所有断点树节点（深接口）
+   * 获取指定场景内的所有步骤树节点（深接口，声明态嵌套投影：引用节点 + 断点节点）
    * 供 getChildren 与命令层查询使用，避免外部伪造 SceneNode 实例
    */
-  async getBreakpointNodes(sceneName) {
+  getBreakpointNodes(sceneName) {
     const workspaceRoot = getWorkspaceRoot(false);
     if (!workspaceRoot) return [];
-    const config = sceneManager.loadScenesConfig(workspaceRoot);
-    const list = config.scenes && Array.isArray(config.scenes[sceneName]) ? config.scenes[sceneName] : [];
-    const isActive = sceneStateManager.isSceneActive(sceneName);
-    return list.map((bp, idx) => {
-      const isUnmatched = bp.type !== "function" && isActive && sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
-      return new BreakpointNode(
-        sceneName,
-        idx,
-        bp,
-        workspaceRoot,
-        this.extensionPath,
-        this._pausedLocation,
-        { isUnmatched }
-      );
-    });
+    return projectSceneStepNodes(sceneName, workspaceRoot, this.extensionPath, this._pausedLocation);
   }
   async getChildren(element) {
     const workspaceRoot = getWorkspaceRoot(false);
@@ -3160,8 +3402,12 @@ var SceneTreeDataProvider = class {
       if (nodes.length === 0) {
         return [new PlaceholderNode(vscode3.l10n.t("No breakpoints in this scene"))];
       }
-      this._activeBreakpointNodes = this._activeBreakpointNodes.filter((n) => n.sceneName !== element.sceneName).concat(nodes);
+      const bpNodes = nodes.filter((n) => n instanceof BreakpointNode);
+      this._activeBreakpointNodes = this._activeBreakpointNodes.filter((n) => n.sceneName !== element.sceneName).concat(bpNodes);
       return nodes;
+    }
+    if (element instanceof SceneRefTreeItem) {
+      return projectRefChildNodes(element, workspaceRoot, this.extensionPath, this._pausedLocation);
     }
     return [];
   }
@@ -3260,6 +3506,16 @@ var SceneTreeDataProvider = class {
               item.breakpoint.enabled = result.newEnabled;
               item.updateAppearance();
               this.refresh(item);
+            }
+          } else if (item instanceof SceneRefTreeItem) {
+            const result = await breakpointManager.toggleBreakpoint(
+              workspaceRoot,
+              item.sceneName,
+              item.index,
+              state === vscode3.TreeItemCheckboxState.Checked
+            );
+            if (result.success) {
+              this.refresh();
             }
           }
         }
@@ -3666,7 +3922,7 @@ function encodeScenePayload(sceneOrName, breakpoints) {
   let bps;
   if (sceneOrName instanceof Scene) {
     name = sceneOrName.name;
-    bps = sceneOrName.getBreakpoints().map((b) => b.raw);
+    bps = sceneOrName.getSteps().map((s) => s.toJSON());
   } else {
     name = sceneOrName;
     bps = breakpoints || [];
@@ -3677,7 +3933,7 @@ function encodeScenePayload(sceneOrName, breakpoints) {
     sceneName: name.trim(),
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     breakpoints: bps.map((bp) => {
-      if (bp.type !== "function") {
+      if (bp.type !== "function" && "file" in bp && bp.file) {
         return {
           ...bp,
           file: bp.file.replace(/\\/g, "/")
@@ -3720,39 +3976,52 @@ function resolveCandidatePayload(parsed, defaultSceneName) {
   }
   return { targetSceneName: fallbackSceneName, candidateBreakpoints: [] };
 }
-function sanitizeBreakpoints(candidates) {
-  const validBreakpoints = [];
-  for (const item of candidates) {
-    if (!item || typeof item !== "object") continue;
-    if (item.type === "function") {
-      if (typeof item.functionName === "string" && item.functionName.trim()) {
-        validBreakpoints.push({
-          type: "function",
-          functionName: item.functionName.trim(),
-          condition: item.condition?.trim() || void 0,
-          hitCondition: item.hitCondition?.trim() || void 0,
-          enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-          desc: item.desc?.trim() || void 0
-        });
-      }
-      continue;
-    }
-    if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
-      const type = ["condition", "hitCount", "logpoint"].includes(item.type) ? item.type : "line";
-      validBreakpoints.push({
-        type,
-        file: item.file.trim().replace(/\\/g, "/"),
-        line: Math.floor(item.line),
+function sanitizeSceneRefItem(item) {
+  const name = typeof item.name === "string" ? item.name.trim() : "";
+  if (!name) return void 0;
+  const out = { type: "scene", name };
+  const trimmedDesc = typeof item.desc === "string" ? item.desc.trim() : "";
+  if (trimmedDesc) out.desc = trimmedDesc;
+  if (item.enabled === false) out.enabled = false;
+  return out;
+}
+function sanitizeBreakpointEntry(item) {
+  if (item.type === "function") {
+    if (typeof item.functionName === "string" && item.functionName.trim()) {
+      return {
+        type: "function",
+        functionName: item.functionName.trim(),
         condition: item.condition?.trim() || void 0,
         hitCondition: item.hitCondition?.trim() || void 0,
-        logMessage: item.logMessage?.trim() || void 0,
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-        desc: item.desc?.trim() || void 0,
-        contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0
-      });
+        desc: item.desc?.trim() || void 0
+      };
     }
+    return void 0;
   }
-  return validBreakpoints;
+  if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
+    const type = ["condition", "hitCount", "logpoint"].includes(item.type) ? item.type : "line";
+    return {
+      type,
+      file: item.file.trim().replace(/\\/g, "/"),
+      line: Math.floor(item.line),
+      condition: item.condition?.trim() || void 0,
+      hitCondition: item.hitCondition?.trim() || void 0,
+      logMessage: item.logMessage?.trim() || void 0,
+      enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+      desc: item.desc?.trim() || void 0,
+      contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0
+    };
+  }
+  return void 0;
+}
+function sanitizeSceneItem(item) {
+  if (!item || typeof item !== "object") return void 0;
+  if (item.type === "scene") return sanitizeSceneRefItem(item);
+  return sanitizeBreakpointEntry(item);
+}
+function sanitizeBreakpoints(candidates) {
+  return candidates.map((item) => sanitizeSceneItem(item)).filter((item) => !!item);
 }
 function decodeScenePayload(rawText, defaultSceneName) {
   if (!rawText || !rawText.trim()) {
@@ -3849,7 +4118,7 @@ function sanitizeScenesConfig(parsed) {
   const cleanScenes = {};
   for (const [k, v] of Object.entries(candidateScenes)) {
     if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
-      cleanScenes[k] = v.filter((it) => it && typeof it === "object");
+      cleanScenes[k] = v.map((it) => sanitizeSceneItem(it)).filter((it) => !!it);
     }
   }
   let cleanActiveScenes;
@@ -4310,7 +4579,18 @@ async function applySceneCommand(sceneParam) {
     }
     const proceed = await handleDirtyCheckBeforeSwitch(workspaceRoot);
     if (!proceed) return;
-    const result = await sceneManager.activateScene(workspaceRoot, targetScenes);
+    let result;
+    try {
+      result = await sceneManager.activateScene(workspaceRoot, targetScenes);
+    } catch (err) {
+      if (err instanceof CircularReferenceError) {
+        void vscode11.window.showErrorMessage(
+          vscode11.l10n.t("Circular scene reference: {0}", err.cyclePath.join(" \u2192 "))
+        );
+        return;
+      }
+      throw err;
+    }
     if (!result.success) {
       void vscode11.window.showErrorMessage(
         vscode11.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", "))
@@ -4357,6 +4637,18 @@ async function exportSceneCommand() {
         vscode11.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene)
       );
     }
+  });
+}
+function registerResolveWarningsNotifier() {
+  return appEventBus.on("scene:resolve-warnings", ({ warnings }) => {
+    if (!warnings?.length) return;
+    const lines = warnings.map(
+      (w) => w.code === "dangling-ref" ? vscode11.l10n.t('Scene reference "{0}" not found; skipped. Scene: {1}', w.refName, w.refPath.join(" \u2192 ")) : vscode11.l10n.t('Referenced scene "{0}" is disabled; skipped.', w.refName)
+    );
+    void vscode11.window.showWarningMessage(
+      vscode11.l10n.t("Scene activated with {0} warning(s)", warnings.length),
+      { detail: lines.join("\n") }
+    );
   });
 }
 
@@ -4694,6 +4986,9 @@ async function promptAndHandleSkillUpdates(context, workspaceRoot, outdatedTarge
   actions.push(diagnoseAction, dismissAction);
   const promptMsg = customModifiedList.length > 0 ? vscode16.l10n.t("Scene Breakpoints: Found {0} installed AI Skill(s) with local modifications or available updates (v{1}).", outdatedTargets.length, currentVersion) : vscode16.l10n.t("Scene Breakpoints: Found {0} installed AI Skill(s) with available updates (v{1}).", outdatedTargets.length, currentVersion);
   const selected = await vscode16.window.showInformationMessage(promptMsg, ...actions);
+  if (selected === void 0) {
+    return;
+  }
   if (selected === updateAction) {
     for (const { target } of cleanOutdatedList) {
       await writeSkillToTarget(context, workspaceRoot, target);
@@ -4960,6 +5255,12 @@ function registerSceneCrudCommands(treeDataProvider) {
 function registerBreakpointMutationCommands() {
   return [
     vscode18.commands.registerCommand("sceneBreakpoints.removeBreakpointItem", async (node) => {
+      if (node instanceof SceneRefTreeItem) {
+        await runWithWorkspace(true, async (workspaceRoot) => {
+          await breakpointManager.removeBreakpoint(workspaceRoot, node.sceneName, node.index);
+        });
+        return;
+      }
       if (!node || typeof node.index !== "number" || !node.sceneName) return;
       await runWithWorkspace(true, async (workspaceRoot) => {
         await breakpointManager.removeBreakpoint(workspaceRoot, node.sceneName, node.index);
@@ -5028,17 +5329,20 @@ function calculateTargetIndex(direction, currentIndex, listLength) {
   return Math.min(listLength - 1, currentIndex + 1);
 }
 async function executeMove(rawNode, direction, treeDataProvider, treeView) {
-  const node = resolveTargetNode(rawNode, treeView);
-  if (!node || typeof node.index !== "number" || !node.sceneName) return;
+  const refTarget = rawNode instanceof SceneRefTreeItem ? rawNode : void 0;
+  const bpTarget = refTarget ? void 0 : resolveTargetNode(rawNode, treeView);
+  const sceneName = refTarget?.sceneName ?? bpTarget?.sceneName;
+  const currentIndex = refTarget?.index ?? bpTarget?.index;
+  if (!sceneName || typeof currentIndex !== "number") return;
   await runWithWorkspace(true, async (workspaceRoot) => {
-    const moved = await breakpointManager.moveBreakpoint(workspaceRoot, node.sceneName, node.index, direction);
+    const moved = await breakpointManager.moveBreakpoint(workspaceRoot, sceneName, currentIndex, direction);
     if (moved && treeView) {
       const config = sceneManager.loadScenesConfig(workspaceRoot);
-      const list = config.scenes[node.sceneName] || [];
-      const targetIndex = calculateTargetIndex(direction, node.index, list.length);
+      const list = config.scenes[sceneName] || [];
+      const targetIndex = calculateTargetIndex(direction, currentIndex, list.length);
       setTimeout(async () => {
         try {
-          const children = await treeDataProvider.getBreakpointNodes(node.sceneName);
+          const children = await treeDataProvider.getBreakpointNodes(sceneName);
           const updatedNode = children.find((c) => c.index === targetIndex);
           if (updatedNode) {
             await treeView.reveal(updatedNode, { select: true, focus: true });
@@ -5065,12 +5369,52 @@ function registerBreakpointReorderCommands(treeDataProvider, treeView) {
     })
   ];
 }
+function registerRevealRefSourceCommand(treeView) {
+  return vscode18.commands.registerCommand(
+    "sceneBreakpoints.revealRefSource",
+    async (raw, declaringScene) => {
+      let targetScene;
+      let ownerScene = declaringScene;
+      if (typeof raw === "string") {
+        targetScene = raw;
+      } else if (raw instanceof SceneRefTreeItem) {
+        targetScene = raw.refName;
+        ownerScene = raw.sceneName;
+      } else if (raw instanceof BreakpointNode && raw.isReadonly()) {
+        targetScene = raw.sceneName;
+      }
+      if (!targetScene) return;
+      await runWithWorkspace(false, async (workspaceRoot) => {
+        const config = sceneManager.loadScenesConfig(workspaceRoot);
+        const sourceSteps = config.scenes[targetScene];
+        if (!Array.isArray(sourceSteps)) {
+          void vscode18.window.showWarningMessage(
+            vscode18.l10n.t('Scene reference "{0}" not found; skipped. Scene: {1}', targetScene, ownerScene || targetScene)
+          );
+          return;
+        }
+        if (!treeView) return;
+        const sourceNode = new SceneNode(
+          targetScene,
+          sourceSteps.length,
+          sceneStateManager.isSceneActive(targetScene),
+          false
+        );
+        try {
+          await treeView.reveal(sourceNode, { focus: true, select: true, expand: true });
+        } catch {
+        }
+      });
+    }
+  );
+}
 function registerTreeCommands(context, treeDataProvider, treeView) {
   context.subscriptions.push(
     ...registerSceneActivationCommands(),
     ...registerSceneCrudCommands(treeDataProvider),
     ...registerBreakpointMutationCommands(),
-    ...registerBreakpointReorderCommands(treeDataProvider, treeView)
+    ...registerBreakpointReorderCommands(treeDataProvider, treeView),
+    registerRevealRefSourceCommand(treeView)
   );
 }
 
@@ -5094,6 +5438,7 @@ function registerAllCommands(context, deps) {
   for (const [commandId, handler] of commands6) {
     context.subscriptions.push(vscode19.commands.registerCommand(commandId, handler));
   }
+  context.subscriptions.push(registerResolveWarningsNotifier());
   if (deps?.treeDataProvider) {
     registerTreeCommands(context, deps.treeDataProvider, deps.treeView);
   }
@@ -5809,7 +6154,11 @@ function registerConfigFileWatcherService() {
       }
       const workspaceRoot = getWorkspaceRoot2();
       if (workspaceRoot) {
-        await handleExternalScenesFileChange(workspaceRoot);
+        try {
+          await handleExternalScenesFileChange(workspaceRoot);
+        } catch (err) {
+          void vscode24.window.showErrorMessage(err instanceof Error ? err.message : String(err));
+        }
         appEventBus.emit("scenes:changed", { workspaceRoot, reason: "external_file_change" });
       }
     }, 100);

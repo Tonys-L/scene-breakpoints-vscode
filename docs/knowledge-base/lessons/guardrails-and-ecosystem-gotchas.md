@@ -266,4 +266,26 @@ CLI 入口判断采用手工字符串拼接：``import.meta.url === `file:///${p
 
 ---
 
+## 6. 领域指纹与资产版本管线陷阱
+
+### 6.1 绕过领域管线直算指纹导致技能生命周期误判 (pureSha256 非标准 SHA-256)
+
+**问题**:
+E2E 测试 TC-SKILL-01（模拟上游发版的平滑升级）红灯：本地写入纯净 v1.0.3 正文后期望判定 `CleanOutdated`，实际被判为 `CustomModified`，一键升级动作未执行。起初怀疑是 SKILL.md 正文变更导致指纹漂移，但用 `node:crypto` 重算哈希登记入史表后依然失败。
+
+**原因**:
+双重叠加，根因在领域层指纹实现：
+1. `pureSha256`（纯 TS 零依赖 SHA-256）素数筛上限写死 `for (i = 0; i < 300; i += candidate)`——标记循环在 `i < 300` 处截断，导致复合数 **300**（因子 2/3/5 的标记均止于 298/297/295）与 **301**（= 7×43，7 的标记止于 294）双双逃逸筛网被误判为第 63、64 个"素数"，K 常量 k[62]/k[63] 取 cbrt(300)/cbrt(301) 而非标准 cbrt(307)/cbrt(311) → 输出与标准 SHA-256 不逐字节一致（`pureSha256("abc")` = `f88723c4…` ≠ 标准 `ba7816bf…`）；
+2. 史表中若登记 `node:crypto` 直算的指纹，与运行时 `evaluateLifecycle` 经 `AgentRuleAsset.computeFingerprint()`（pureSha256 实现）算出的 localHash 永不相等，`CleanOutdated` 分支永远无法命中。
+
+**解决方案**:
+1. 铁律：史表指纹与一切版本判定输入必须统一经由领域实体管线 `AgentRuleAsset.computeFingerprint()` 生成，严禁 `node:crypto` 直算（警示已固化于 `agentRuleAsset.ts` 史表注释）；
+2. pureSha256 保持项目内自洽（历史条目同管线生成，互为一致即安全）；修正为标准 SHA-256 属独立 ADR 级变更（需重新生成全部史表条目并考虑存量用户指纹迁移），不得顺手修改；
+3. 排查指纹类问题时用"真实生产模块 + 最小向量"实证对比（如 `pureSha256("abc")` vs 标准 SHA-256），勿靠肉眼审读素数筛代码臆断。
+
+**影响文件**: `src/domain/models/agentRuleAsset.ts`
+**日期**: 2026-10-06
+
+---
+
 

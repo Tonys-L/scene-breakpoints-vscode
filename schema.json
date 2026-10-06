@@ -53,123 +53,157 @@
     },
     "scenes": {
       "type": "object",
-      "description": "Debug scene dictionary mapping scene names to breakpoint lists",
+      "description": "Debug scene dictionary mapping scene names to step lists (breakpoints and/or scene references)",
       "additionalProperties": {
         "type": "array",
         "items": {
-          "type": "object",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "line",
-                "condition",
-                "hitCount",
-                "logpoint",
-                "function"
-              ],
-              "description": "Type of the breakpoint: line, condition, hitCount, logpoint, or function"
-            },
-            "file": {
-              "type": "string",
-              "description": "Relative POSIX file path from workspace root (e.g. src/index.ts)"
-            },
-            "line": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "1-based line number in the source file"
-            },
-            "desc": {
-              "type": "string",
-              "description": "Human-readable description or note for this breakpoint"
-            },
-            "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Whether this breakpoint is enabled or disabled"
-            },
-            "condition": {
-              "type": "string",
-              "description": "Boolean expression that must evaluate to true for execution to pause"
-            },
-            "hitCondition": {
-              "type": "string",
-              "description": "Hit count expression condition (e.g. '> 5', '% 2 === 0')"
-            },
-            "logMessage": {
-              "type": "string",
-              "description": "Log message to print in the Debug Console (supports {variable} interpolation)"
-            },
-            "functionName": {
-              "type": "string",
-              "description": "Name of the function/method to intercept across files"
-            },
-            "snippet": {
-              "type": "string",
-              "description": "Lexical fingerprint of the target line used by the self-healing engine"
-            },
-            "contextBefore": {
-              "type": "string",
-              "description": "Lexical fingerprint of the preceding line used by the self-healing engine"
-            },
-            "contextAfter": {
-              "type": "string",
-              "description": "Lexical fingerprint of the succeeding line used by the self-healing engine"
-            },
-            "contextSnippet": {
+          "oneOf": [
+            {
               "type": "object",
-              "description": "Contextual lexical fingerprint used by the self-healing engine to detect line drift",
+              "description": "Scene reference entry: compose another scene's steps into this one at this position",
               "required": [
-                "current"
+                "type",
+                "name"
               ],
               "properties": {
-                "current": {
+                "type": {
                   "type": "string",
-                  "description": "Code snippet of the current breakpoint line"
+                  "const": "scene",
+                  "description": "Discriminator for a scene reference entry"
                 },
-                "prev": {
+                "name": {
                   "type": "string",
-                  "description": "Code snippet of the previous non-empty line"
+                  "minLength": 1,
+                  "description": "Name of the referenced scene (must exist in the scenes dictionary at activation time)"
                 },
-                "next": {
+                "desc": {
                   "type": "string",
-                  "description": "Code snippet of the next non-empty line"
+                  "description": "Human-readable description of this reference shown in the tree view"
                 },
-                "scopeAnchor": {
-                  "type": "string",
-                  "description": "Nearest enclosing function or method name anchor"
-                },
-                "indent": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "Indentation level (number of spaces or tabs)"
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Whether this reference subtree participates in scene activation"
                 }
-              }
-            }
-          },
-          "allOf": [
+              },
+              "additionalProperties": false
+            },
             {
-              "if": {
-                "properties": {
-                  "type": {
-                    "const": "function"
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "line",
+                    "condition",
+                    "hitCount",
+                    "logpoint",
+                    "function"
+                  ],
+                  "description": "Type of the breakpoint: line, condition, hitCount, logpoint, or function"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "Relative POSIX file path from workspace root (e.g. src/index.ts)"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "1-based line number in the source file"
+                },
+                "desc": {
+                  "type": "string",
+                  "description": "Human-readable description or note for this breakpoint"
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Whether this breakpoint is enabled or disabled"
+                },
+                "condition": {
+                  "type": "string",
+                  "description": "Boolean expression that must evaluate to true for execution to pause"
+                },
+                "hitCondition": {
+                  "type": "string",
+                  "description": "Hit count expression condition (e.g. '> 5', '% 2 === 0')"
+                },
+                "logMessage": {
+                  "type": "string",
+                  "description": "Log message to print in the Debug Console (supports {variable} interpolation)"
+                },
+                "functionName": {
+                  "type": "string",
+                  "description": "Name of the function/method to intercept across files"
+                },
+                "snippet": {
+                  "type": "string",
+                  "description": "Lexical fingerprint of the target line used by the self-healing engine"
+                },
+                "contextBefore": {
+                  "type": "string",
+                  "description": "Lexical fingerprint of the preceding line used by the self-healing engine"
+                },
+                "contextAfter": {
+                  "type": "string",
+                  "description": "Lexical fingerprint of the succeeding line used by the self-healing engine"
+                },
+                "contextSnippet": {
+                  "type": "object",
+                  "description": "Contextual lexical fingerprint used by the self-healing engine to detect line drift",
+                  "required": [
+                    "current"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "string",
+                      "description": "Code snippet of the current breakpoint line"
+                    },
+                    "prev": {
+                      "type": "string",
+                      "description": "Code snippet of the previous non-empty line"
+                    },
+                    "next": {
+                      "type": "string",
+                      "description": "Code snippet of the next non-empty line"
+                    },
+                    "scopeAnchor": {
+                      "type": "string",
+                      "description": "Nearest enclosing function or method name anchor"
+                    },
+                    "indent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Indentation level (number of spaces or tabs)"
+                    }
                   }
                 }
               },
-              "then": {
-                "required": [
-                  "functionName"
-                ]
-              },
-              "else": {
-                "required": [
-                  "file",
-                  "line"
-                ]
-              }
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "type": {
+                        "const": "function"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "functionName"
+                    ]
+                  },
+                  "else": {
+                    "required": [
+                      "file",
+                      "line"
+                    ]
+                  }
+                }
+              ]
             }
           ]
         }

@@ -112,6 +112,7 @@ src/
 | **INV-013** | **Skill 正文指纹唯一性**：基于剥离 Frontmatter 后的纯净正文 SHA-256 判定版本；覆写前自动生成 `.bak` 备份。 | `src/domain/models/agentRuleAsset.ts` |
 | **INV-027** | **冷启动自愈与崩溃隔离守卫 (Disaster Self-Healing Guard)**：物理持久化写入采用动态并发临时文件 (`tmp.${pid}.${ts}.${rand}`) + 原子覆盖 (`renameSync`)；主文件 0 字节或损坏时，优先从合法临时候选副本自愈恢复，严禁中断扩展生命周期。 | `src/infra/storage/atomicFileJsonStore.ts` |
 | **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停与恢复统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` |
+| **INV-030** | **场景引用解析不变量 (Scene Reference Resolution)**：① 含引用场景激活必先经 `sceneResolver` 展开为纯断点流，方可进入合并/自愈/DAP 管道（`getSteps(): SceneStep[]` 与 `Breakpoint[]` 类型隔离在编译期强制，禁止绕过收窄点）；② 展开严格保持声明时序（深度优先、按序穿插）；③ 成环必须在任何写盘/DAP 下发前抛 `CircularReferenceError`（携带完整环路径），状态机零中间态、磁盘零污染；④ 悬空引用降级为警告并跳过，不中断其余断点激活；⑤ `enabled: false` 引用整棵子树跳过；⑥ 自愈回写按 `ownerScene`（断点定义场景）路由，同源多引用至多回写一次，引用节点自身永不接收回写；⑦ 引用条目在 codec 清洗往返中保真，非法引用（空 name）清洗阶段丢弃。 | `src/domain/services/sceneResolver.ts` 与 `src/application/sceneActivationPipeline.ts` |
 
 ---
 
@@ -126,8 +127,8 @@ src/
 | **GR-003 (INV-016)** | **版本发布单一事实来源 (Release SSOT)** | `package.json` 与验证脚本 | `package.json` 的 `version` 是唯一版本 SSOT，与规则及 CHANGELOG 100% 对齐 |
 | **GR-004 (INV-017)** | **TypeScript 静态类型健全性硬门禁** | `tsconfig.json` (`tsc --noEmit`) | 全工程源码、单测、沙箱 0 errors、0 warnings |
 | **GR-005 (INV-018)** | **国际化多语言与配置占位符对称守卫** | `bundle.l10n.*` 与验证脚本 | 中英文键集 100% 对称；`package.json` 所有 `%key%` 占位符必须在 NLS 中显式声明 |
-| **GR-006 (INV-019)** | **KDD 场景断点地图物理保鲜守卫** | `.vscode/debug-scenes.json` 与验证脚本 | 所有声明的源文件必须真实存在，目标行号必须严格落在文件物理行号区间内 |
-| **GR-007 (INV-020)** | **JSON Schema 契约与领域模型同步守卫** | `schema.json` 与验证脚本 | 完整声明断点核心字段（含 `contextSnippet` 指纹等），与领域模型严格同步 |
+| **GR-006 (INV-019)** | **KDD 场景断点地图物理保鲜守卫** | `.vscode/debug-scenes.json` 与验证脚本 | 所有声明的源文件必须真实存在，目标行号必须严格落在文件物理行号区间内（v1.1.0 起 `type: "scene"` 引用条目无 file/line 属合法形态，跳过物理校验，仅要求 name 非空） |
+| **GR-007 (INV-020)** | **JSON Schema 契约与领域模型同步守卫** | `schema.json` 与验证脚本 | 完整声明断点核心字段（含 `contextSnippet` 指纹等），与领域模型严格同步（v1.1.0 起 items 为 oneOf 双分支：断点分支 + 场景引用分支，引用分支对齐 `SceneRefItem` 且强制 `additionalProperties: false`、`name minLength: 1`） |
 | **GR-008 (INV-021)** | **核心代码测试覆盖率硬门禁** | `.c8rc.json` 与测试套件 | 全工程行覆盖率 $\ge 85\%$、函数 $\ge 85\%$、分支 $\ge 75\%$，退化自动阻断提交 |
 | **GR-009 (INV-022)** | **VS Code 引擎与 API 版本对齐守卫** | `package.json` 与验证脚本 | `engines.vscode` 与 `@types/vscode` 主次版本严格一致（`1.85.x`），杜绝跨版本 API 缺失 |
 | **GR-010 (INV-023)** | **VS Code 命令总线 1:1 双向一致性守卫** | `package.json` 与验证脚本 | 声明的命令与代码实现 1:1 全匹配；快捷键与菜单命令关联 100% 存在，0 悬空命令 |
@@ -157,5 +158,13 @@ src/
 - **语言与构建**：TypeScript 5.x 纯原生开发，开启 `strict: true`；基于原生 `esbuild` 极速单文件打包，`main` 指向 `extension.js`，零外部生产运行时依赖。
 - **路径与导入规范**：统一使用 Package Subpath Imports（`#src/*` 与 `#test/*`），严禁跨层级 `../*` 相对路径导入。
 - **国际化 (i18n)**：所有用户界面文案强制通过 `vscode.l10n.t(...)` 本地化，中英文语言包实时双向对齐。
+
+---
+
+## 变更记录
+
+| 日期 | 变更内容 | 变更人 | 关联变更 |
+|------|----------|--------|----------|
+| 2026-10-06 | 新增 INV-030 场景引用解析不变量；GR-006/GR-007 适配场景引用条目形态 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 boundaries.md / flows.md / glossary.md / adr/005 / e2e-scenarios.md |
 
 

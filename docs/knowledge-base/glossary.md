@@ -1,6 +1,6 @@
 # 术语表 (Glossary)
 
-> **TL;DR**: 核心术语：**场景 (Scene)**（一组按业务命名的断点集合）、**自愈指纹 (Context Snippet)**（记录断点上下三行的代码特征）、**DAP (Debug Adapter Protocol)**（VS Code 原生调试协议）。⚠️ 易混淆：**原生断点 ≠ 场景断点**（原生断点是编辑器运行期的临时红点，场景断点是版本化保存在 JSON 中的声明式配置）。
+> **TL;DR**: 核心术语：**场景 (Scene)**（一组按业务命名的断点集合）、**场景引用 (Scene Reference)**（`{type:"scene"}` 声明组合另一场景的全部断点，激活时深度优先展开）、**自愈指纹 (Context Snippet)**（记录断点上下三行的代码特征）、**DAP (Debug Adapter Protocol)**（VS Code 原生调试协议）。⚠️ 易混淆：**原生断点 ≠ 场景断点**（原生断点是编辑器运行期的临时红点，场景断点是版本化保存在 JSON 中的声明式配置）。
 
 ---
 
@@ -24,6 +24,9 @@
 #### 核心断点拓扑 Diff (Core Breakpoints Topology Diff)
 基于断点运行期关键字段（`file+line+type+condition+hitCondition+logMessage+enabled`）计算拓扑 Hash，外部文件变更时比对新旧拓扑，若仅修改说明备注（`desc`）或闲置未激活场景，则阻断重刷。
 
+#### 循环引用 (Circular Reference)
+场景引用链 A→B→A 形成的环（含自引用 A→A）。激活含环场景时，`sceneResolver` 在任何写盘/DAP 下发之前抛出 `CircularReferenceError`（携带完整环路径），激活中止且磁盘零污染（INV-030.3）。
+
 ---
 
 ### D
@@ -33,6 +36,12 @@
 
 #### DOM Diff 节点复用 (DOM Diff & In-Place Update)
 在 VS Code 树视图扩展开发中，为每个 `TreeItem` 赋予稳定且唯一的不变 `id`。当 `onDidChangeTreeData` 刷新时，宿主依据 `id` 精准识别前后节点同一性，执行原地属性更新（Diff），保留用户折叠展开与选中态，杜绝整树 DOM 销毁重建与白屏跳动闪烁。
+
+#### 声明态与展开态 (Declared World vs Expanded World)
+v1.1.0 场景组合引擎的核心概念对。**声明态**：磁盘配置中的原始步骤序列（`SceneStep[]`，断点与场景引用穿插共存）；**展开态**：激活时经 `sceneResolver` 深度优先展开引用后的纯断点流。两者由激活管道收窄点隔离，编译期以 `SceneStep` / `Breakpoint` 类型强制（INV-030.1）。
+
+#### 悬空引用 (Dangling Reference)
+引用的 `name` 在 `scenes` 字典中不存在的场景引用条目。激活时降级为警告并跳过该引用，不中断其余断点的正常下发（INV-030.4）。
 
 ---
 
@@ -74,6 +83,20 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 
 ---
 
+### N
+
+#### 收窄点 (Narrowing Point)
+声明世界（`SceneStep`）向展开世界（`Breakpoint`）转换的唯一合法通道，位于 `sceneActivationPipeline`（INV-030.1）。编译期以返回类型隔离强制：`Scene.getSteps(): SceneStep[]` 保留声明态，只有经收窄点展开后的纯断点流才可进入合并/自愈/DAP 管道。
+
+---
+
+### O
+
+#### 断点定义场景 (ownerScene)
+某条断点在 `scenes` 字典中最初声明的宿主场景。自愈回写按 `ownerScene` 路由落盘：即使该场景未被激活、仅被其他场景引用，校准行号仍回写至定义处；同源多引用至多回写一次，引用节点自身永不接收回写（INV-030.6）。
+
+---
+
 ### P
 
 #### 能力契约端口 (Ports / Capability Contract Ports)
@@ -103,6 +126,9 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 #### 场景局部实体 (Scene Entity)
 断点的领域聚合容器实体，隶属于 `SceneCatalog`。负责单个业务场景内部断点序列的有序排列、同位置查重覆盖（INV-001）、位置调整（上下移动、置顶置底、拖拽重排）与批量启闭控制。
 
+#### 场景引用 (Scene Reference / SceneRefItem)
+以 `{ "type": "scene", "name": "..." }` 声明的组合条目，表示在当前位置组合另一场景的全部断点。激活时经 `sceneResolver` 深度优先展开，声明顺序即执行顺序；支持 `desc`（树视图说明）与 `enabled: false`（临时摘除整棵子树）。仅限同文件内按 name 解析，禁止成环；树视图中呈现为只读嵌套节点。
+
 #### 断点充血实体 (Breakpoint Entity)
 封装 VS Code 5 类断点物理属性的充血领域实体。内聚了代码伴随指纹提取（`enrich`）、自愈结果吸收校准（`applyHealed`）、多态查重匹配（`matches`）与纯数据序列化契约。
 
@@ -126,4 +152,12 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 | **KDD** | Knowledge Driven Development | 知识库驱动开发 |
 | **ADR** | Architecture Decision Record | 架构决策记录 |
 | **BP** | Breakpoint | 断点 |
+
+---
+
+## 变更记录
+
+| 日期 | 变更内容 | 变更人 | 关联变更 |
+|------|----------|--------|----------|
+| 2026-10-06 | 新增术语：场景引用、声明态与展开态、收窄点、断点定义场景 (ownerScene)、悬空引用、循环引用 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / adr/005 / e2e-scenarios.md |
 

@@ -9,7 +9,7 @@
 | `vscode-api-gotchas.md` | 宿主交互、DAP 断点与打包规范 | 涉及 UI 弹窗、元数据、断点监听修改时 |
 | `test-real-import.md` | 测试基础设施与 1:1 真实源码镜像导入 | 编写/修改单元测试与 E2E 测试前 |
 | `ddd-model-refactor-gotchas.md` | 充血领域实体与聚合根状态管理 | 涉及充血实体设计、DTO 序列化与聚合根状态时 |
-| `guardrails-and-ecosystem-gotchas.md` | 架构硬隔离、深模块设计与质量硬门禁 | 涉及分层架构、深浅模块重构、门禁扩展与命令总线时 |
+| `guardrails-and-ecosystem-gotchas.md` | 架构硬隔离、深模块设计与质量硬门禁 | 涉及分层架构、深浅模块重构、门禁扩展、命令总线与版本指纹管线时 |
 
 ---
 

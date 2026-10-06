@@ -59,6 +59,50 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 - ✅ **好的示例**："检查 user 实体是否为 null"、"观察 retryCount 是否超限"、"验证 Token 解密后角色权限"
 - ❌ **坏的示例**："第 45 行"、"if 语句"、"函数入口"
 
+## 模块地图（Scene Composition / 场景组合）
+
+当目标调试链路横跨多个模块时，**不要平铺重复断点**——先画模块地图，再组合引用。
+
+### 三步生成法
+
+1. **识别通用链路**：认证、数据库连接、消息队列、日志等基础设施代码，
+   沉入底层场景（命名惯例 `xxx-core`）：
+
+    ```json
+    "auth-core": [
+      { "type": "line", "file": "src/auth.ts", "line": 12, "desc": "token 校验入口" },
+      { "type": "line", "file": "src/session.ts", "line": 45, "desc": "会话续期" }
+    ]
+    ```
+
+2. **业务场景组合引用**：业务调试场景用 `{"type":"scene"}` 引用通用链路，
+   只补充业务特有断点：
+
+    ```json
+    "payment-debug": [
+      { "type": "scene", "name": "auth-core", "desc": "支付前必过认证" },
+      { "type": "line", "file": "src/payment.ts", "line": 40, "desc": "下单入口" },
+      { "type": "condition", "file": "src/payment.ts", "line": 88,
+        "condition": "amount > 1000", "desc": "大额支付风控" }
+    ]
+    ```
+
+3. **声明顺序 = 执行顺序**：引用与断点穿插排列，激活时按声明位置深度优先展开，
+   时序 100% 保真。
+
+### 引用硬规则（违反将导致激活失败或降级）
+
+- 被引用场景必须**先在本文件中声明**（同文件内按 name 解析，不支持跨文件引用）
+- **禁止自引用与任何形式的环**：A→B→A 会在激活时报错并显示完整环路径
+- 引用条目可 `"enabled": false` 临时摘除整棵子场景（不删配置）
+- 引用悬空（name 不存在）→ 激活时警告并跳过，其余断点正常下发
+
+### 收益
+
+- 通用链路断点只维护一处，改一处全场景生效
+- AI 生成配置省 Token 60%+（一行引用替代 N 行断点）
+- 激活时自动按模块去重（先到先得）
+
 ## 核心工作流：自主查图索骥与主动制图沉淀 (Autonomous Navigation)
 
 AI Agent 在协助用户阅读代码、排查 Bug 或开发新功能时，应当将 `.vscode/debug-scenes.json` 视作工程的**“活体拓扑地图”**：

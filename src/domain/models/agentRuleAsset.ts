@@ -83,15 +83,20 @@ export function pureSha256(ascii: string): string {
 /**
  * 插件当前内置的最新 AI 规则资产版本号 (默认与 package.json 对齐)
  */
-export const LATEST_SKILL_VERSION = "1.0.9";
+export const LATEST_SKILL_VERSION = "1.1.0";
 export const LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 
 /**
  * 官方历史核心正文指纹映射表 (Hash 作为 Key，O(1) 极速秒查版本)
+ * 发版仪式：每次发布新版本时，必须将本版正文的指纹登记入表（键 = 版本号），
+ * 以保障存量用户的本地纯正版可被识别为 CleanOutdated 并平滑升级（INV-016 版本 SSOT 联动）。
+ * ⚠️ 指纹必须经由领域实体管线生成（AgentRuleAsset.computeFingerprint，pureSha256 实现），
+ * 严禁使用 node:crypto 直算——pureSha256 为项目内自洽变体，与标准 SHA-256 不逐字节一致。
  */
 export const OFFICIAL_SKILL_HISTORY: Record<string, string> = {
 	"f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
 	"36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8",
+	"f5d5a0c498ee18a5fa089814bf51d876d4756877fb72bda425db1faf11755266": "1.1.0",
 };
 export const OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 

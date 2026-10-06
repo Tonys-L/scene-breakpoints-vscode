@@ -14,7 +14,7 @@
 | **测试沙箱** | `test-fixtures/sample-workspace`（完全与开发环境隔离） |
 | **执行命令** | `npm run test:e2e`（先编译扩展与测试套件，后在沙箱中拉起运行） |
 | **构建机制** | `npm run build:test`（esbuild 打包输出至 `out-test/suite/`） |
-| **套件目录** | `test-e2e/suite/*.test.ts`（11 个单一职责微测试套件，零 `and`） |
+| **套件目录** | `test-e2e/suite/*.test.ts`（12 个单一职责微测试套件，零 `and`） |
 
 ### 1.1 套件单一职责架构分布
 
@@ -31,10 +31,11 @@
 | `09_breakpoint_healing.test.ts` | 智能断点自然漂移自愈与持久化回写 | TC-HEAL-01 ~ TC-HEAL-04, TC-ENRICH-01 |
 | `10_agent_skills.test.ts` | Agent 技能分发、巡检与平滑升级 | CMD-08, CMD-09, TC-SKILL-01 ~ TC-SKILL-04 |
 | `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-01 ~ TC-SESS-02, TC-CONF-01 ~ TC-CONF-05 |
+| `12_scene_references.test.ts` | 场景引用组合激活、成环拦截、悬空降级、引用启停与导出保真 | TC-REF-01 ~ TC-REF-05 |
 
 ---
 
-## 2. 全量 53 大 E2E 测试场景矩阵
+## 2. 全量 58 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -175,8 +176,20 @@
 
 | 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
 | :--- | :--- | :--- | :--- | :--- |
-| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 25 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 25 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
+| **TC-CMD-01** | **命令面板 (Ctrl+Shift+P) 全量 26 大命令注册与总线就绪校验** | 扫描 `package.json` 的 `contributes.commands`，比对 VS Code 命令总线 | 严格断言全部 26 个命令均在 VS Code 命令总线成功注册；验证 `sceneBreakpoints.showMenu` 等主入口分发畅通 | KDD-CMD-001 |
 | **TC-KEY-01** | **快捷键 (Keybindings) 映射契约与 editorTextFocus 焦点触发验证** | 校验 `ctrl+alt+b` / `ctrl+alt+s`（Mac 对应 `cmd+alt+*`）绑定及 `when: "editorTextFocus"`；模拟编辑器聚焦触发 | 快捷键配置 100% 吻合规范；获得文本焦点时触发命令，断点精准注入光标所在物理行，验证快捷键通路健康 | KDD-KEY-001 |
+
+---
+
+### 维度十二：场景引用组合引擎 (TC-REF)
+
+| 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
+| :--- | :--- | :--- | :--- | :--- |
+| **TC-REF-01** | **组合激活时序** | 准备 `auth-core`（通用断点）与 `payment-debug`（引用 `auth-core` 并穿插业务断点），激活 `payment-debug` | 断点按声明序深度优先展开后全部下发；树视图呈现嵌套引用结构 | INV-030 |
+| **TC-REF-02** | **引用成环阻断激活** | 配置 A↔B 互引后激活 A | 错误通知含完整环路径 `A → B → A`；无任何断点下发；配置文件未被改写 | INV-030 |
+| **TC-REF-03** | **悬空引用降级警告** | 场景内引用不存在的场景名后激活 | 弹出警告通知；其余存活断点正常下发，激活不被中断 | INV-030 |
+| **TC-REF-04** | **引用启停与子树摘除** | 树视图禁用 `auth-core` 引用后重新激活 | 子树断点全部摘除；`enabled: false` 落盘；树图标同步变化 | INV-030 |
+| **TC-REF-05** | **导出导入含引用保真往返** | 导出含引用的 `payment-debug` payload → 新工作区导入 | 引用条目在导入结果中原样保留（字段/顺序 100% 保真） | INV-030 |
 
 ---
 
@@ -190,5 +203,13 @@
    - 任何核心逻辑重构，必须运行 `npm run test:e2e`，确保全量场景 100% 绿灯通过；
 3. **CI/CD 硬门禁**：
    - 本地提交前必须通过离线单元测试（`npm test`）与真实宿主 E2E 测试（`npm run test:e2e`）。
+
+---
+
+## 变更记录
+
+| 日期 | 变更内容 | 变更人 | 关联变更 |
+|------|----------|--------|----------|
+| 2026-10-06 | 新增套件 `12_scene_references.test.ts` 与维度十二（TC-REF-01 ~ TC-REF-05），场景矩阵 53 → 58 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / glossary.md / adr/005 |
 
 ---

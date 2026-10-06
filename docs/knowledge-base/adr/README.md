@@ -8,6 +8,7 @@
 | **ADR-002** | [引入独立 SceneStateManager 实现 SSOT 并消除状态栏竞态闪烁](002-scene-state-machine-ssot.md) | 状态管理 | Accepted | `sceneStateManager`, `statusBar`, `commands/*` | 2026-09-07 |
 | **ADR-003** | [引入全局单写者可重入串行队列消除多管理器并发写竞态与自死锁](003-reentrant-single-writer-queue.md) | 并发安全 | Accepted | `serialQueue`, `sceneManager`, `breakpointManager`, `agentSyncService` | 2026-10-03 |
 | **ADR-004** | [建立架构防摇摆与深浅模块裁决工程规范](004-architectural-anti-churn-standard.md) | 架构防震荡 | Accepted | `constraints`, `sceneStateManager`, `ui/commands/*` | 2026-10-05 |
+| **ADR-005** | [引入场景组合引擎——声明态/展开态分离的完全多态 SceneStep 模型](005-scene-composition-engine.md) | 场景组合 | Accepted | `sceneResolver`, `sceneStep`, `sceneActivationPipeline`, `scene`, `types`, `schema.json` | 2026-10-06 |
 
 ---
 

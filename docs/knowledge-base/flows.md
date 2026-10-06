@@ -1,6 +1,6 @@
 # 业务流程与状态机 (Flows & State Machine)
 
-> **TL;DR**: 核心流程：**场景断点激活装配流**（清理杂散 → 自愈探测 → DAP 装配 → 回写配置 → 驱动视图）、**反向导出流**。核心状态机：**全局场景状态机**（None ↔ Active(SceneName)）。⚠️ 关键状态约束：下发阶段必须全程持有原子执行锁，禁止被断点变更事件打断。
+> **TL;DR**: 核心流程：**场景断点激活装配流**（引用展开 → 清理杂散 → 自愈探测 → DAP 装配 → 回写配置 → 驱动视图）、**反向导出流**。核心状态机：**全局场景状态机**（None ↔ Active(SceneName)）。⚠️ 关键状态约束：下发阶段必须全程持有原子执行锁，禁止被断点变更事件打断；场景引用成环必须在任何写盘/DAP 下发前中止（INV-030），磁盘零污染。
 
 ---
 
@@ -19,7 +19,14 @@ flowchart TD
     Start([开始激活场景]) --> CheckConfig[从 debug-scenes.json 读取目标场景列表]
     CheckConfig --> ValidateExist{场景在配置中是否存在?}
     ValidateExist -->|全部不存在| ShowError[弹出错误提示并中止 (幽灵拦截 INV-009)]
-    ValidateExist -->|有效场景列表| MergeBps[Scene.merge 聚合多场景断点 (先到先得排重 INV-011)]
+    ValidateExist -->|有效场景列表| ExpandRefs[sceneResolver.expandScenes 深度优先展开场景引用 (INV-030)]
+    ExpandRefs --> CycleHit{引用成环?}
+    CycleHit -->|是| AbortCycle[抛出 CircularReferenceError 中止激活 (携带完整环路径, 状态机零污染)]
+    CycleHit -->|否| RefWarn{存在悬空或禁用引用?}
+    RefWarn -->|是| SkipRefs[降级警告并跳过对应引用子树 (不阻断其余断点)]
+    RefWarn -->|否| MergeBps[Scene.merge 聚合多场景断点 (先到先得排重 INV-011)]
+    SkipRefs --> MergeBps
+    AbortCycle --> EndAbort([激活中止, 磁盘零污染])
 
     MergeBps --> HealPipeline[执行前置自愈与指纹补齐管道 (enrichAndHealBreakpoints)]
     HealPipeline --> FastPath{快路径: 当前代码行文本完全一致?}
@@ -131,4 +138,12 @@ stateDiagram-v2
 | `Active(A)` 切换中 | `None` (瞬态) | 在下发场景断点清除旧断点期间，严禁向外暴露未激活状态 | `sceneStateManager.isApplying` 原子锁保护 |
 | `Active(Dirty)` | `Active(B)` (无提示直接清除) | 严禁在未询问用户意愿的前提下直接暴力清除用户手动打下的临时断点 | `applySceneCommand` 模态保护弹窗（放弃/追加保存/取消） |
 | `None` / 任意状态 | `Active(不存在场景)` | 严禁将 `debug-scenes.json` 中不存在的幽灵场景设为主状态，防止状态栏虚假染绿与断点误清空 | `applySceneCommand` 存在性强校验守卫与 `LaunchBindingResolver.resolveScenes` 防御性过滤 |
+
+---
+
+## 变更记录
+
+| 日期 | 变更内容 | 变更人 | 关联变更 |
+|------|----------|--------|----------|
+| 2026-10-06 | 场景激活主流程新增 expandScenes 引用展开步骤与成环中止/悬空禁用降级分支（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / glossary.md / adr/005 / e2e-scenarios.md |
 

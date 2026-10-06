@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.1.0] - 2026-10-06
+
+### Added
+- **Scene Composition Engine (Inline Scene References)**:
+  - Declare inline scene references (`{ "type": "scene", "name": "..." }`) inside any scene to compose another scene's full breakpoint set at that position — shared infrastructure breakpoints (auth, session, MQ) are maintained in one place and reused everywhere.
+  - Declarative order is the execution order: references expand depth-first exactly where they are declared, fully interleaved with regular breakpoints (INV-030).
+  - Circular references (including self-references) abort activation before any disk write or DAP dispatch, reporting the full cycle path (e.g. `A → B → A`) with zero state and disk pollution.
+  - Dangling references degrade to a non-blocking warning and are skipped; `enabled: false` removes an entire reference subtree without deleting the configuration.
+  - Tree view renders nested read-only reference nodes with a `revealRefSource` quick navigation and enable/disable toggles; self-healing write-backs are routed to the owning scene, exactly once per scene.
+- **AI Skill Teaching (Module Map)**: the bundled Scene Breakpoints skill now teaches the composition workflow (module map → core scenes → business scenes with references), cutting ~60% of AI-generated configuration tokens.
+- **Schema & Guardrails**: `schema.json` declares the reference branch via a `oneOf` contract (`additionalProperties: false`, `name` required); guardrails GR-006/GR-007 adapted to validate mixed breakpoint/reference maps and keep the schema 100% in sync with the domain model.
+
+### Fixed
+- Scene reference entries are now preserved through config load/save sanitize round-trips (previously silently dropped on the load path); invalid references (empty name) are discarded defensively.
+
+---
+
 ## [1.0.9] - 2026-10-05
 
 ### Fixed & Architectural Improvements

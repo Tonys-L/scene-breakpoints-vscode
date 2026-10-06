@@ -9,6 +9,119 @@ import { evaluateCrapMetrics } from "./compute-crap.mjs";
  * 约束自动化执行守卫 (Automated Executable Guardrails)
  * 用于在提交前、单测运行前及打包时对关键约束进行代码级硬门禁验证。
  */
+/**
+ * GR-006 场景断点地图物理保鲜守卫（可独立测试）
+ * v1.1.0 起 steps 中允许混入场景引用条目（type === "scene"，INV-030）：
+ * 引用无 file/line 是合法形态，扫描时跳过物理校验，仅要求引用 name 非空
+ */
+export function verifySceneMapGuard(workspaceRoot) {
+	const errors = [];
+	const successes = [];
+	const debugScenesPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
+	if (fs.existsSync(debugScenesPath)) {
+		try {
+			const scenesConfig = JSON.parse(fs.readFileSync(debugScenesPath, "utf8"));
+			const scenes = scenesConfig.scenes || {};
+			let totalBps = 0;
+			let sceneCount = 0;
+
+			for (const [sName, steps] of Object.entries(scenes)) {
+				sceneCount++;
+				if (!Array.isArray(steps)) continue;
+				for (const step of steps) {
+					if (step && step.type === "scene") {
+						if (typeof step.name !== "string" || step.name.trim().length === 0) {
+							errors.push(`场景断点地图失效：场景 [${sName}] 存在缺少有效 name 的场景引用条目`);
+						}
+						continue;
+					}
+					totalBps++;
+					const targetFile = path.isAbsolute(step.file) ? step.file : path.join(workspaceRoot, step.file);
+					if (!fs.existsSync(targetFile)) {
+						errors.push(
+							`场景断点地图失效：场景 [${sName}] 引用的文件不存在 -> ${step.file}`
+						);
+					} else {
+						const fileContent = fs.readFileSync(targetFile, "utf8");
+						const lineCount = fileContent.split(/\r?\n/).length;
+						if (step.line <= 0 || step.line > lineCount) {
+							errors.push(
+								`场景断点地图越界：场景 [${sName}] 在 ${step.file} 指定行号 ${step.line} 超出文件总行数 (${lineCount})`
+							);
+						}
+					}
+				}
+			}
+			successes.push(`场景断点地图健康度：${sceneCount} 个场景、${totalBps} 个断点 100% 物理有效，0 失效脱靶`);
+		} catch (err) {
+			errors.push(`场景断点地图解析失败：${err.message}`);
+		}
+	}
+	return { errors, successes };
+}
+
+/**
+ * GR-007 JSON Schema 契约与领域模型同步守卫（可独立测试）
+ * v1.1.0 起 items 为 oneOf [引用分支, 断点分支]；兼容旧单对象形态。
+ * 引用分支对齐 types.ts SceneRefItem，且必须 additionalProperties:false + name minLength:1，
+ * 从契约层面拒绝引用条目混入 file/line 等断点字段（INV-030.7 保真往返的 schema 保证）
+ */
+export function verifySchemaContractGuard(workspaceRoot) {
+	const errors = [];
+	const successes = [];
+	const schemaPath = path.join(workspaceRoot, "schema.json");
+	if (fs.existsSync(schemaPath)) {
+		try {
+			const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+			if (!schema.$schema || !schema.properties?.scenes) {
+				errors.push("schema.json 不完整：缺少 $schema 或 properties.scenes 声明");
+			} else {
+				successes.push("JSON Schema 规范性：schema.json Draft-07 契约定义完整");
+			}
+
+			const items = schema.properties?.scenes?.additionalProperties?.items || {};
+			const branches = Array.isArray(items.oneOf) ? items.oneOf : [items];
+
+			// 断点分支：核心字段与领域模型同步（原 GR-007 语义不变）
+			const bpBranch = branches.find((b) => b.properties?.file);
+			if (!bpBranch) {
+				errors.push("schema.json 缺少断点条目分支定义（无 file 字段声明的分支）");
+			} else {
+				const allowedBpProps = Object.keys(bpBranch.properties || {});
+				const coreBpFields = ["type", "file", "line", "desc", "enabled", "condition", "hitCondition", "logMessage", "functionName", "contextSnippet"];
+				const missingProps = coreBpFields.filter((f) => !allowedBpProps.includes(f));
+				if (missingProps.length > 0) {
+					errors.push(`schema.json 未同步核心领域字段：[${missingProps.join(", ")}]`);
+				} else {
+					successes.push("JSON Schema 契约同步：断点核心字段与领域实体模型 100% 同步");
+				}
+			}
+
+			// 引用分支：SceneRefItem 字段同步 + 严格白名单（INV-030）
+			const refBranch = branches.find((b) => b.properties?.type?.const === "scene");
+			if (!refBranch) {
+				errors.push("schema.json 缺少场景引用条目分支（type=scene）定义");
+			} else {
+				const refProps = Object.keys(refBranch.properties || {});
+				const coreRefFields = ["type", "name", "desc", "enabled"];
+				const missingRef = coreRefFields.filter((f) => !refProps.includes(f));
+				if (missingRef.length > 0) {
+					errors.push(`schema.json 引用分支未同步核心领域字段：[${missingRef.join(", ")}]`);
+				} else if (refBranch.additionalProperties !== false) {
+					errors.push("schema.json 引用分支必须 additionalProperties:false（禁止引用条目混入 file/line 等断点字段）");
+				} else if (refBranch.properties?.name?.minLength !== 1) {
+					errors.push("schema.json 引用分支 name 必须 minLength:1（拒绝空引用名）");
+				} else {
+					successes.push("JSON Schema 契约同步：场景引用分支与领域 SceneRefItem 100% 同步");
+				}
+			}
+		} catch (err) {
+			errors.push(`schema.json 解析失败：${err.message}`);
+		}
+	}
+	return { errors, successes };
+}
+
 export function verifyAllGuardrails(workspaceRoot = process.cwd()) {
 	const errors = [];
 	const successes = [];
@@ -231,71 +344,18 @@ export function verifyAllGuardrails(workspaceRoot = process.cwd()) {
 	}
 
 	// =========================================================================
-	// 9. KDD 场景断点地图有效性与保鲜守卫 (Debug Scenes Health Guard)
+	// 9. KDD 场景断点地图有效性与保鲜守卫 (Debug Scenes Health Guard, GR-006)
 	// =========================================================================
-	const debugScenesPath = path.join(workspaceRoot, ".vscode", "debug-scenes.json");
-	if (fs.existsSync(debugScenesPath)) {
-		try {
-			const scenesConfig = JSON.parse(fs.readFileSync(debugScenesPath, "utf8"));
-			const scenes = scenesConfig.scenes || {};
-			let totalBps = 0;
-			let sceneCount = 0;
-
-			for (const [sName, bps] of Object.entries(scenes)) {
-				sceneCount++;
-				if (!Array.isArray(bps)) continue;
-				for (const bp of bps) {
-					totalBps++;
-					const targetFile = path.isAbsolute(bp.file) ? bp.file : path.join(workspaceRoot, bp.file);
-					if (!fs.existsSync(targetFile)) {
-						errors.push(
-							`场景断点地图失效：场景 [${sName}] 引用的文件不存在 -> ${bp.file}`
-						);
-					} else {
-						const fileContent = fs.readFileSync(targetFile, "utf8");
-						const lineCount = fileContent.split(/\r?\n/).length;
-						if (bp.line <= 0 || bp.line > lineCount) {
-							errors.push(
-								`场景断点地图越界：场景 [${sName}] 在 ${bp.file} 指定行号 ${bp.line} 超出文件总行数 (${lineCount})`
-							);
-						}
-					}
-				}
-			}
-			successes.push(`场景断点地图健康度：${sceneCount} 个场景、${totalBps} 个断点 100% 物理有效，0 失效脱靶`);
-		} catch (err) {
-			errors.push(`场景断点地图解析失败：${err.message}`);
-		}
-	}
+	const sceneMapGuard = verifySceneMapGuard(workspaceRoot);
+	errors.push(...sceneMapGuard.errors);
+	successes.push(...sceneMapGuard.successes);
 
 	// =========================================================================
-	// 10. JSON Schema 规范与样例配置契约守卫 (JSON Schema Conformance Guard)
+	// 10. JSON Schema 规范与样例配置契约守卫 (JSON Schema Conformance Guard, GR-007)
 	// =========================================================================
-	const schemaPath = path.join(workspaceRoot, "schema.json");
-	if (fs.existsSync(schemaPath)) {
-		try {
-			const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
-			if (!schema.$schema || !schema.properties?.scenes) {
-				errors.push("schema.json 不完整：缺少 $schema 或 properties.scenes 声明");
-			} else {
-				successes.push("JSON Schema 规范性：schema.json Draft-07 契约定义完整");
-			}
-
-			// 对比 schema.json 属性与 domain/types.ts 契约字段
-			const allowedBpProps = Object.keys(
-				schema.properties.scenes.additionalProperties.items.properties || {}
-			);
-			const coreBpFields = ["type", "file", "line", "desc", "enabled", "condition", "hitCondition", "logMessage", "functionName", "contextSnippet"];
-			const missingProps = coreBpFields.filter((f) => !allowedBpProps.includes(f));
-			if (missingProps.length > 0) {
-				errors.push(`schema.json 未同步核心领域字段：[${missingProps.join(", ")}]`);
-			} else {
-				successes.push("JSON Schema 契约同步：断点核心字段与领域实体模型 100% 同步");
-			}
-		} catch (err) {
-			errors.push(`schema.json 解析失败：${err.message}`);
-		}
-	}
+	const schemaGuard = verifySchemaContractGuard(workspaceRoot);
+	errors.push(...schemaGuard.errors);
+	successes.push(...schemaGuard.successes);
 
 	// =========================================================================
 	// 11. 严禁空 catch 静默吞错守卫 (No Empty Catch Guard)
