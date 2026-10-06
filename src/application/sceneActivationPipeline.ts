@@ -13,6 +13,60 @@ export interface SceneActivationDeps {
 	sceneRepository?: ISceneRepository;
 	breakpointBridge?: IBreakpointBridge;
 	lineReader?: ILineReader;
+	/**
+	 * 外部编辑待决信号 (INV-031 命令路径门控)：磁盘内容相对最近一次内部写盘基线发生漂移
+	 */
+	isExternalPendingEdit?: () => boolean;
+	/**
+	 * 指纹冲突裁决回调 (INV-031)：返回 "disk" 保留磁盘行号 / "fingerprint" 维持自愈回滚；
+	 * 缺失时维持现状静默自愈（向后兼容）
+	 */
+	resolveFingerprintConflict?: FingerprintConflictResolver;
+	/**
+	 * 冲突检测显式启用标记 (INV-031 watcher 路径门控)：外部文件变更事件显式下发
+	 */
+	conflictDetection?: "enabled";
+}
+
+export type FingerprintConflictResolution = "disk" | "fingerprint";
+
+export interface FingerprintConflictInfo {
+	/** 断点所在文件（工程相对路径） */
+	file: string;
+	/** 磁盘声明行号（用户外部编辑后） */
+	registeredLine: number;
+	/** 旧指纹匹配行号 */
+	fingerprintLine: number;
+}
+
+export type FingerprintConflictResolver = (
+	info: FingerprintConflictInfo,
+) => Promise<FingerprintConflictResolution | undefined> | FingerprintConflictResolution | undefined;
+
+/**
+ * 指纹冲突门控选项：enabled 为门控开关（watcher 显式标记 ∨ 命令路径磁盘漂移信号）
+ */
+export interface FingerprintConflictGuard {
+	enabled?: boolean;
+	onConflict?: FingerprintConflictResolver;
+}
+
+/**
+ * 冲突裁决决策：true = 磁盘行号优先；false = 维持自愈回滚现状
+ * 裁决回调缺失 → 维持现状（向后兼容）；回调返回 undefined（用户关闭弹窗）→ 缺省磁盘优先 (INV-031)
+ */
+async function resolveConflictDecision(
+	onConflict: FingerprintConflictResolver | undefined,
+	bp: Breakpoint,
+	fingerprintLine: number,
+): Promise<boolean> {
+	if (!onConflict) return false;
+	const decision = await onConflict({
+		file: bp.file || "",
+		registeredLine: bp.line || 0,
+		fingerprintLine,
+	});
+	return decision !== "fingerprint";
 }
 
 export interface ExecuteSceneActivationParams {
@@ -79,11 +133,13 @@ export function persistHealedBackfill(
 
 /**
  * 应用层前置自愈与指纹富化计算管道 (INV-003)
+ * 冲突门控 (INV-031)：门控开启且自愈判定漂移时，交由裁决回调决定磁盘行号优先或指纹自愈回滚
  */
 export async function enrichAndHealBreakpoints(
 	workspaceRoot: string,
 	breakpoints: Breakpoint[],
 	lineReader?: ILineReader,
+	conflict?: FingerprintConflictGuard,
 ): Promise<{ healedCount: number; enrichedCount: number; unmatched: SourceSceneBreakpoint[] }> {
 	let healedCount = 0;
 	let enrichedCount = 0;
@@ -100,8 +156,14 @@ export async function enrichAndHealBreakpoints(
 			if (bp.enrich(lines)) enrichedCount++;
 			const healResult = HealingEngine.heal(lines, bp.line!, bp.contextSnippet);
 			if (healResult.isHealed) {
-				bp.updateLine(healResult.healedLine);
-				healedCount++;
+				if (conflict?.enabled && (await resolveConflictDecision(conflict.onConflict, bp, healResult.healedLine))) {
+					// 磁盘行号优先：保留用户重锚定行号，作废旧指纹并按磁盘声明行重提取 (INV-031)
+					bp.contextSnippet = undefined;
+					if (bp.enrich(lines)) enrichedCount++;
+				} else {
+					bp.updateLine(healResult.healedLine);
+					healedCount++;
+				}
 			} else if (healResult.status === "unmatched") {
 				unmatched.push(bp.toJSON() as SourceSceneBreakpoint);
 			}
@@ -152,11 +214,17 @@ export async function executeSceneActivation(
 	const mergedBreakpoints = resolvedSteps.map((s) => s.breakpoint);
 
 	// 2.1 应用层前置自愈与指纹富化管道 (Healing & Fingerprint Enrich Pipeline)
+	//     冲突门控 (INV-031)：watcher 显式标记 ∨ 命令路径磁盘漂移信号
+	const conflictEnabled =
+		deps.conflictDetection === "enabled" || (deps.isExternalPendingEdit?.() ?? false);
 	const {
 		healedCount: appHealedCount,
 		enrichedCount: appEnrichedCount,
 		unmatched: unmatchedBreakpoints,
-	} = await enrichAndHealBreakpoints(workspaceRoot, mergedBreakpoints, lineReader);
+	} = await enrichAndHealBreakpoints(workspaceRoot, mergedBreakpoints, lineReader, {
+		enabled: conflictEnabled,
+		onConflict: deps.resolveFingerprintConflict,
+	});
 
 	// 同步状态机脱靶失联警告 (INV-004)
 	sceneStateManager.setUnmatchedBreakpoints(

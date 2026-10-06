@@ -20,9 +20,12 @@ import {
 	registerSessionLifecycleService,
 	getWorkspaceRoot,
 	jsonFileSceneRepository,
+	seedEchoLoopBaselineFromDisk,
+	isDiskContentModifiedSinceLastSaved,
 	vscodeBreakpointBridge,
 	vscodeLineReader,
 } from "./infra";
+import { promptFingerprintConflict } from "./ui/utils/promptHelpers";
 
 /**
  * 组装装配根基础设施依赖
@@ -32,6 +35,13 @@ function setupCompositionRoot(): void {
 		sceneRepository: jsonFileSceneRepository,
 		breakpointBridge: vscodeBreakpointBridge,
 		lineReader: vscodeLineReader,
+		// INV-031：命令路径外部编辑门控信号（磁盘内容 vs 最近内部写盘基线）
+		isExternalPendingEdit: () => {
+			const wsRoot = getWorkspaceRoot();
+			return wsRoot ? isDiskContentModifiedSinceLastSaved(wsRoot) : false;
+		},
+		// INV-031：指纹冲突裁决弹窗（用户关闭弹窗时缺省磁盘行号优先）
+		resolveFingerprintConflict: promptFingerprintConflict,
 	});
 }
 
@@ -42,6 +52,12 @@ function setupCompositionRoot(): void {
 export function activate(context: vscode.ExtensionContext) {
 	// 0. 装配应用用例层依赖 (Composition Root 依赖注入，遵循 Clean Architecture DIP)
 	setupCompositionRoot();
+
+	// 0.1 冷启动基线播种 (INV-031 前置)：以磁盘现状为 lastSavedContent 基线，保留 Git Pull 漂移静默自愈
+	const wsRootSeed = getWorkspaceRoot();
+	if (wsRootSeed) {
+		seedEchoLoopBaselineFromDisk(wsRootSeed);
+	}
 
 	// 1. 初始化底部常驻状态栏
 	initStatusBarItem(context);

@@ -41,6 +41,25 @@ export class EchoLoopGuard {
 	}
 
 	/**
+	 * 冷启动基线播种 (INV-031 前置)
+	 * 扩展启动时若从未发生过内部写盘（lastSavedContent 为空），以磁盘现状播种基线，
+	 * 保证 Git Pull / 环境漂移在冷启动后仍可静默自愈，不误判为外部编辑冲突
+	 */
+	public seedBaseline(content: string): void {
+		if (this.lastSavedContent || !content) return;
+		this.lastSavedContent = content;
+	}
+
+	/**
+	 * 判定磁盘内容是否相对最近一次内部写盘基线发生外部修改 (INV-031 门控信号)
+	 * 无基线（冷启动未播种）或空内容时一律返回 false，防止冷启动误伤
+	 */
+	public isDiskContentModifiedSinceLastSave(content: string): boolean {
+		if (!content || !this.lastSavedContent) return false;
+		return !this.isContentMatchingLastSaved(content);
+	}
+
+	/**
 	 * 比对磁盘传入内容是否与扩展最新内部写盘内容完全一致（用于拦截自身 fileWatcher 回环）
 	 */
 	public isContentMatchingLastSaved(content: string): boolean {

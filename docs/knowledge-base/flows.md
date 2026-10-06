@@ -93,6 +93,38 @@ flowchart TD
 
 ---
 
+### 3. 外部编辑与指纹自愈冲突裁决流程 (INV-031)
+
+**触发条件**：
+- 外部修改 `.vscode/debug-scenes.json` 重锚定断点行号后触发激活（watcher 路径：文件监听 → `handleExternalChange` → `activateScene`，显式携带 `conflictDetection: "enabled"` 标记）；
+- 命令路径手动激活时磁盘内容相对扩展最近一次内部写盘基线发生漂移（`isExternalPendingEdit` 门控信号）。
+
+```mermaid
+flowchart TD
+    Start([激活管道进入自愈探测]) --> Gate{冲突门控开启? watcher 显式标记 或 磁盘漂移信号}
+    Gate -->|否| SilentHeal[静默自愈回滚, 零打扰<br>Git Pull 漂移保护锚定]
+    Gate -->|是| Healed{自愈判定行号漂移? isHealed = true}
+    Healed -->|否| NoDrift[行号未漂移, 零打扰放行]
+    Healed -->|是| Resolver{裁决回调存在?}
+    Resolver -->|否| Legacy[维持现状静默自愈<br>向后兼容, 测试注入用]
+    Resolver -->|是| Prompt[弹窗裁决: 保留我编辑的行 / 自动自愈至指纹行]
+    Prompt -->|用户选择自愈| FP["fingerprint: 回滚至指纹匹配行 (现状语义)"]
+    Prompt -->|选择保留 / 直接关闭弹窗| Disk["disk (缺省): 保留磁盘声明行号<br>作废旧指纹 → 按磁盘行重提取"]
+    Disk --> Reenrich[enrichedCount 计入 → 随既有溯源回写落盘<br>用户行号 + 新指纹持久化]
+    SilentHeal --> EndDone([激活继续])
+    NoDrift --> EndDone
+    Legacy --> EndDone
+    FP --> EndDone
+    Reenrich --> EndDone
+```
+
+**关键约束**：
+- 冷启动（扩展激活最前）必须以磁盘现状播种 `echoLoopGuard` 基线，保证 Git Pull / 环境漂移静默自愈不被误弹窗；
+- watcher 路径必须显式下发标记：`autoEnrichEmptyFingerprints` 先行落盘会刷新 `lastSavedContent` 基线"洗白"磁盘漂移信号，仅凭漂移判定会失真；
+- 磁盘优先裁决的落盘复用既有 `persistHealedBackfill` 溯源回写通道（重提取计入 `enrichedCount`），不新增写盘路径。
+
+---
+
 ## 状态机
 
 ### 全局场景激活状态机 (Scene State Machine)
@@ -146,4 +178,5 @@ stateDiagram-v2
 | 日期 | 变更内容 | 变更人 | 关联变更 |
 |------|----------|--------|----------|
 | 2026-10-06 | 场景激活主流程新增 expandScenes 引用展开步骤与成环中止/悬空禁用降级分支（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / glossary.md / adr/005 / e2e-scenarios.md |
+| 2026-10-07 | 新增「外部编辑与指纹自愈冲突裁决流程」（INV-031）：门控判定、弹窗裁决与磁盘优先缺省语义 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / glossary.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 

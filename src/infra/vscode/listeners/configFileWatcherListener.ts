@@ -25,6 +25,8 @@ export async function handleExternalScenesFileChange(workspaceRoot: string): Pro
 		sceneRepository: jsonFileSceneRepository,
 		breakpointBridge: vscodeBreakpointBridge,
 		lineReader: vscodeLineReader,
+		// INV-031：外部变更路径显式下发冲突检测标记（autoEnrich 先行落盘会洗白磁盘漂移信号）
+		conflictDetection: "enabled",
 		onPendingMessage: () => {
 			vscode.window.setStatusBarMessage(
 				vscode.l10n.t("$(alert) Breakpoint changes pending. Will apply on next debug session."),

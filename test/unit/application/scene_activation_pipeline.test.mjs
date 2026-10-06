@@ -384,6 +384,193 @@ async function testGoldenSnapshotNoRefScenes() {
 	}
 }
 
+// ==============================
+// 批次 4：外部编辑 vs 指纹自愈冲突裁决用例 (INV-031)
+// ==============================
+
+/** 冲突夹具：磁盘声明行 5（用户外部重锚定），旧指纹指向源码第 3 行 "targetLine();" */
+function makeConflictFixture() {
+	const lines = ["const a = 1;", "const b = 2;", "targetLine();", "const c = 3;", "const d = 4;"];
+	const bp = new Breakpoint({
+		file: "src/x.ts",
+		line: 5,
+		type: "line",
+		contextSnippet: { current: "targetLine();" },
+	});
+	const lineReader = { readLines: async () => lines, clearCache: () => {} };
+	return { bp, lineReader };
+}
+
+// C1. 磁盘优先：行号保留 + 旧指纹作废按磁盘行重提取
+async function testConflictDiskPriority() {
+	const { bp, lineReader } = makeConflictFixture();
+	const calls = [];
+	const res = await enrichAndHealBreakpoints("/workspace", [bp], lineReader, {
+		enabled: true,
+		onConflict: (info) => {
+			calls.push(info);
+			return "disk";
+		},
+	});
+	assert.strictEqual(res.healedCount, 0, "磁盘优先下不得回滚行号（不计自愈）");
+	assert.strictEqual(res.enrichedCount, 1, "旧指纹作废后必须按磁盘行重提取并计入富化");
+	assert.strictEqual(bp.line, 5, "用户外部重锚定的磁盘行号必须原样保留");
+	assert.strictEqual(bp.contextSnippet.current, "const d = 4;", "重提取指纹必须锚定磁盘声明行内容");
+	assert.strictEqual(calls.length, 1, "冲突必须恰好裁决一次");
+	assert.deepStrictEqual(
+		calls[0],
+		{ file: "src/x.ts", registeredLine: 5, fingerprintLine: 3 },
+		"裁决信息必须携带磁盘声明行号与指纹匹配行号",
+	);
+}
+
+// C2. 指纹优先：回滚到指纹匹配行（维持旧行为语义）
+async function testConflictFingerprintPriority() {
+	const { bp, lineReader } = makeConflictFixture();
+	const res = await enrichAndHealBreakpoints("/workspace", [bp], lineReader, {
+		enabled: true,
+		onConflict: () => "fingerprint",
+	});
+	assert.strictEqual(res.healedCount, 1, "指纹优先必须按自愈回滚计入");
+	assert.strictEqual(bp.line, 3, "指纹优先必须回滚到指纹匹配行");
+	assert.strictEqual(bp.contextSnippet.current, "targetLine();", "旧指纹必须保留");
+}
+
+// C3. 用户直接关闭弹窗（回调返回 undefined）→ 缺省磁盘优先
+async function testConflictUndefinedDefaultsToDisk() {
+	const { bp, lineReader } = makeConflictFixture();
+	const res = await enrichAndHealBreakpoints("/workspace", [bp], lineReader, {
+		enabled: true,
+		onConflict: async () => undefined,
+	});
+	assert.strictEqual(res.healedCount, 0);
+	assert.strictEqual(bp.line, 5, "用户关闭弹窗时必须缺省磁盘行号优先（尊重显式编辑）");
+}
+
+// C4. 门控开启但回调缺失 → 维持现状静默自愈（向后兼容）
+async function testConflictWithoutResolverKeepsLegacy() {
+	const { bp, lineReader } = makeConflictFixture();
+	const res = await enrichAndHealBreakpoints("/workspace", [bp], lineReader, { enabled: true });
+	assert.strictEqual(res.healedCount, 1, "回调缺失时必须维持现状静默自愈（向后兼容）");
+	assert.strictEqual(bp.line, 3);
+}
+
+// C5. 门控关闭 → 静默自愈且严禁触发回调（Git Pull 漂移保护锚定）
+async function testConflictGateOffSilentHeal() {
+	const { bp, lineReader } = makeConflictFixture();
+	let called = false;
+	const res = await enrichAndHealBreakpoints("/workspace", [bp], lineReader, {
+		enabled: false,
+		onConflict: () => {
+			called = true;
+			return "disk";
+		},
+	});
+	assert.strictEqual(called, false, "门控关闭时严禁触发裁决回调");
+	assert.strictEqual(res.healedCount, 1, "门控关闭时保持静默自愈（Git Pull 漂移保护）");
+	assert.strictEqual(bp.line, 3);
+}
+
+// C6. 门控开启但行号未漂移（heal matched）→ 不弹窗零打扰
+async function testConflictNoDriftNoDialog() {
+	const lines = ["const a = 1;", "targetLine();", "const c = 3;"];
+	const bp = new Breakpoint({
+		file: "src/x.ts",
+		line: 2,
+		type: "line",
+		contextSnippet: { current: "targetLine();" },
+	});
+	let called = false;
+	const res = await enrichAndHealBreakpoints(
+		"/workspace",
+		[bp],
+		{ readLines: async () => lines, clearCache: () => {} },
+		{
+			enabled: true,
+			onConflict: () => {
+				called = true;
+				return "disk";
+			},
+		},
+	);
+	assert.strictEqual(called, false, "指纹与登记行一致时严禁弹窗");
+	assert.strictEqual(res.healedCount, 0);
+	assert.strictEqual(bp.line, 2);
+}
+
+// C7. executeSceneActivation 集成：conflictDetection 标记 + disk 裁决 → 落盘保留用户行号与重提取指纹
+async function testExecuteSceneActivationConflictDiskWins() {
+	sceneStateManager.resetState();
+	const repo = new MockSceneRepo({
+		scenes: {
+			conflict: [
+				{
+					file: "src/x.ts",
+					line: 5,
+					type: "line",
+					contextSnippet: { current: "targetLine();" },
+				},
+			],
+		},
+	});
+	const bridge = new MockBridge();
+	const lines = ["const a = 1;", "const b = 2;", "targetLine();", "const c = 3;", "const d = 4;"];
+	const res = await executeSceneActivation({
+		workspaceRoot: "/workspace",
+		targetScenes: ["conflict"],
+		deps: {
+			sceneRepository: repo,
+			breakpointBridge: bridge,
+			lineReader: makeLineReader({ "src/x.ts": lines }),
+			conflictDetection: "enabled",
+			resolveFingerprintConflict: () => "disk",
+		},
+	});
+	assert.strictEqual(res.success, true);
+	assert.strictEqual(res.healedCount, 0, "磁盘优先不得计入自愈回滚");
+	assert.strictEqual(res.enrichedCount, 1, "重提取必须计入富化");
+	assert.strictEqual(bridge.appliedBreakpoints[0].line, 5, "下发调试器的行号必须为用户磁盘行号");
+	const savedBp = repo.config.scenes.conflict[0];
+	assert.strictEqual(savedBp.line, 5, "落盘 SSOT 必须保留用户重锚定行号");
+	assert.strictEqual(savedBp.contextSnippet?.current, "const d = 4;", "落盘指纹必须为磁盘行重提取结果");
+}
+
+// C8. 命令路径：isExternalPendingEdit 依赖为 true 时同样开启门控
+async function testGateViaExternalPendingEditDep() {
+	sceneStateManager.resetState();
+	const repo = new MockSceneRepo({
+		scenes: {
+			conflict: [
+				{
+					file: "src/x.ts",
+					line: 5,
+					type: "line",
+					contextSnippet: { current: "targetLine();" },
+				},
+			],
+		},
+	});
+	const bridge = new MockBridge();
+	const lines = ["const a = 1;", "const b = 2;", "targetLine();", "const c = 3;", "const d = 4;"];
+	const calls = [];
+	await executeSceneActivation({
+		workspaceRoot: "/workspace",
+		targetScenes: ["conflict"],
+		deps: {
+			sceneRepository: repo,
+			breakpointBridge: bridge,
+			lineReader: makeLineReader({ "src/x.ts": lines }),
+			isExternalPendingEdit: () => true,
+			resolveFingerprintConflict: (info) => {
+				calls.push(info);
+				return "disk";
+			},
+		},
+	});
+	assert.strictEqual(calls.length, 1, "isExternalPendingEdit 为 true 必须开启冲突门控并触发裁决");
+	assert.strictEqual(repo.config.scenes.conflict[0].line, 5, "命令路径磁盘优先同样保留用户行号");
+}
+
 export async function runSceneActivationPipelineTests() {
 	console.log("  ▶ [SceneActivationPipeline] 运行场景激活自愈管道独立单元测试...");
 	await testSyncDiskActiveScenes();
@@ -395,6 +582,14 @@ export async function runSceneActivationPipelineTests() {
 	await testOwnerSceneBackfillRouting();
 	await testSameOwnerSingleBackfill();
 	await testGoldenSnapshotNoRefScenes();
+	await testConflictDiskPriority();
+	await testConflictFingerprintPriority();
+	await testConflictUndefinedDefaultsToDisk();
+	await testConflictWithoutResolverKeepsLegacy();
+	await testConflictGateOffSilentHeal();
+	await testConflictNoDriftNoDialog();
+	await testExecuteSceneActivationConflictDiskWins();
+	await testGateViaExternalPendingEditDep();
 	console.log("  ✅ [SceneActivationPipeline] 场景激活自愈管道单元测试全部通过！");
 }
 

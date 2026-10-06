@@ -34,6 +34,10 @@ export class SceneManager {
 			sceneRepository: opts?.sceneRepository || defaultDeps.sceneRepository,
 			breakpointBridge: opts?.breakpointBridge || defaultDeps.breakpointBridge,
 			lineReader: opts?.lineReader || defaultDeps.lineReader,
+			isExternalPendingEdit: opts?.isExternalPendingEdit || defaultDeps.isExternalPendingEdit,
+			resolveFingerprintConflict:
+				opts?.resolveFingerprintConflict || defaultDeps.resolveFingerprintConflict,
+			conflictDetection: opts?.conflictDetection,
 		};
 	}
 

@@ -135,3 +135,31 @@ export async function showPayloadFormatError(errorMsg: string): Promise<void> {
 		await vscode.window.showTextDocument(doc, { preview: true });
 	}
 }
+
+export interface FingerprintConflictPromptInfo {
+	file: string;
+	registeredLine: number;
+	fingerprintLine: number;
+}
+
+/**
+ * 统一弹出「外部编辑 vs 指纹自愈」冲突裁决对话框 (INV-031)
+ * 用户选择保留 → "disk"；选择自愈 → "fingerprint"；直接关闭弹窗 → 缺省磁盘行号优先（尊重显式编辑）
+ */
+export async function promptFingerprintConflict(
+	info: FingerprintConflictPromptInfo,
+): Promise<"disk" | "fingerprint"> {
+	const keepDiskLabel = vscode.l10n.t("Keep My Edited Line");
+	const healLabel = vscode.l10n.t("Auto-heal to Line {0}", info.fingerprintLine);
+	const choice = await vscode.window.showWarningMessage(
+		vscode.l10n.t(
+			"Breakpoint in {0} was externally moved to line {1}, but its fingerprint matches line {2}. Keep your line or auto-heal?",
+			info.file,
+			info.registeredLine,
+			info.fingerprintLine,
+		),
+		keepDiskLabel,
+		healLabel,
+	);
+	return choice === healLabel ? "fingerprint" : "disk";
+}

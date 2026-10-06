@@ -113,6 +113,7 @@ src/
 | **INV-027** | **冷启动自愈与崩溃隔离守卫 (Disaster Self-Healing Guard)**：物理持久化写入采用动态并发临时文件 (`tmp.${pid}.${ts}.${rand}`) + 原子覆盖 (`renameSync`)；主文件 0 字节或损坏时，优先从合法临时候选副本自愈恢复，严禁中断扩展生命周期。 | `src/infra/storage/atomicFileJsonStore.ts` |
 | **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停与恢复统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` |
 | **INV-030** | **场景引用解析不变量 (Scene Reference Resolution)**：① 含引用场景激活必先经 `sceneResolver` 展开为纯断点流，方可进入合并/自愈/DAP 管道（`getSteps(): SceneStep[]` 与 `Breakpoint[]` 类型隔离在编译期强制，禁止绕过收窄点）；② 展开严格保持声明时序（深度优先、按序穿插）；③ 成环必须在任何写盘/DAP 下发前抛 `CircularReferenceError`（携带完整环路径），状态机零中间态、磁盘零污染；④ 悬空引用降级为警告并跳过，不中断其余断点激活；⑤ `enabled: false` 引用整棵子树跳过；⑥ 自愈回写按 `ownerScene`（断点定义场景）路由，同源多引用至多回写一次，引用节点自身永不接收回写；⑦ 引用条目在 codec 清洗往返中保真，非法引用（空 name）清洗阶段丢弃。 | `src/domain/services/sceneResolver.ts` 与 `src/application/sceneActivationPipeline.ts` |
+| **INV-031** | **外部编辑指纹冲突显式裁决守卫 (External Edit Fingerprint Conflict Guard)**：外部编辑重锚定断点行号与指纹自愈结论冲突时（门控 = watcher 显式标记 ∨ 磁盘内容相对内部写盘基线漂移，且自愈判定漂移），严禁静默回滚用户行号并回写旧指纹；必须经裁决回调交由用户决策（`disk` 保留磁盘行号并作废旧指纹按磁盘行重提取 / `fingerprint` 维持自愈回滚），用户关闭弹窗缺省磁盘行号优先。裁决回调缺失时维持现状静默自愈（向后兼容）。冷启动必须以磁盘现状播种基线（`seedBaseline`），保证 Git Pull 漂移静默自愈不被误弹窗。 | `src/application/sceneActivationPipeline.ts`（门控与裁决）、`src/infra/storage/echoLoopGuard.ts`（基线播种与漂移判定）、`src/infra/vscode/listeners/configFileWatcherListener.ts`（显式标记） |
 
 ---
 
@@ -167,5 +168,6 @@ src/
 |------|----------|--------|----------|
 | 2026-10-06 | 新增 INV-030 场景引用解析不变量；GR-006/GR-007 适配场景引用条目形态 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 boundaries.md / flows.md / glossary.md / adr/005 / e2e-scenarios.md |
 | 2026-10-07 | INV-013 语义精确化为"标准 SHA-256 (FIPS 180-4)"并固化领域管线铁律（pureSha256 转写偏差修复，史表全量重生成） | GLM-5.3-Flash | 同批次 ADR-006 / lessons §6.1 / CHANGELOG 双语 |
+| 2026-10-07 | 新增 INV-031 外部编辑指纹冲突显式裁决守卫（冲突弹窗，磁盘行号缺省优先；冷启动基线播种保留 Git Pull 静默自愈） | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 flows.md / glossary.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 
 

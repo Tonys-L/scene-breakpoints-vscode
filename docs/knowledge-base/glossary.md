@@ -141,6 +141,16 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 
 ---
 
+#### 指纹冲突 (Fingerprint Conflict)
+外部编辑重锚定了断点的磁盘声明行号，但旧上下文指纹仍能在源码其他位置精准命中，导致「磁盘行号」与「指纹自愈结论」相互矛盾的情形。激活管道检测到冲突时必须弹窗交由用户裁决：`disk` 保留磁盘行号（缺省，尊重显式编辑）或 `fingerprint` 维持自愈回滚。见 INV-031。
+
+---
+
+#### 基线播种 (Baseline Seeding)
+扩展冷启动时以磁盘 `debug-scenes.json` 现状播种 `echoLoopGuard` 的 `lastSavedContent` 基线，使 Git Pull / 环境漂移在启动后仍可静默自愈，不误判为外部编辑冲突。见 INV-031。
+
+---
+
 ## 缩写表
 
 | 缩写 | 全称 | 说明 |
@@ -160,4 +170,5 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 | 日期 | 变更内容 | 变更人 | 关联变更 |
 |------|----------|--------|----------|
 | 2026-10-06 | 新增术语：场景引用、声明态与展开态、收窄点、断点定义场景 (ownerScene)、悬空引用、循环引用 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / adr/005 / e2e-scenarios.md |
+| 2026-10-07 | 新增术语：指纹冲突 (Fingerprint Conflict)、基线播种 (Baseline Seeding) | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / flows.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 

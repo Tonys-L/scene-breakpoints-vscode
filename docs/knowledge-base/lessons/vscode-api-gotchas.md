@@ -261,6 +261,15 @@
 **关联变更**: #91d125b（新增 skill_commands 测试套件 9 场景，CRAP 极端函数 13 -> 12）
 **日期**: 2026-10-06
 
+### 1.27 外部编辑指纹冲突被静默回滚：内部落盘"洗白"磁盘漂移信号与依赖注入断链 (External Edit Silently Overwritten by Fingerprint Self-Healing)
+
+**问题**: 用户（或 AI）外部编辑 `debug-scenes.json` 重锚定断点行号但保留旧 `contextSnippet` 时，激活管道经 `HealingEngine.heal` 判定 `isHealed` 后直接 `updateLine(旧行号)` 静默回滚用户编辑，并经 `persistHealedBackfill` 落盘固化旧行号与旧指纹，全程零提示。
+**原因**: 两个叠加缺陷——① 自愈管道只认指纹结论，无外部编辑门控信号；② watcher 路径中 `autoEnrichEmptyFingerprints` 先行落盘会刷新 `echoLoopGuard.lastSavedContent` 基线，把"磁盘内容 ≠ 内部写盘基线"的外部编辑信号"洗白"为 false，仅凭漂移判定会失真。此外 `handleExternalChange` 收到的注入 `lineReader` 未透传至 `sceneManager.activateScene`（生产依赖全局默认依赖所以未暴露），测试注入即断链。
+**解决方案**: 新增 INV-031 双通道门控——watcher 路径显式下发 `conflictDetection: "enabled"` 标记（绕过基线洗白时序坑）；命令路径以 `isDiskContentModifiedSinceLastSave`（冷启动 `seedBaseline` 播种防误伤）作为门控信号。冲突命中时经裁决回调弹窗决策（`disk` 保留磁盘行号并作废旧指纹按磁盘行重提取 / `fingerprint` 维持回滚），用户关闭弹窗缺省 `disk`；回调缺失维持现状（向后兼容）。同时修复 `activateScene` 透传 `lineReader`。
+**影响文件**: `src/application/sceneActivationPipeline.ts`, `src/application/agentSyncService.ts`, `src/application/sceneManager.ts`, `src/infra/storage/echoLoopGuard.ts`, `src/infra/vscode/listeners/configFileWatcherListener.ts`, `src/extension.ts`, `src/ui/utils/promptHelpers.ts`
+**关联变更**: #TASK-EXT-CONFLICT（INV-031）
+**日期**: 2026-10-07
+
 
 
 

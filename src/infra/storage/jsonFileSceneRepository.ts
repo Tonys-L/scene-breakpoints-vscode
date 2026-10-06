@@ -110,6 +110,35 @@ export function getLastSavedContent(): string {
 	return echoLoopGuard.getLastSavedContent();
 }
 
+/**
+ * 冷启动基线播种 (INV-031 前置)：扩展启动时以磁盘现状播种 lastSavedContent 基线，
+ * 保证 Git Pull / 环境漂移在冷启动后仍可静默自愈。播种失败仅告警，不阻断启动
+ */
+export function seedEchoLoopBaselineFromDisk(workspaceRoot: string): void {
+	try {
+		const configPath = getScenesConfigPath(workspaceRoot);
+		if (fs.existsSync(configPath)) {
+			echoLoopGuard.seedBaseline(fs.readFileSync(configPath, "utf-8"));
+		}
+	} catch (e) {
+		console.warn("[SceneStorage] Failed to seed echo loop baseline from disk:", e);
+	}
+}
+
+/**
+ * 命令路径外部编辑信号 (INV-031 门控)：磁盘内容相对最近一次内部写盘基线是否发生漂移
+ */
+export function isDiskContentModifiedSinceLastSaved(workspaceRoot: string): boolean {
+	try {
+		const configPath = getScenesConfigPath(workspaceRoot);
+		if (!fs.existsSync(configPath)) return false;
+		return echoLoopGuard.isDiskContentModifiedSinceLastSave(fs.readFileSync(configPath, "utf-8"));
+	} catch (e) {
+		console.warn("[SceneStorage] Failed to detect disk config modification:", e);
+		return false;
+	}
+}
+
 export const jsonFileSceneRepository: ISceneRepository = {
 	loadScenesConfig,
 	saveScenesConfig,

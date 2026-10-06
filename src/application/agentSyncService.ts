@@ -24,6 +24,12 @@ export interface HandleExternalChangeOptions {
 	breakpointBridge?: IBreakpointBridge;
 	lineReader?: ILineReader;
 	onPendingMessage?: () => void;
+	/**
+	 * 冲突检测显式启用标记 (INV-031 watcher 路径门控)
+	 * 外部文件变更事件路径必须显式下发：autoEnrichEmptyFingerprints 先行落盘会刷新
+	 * lastSavedContent 基线"洗白"外部编辑信号，仅凭磁盘漂移判定会失真
+	 */
+	conflictDetection?: "enabled";
 }
 
 export interface HandleExternalChangeResult {
@@ -201,11 +207,12 @@ export class AgentSyncService {
 
 			if (diff.shouldApply) {
 				if (diff.action === "apply" && diff.targetScenes && diff.targetScenes.length > 0) {
-					await sceneManager.activateScene(
-						workspaceRoot,
-						diff.targetScenes,
-						{ sceneRepository, breakpointBridge },
-					);
+					await sceneManager.activateScene(workspaceRoot, diff.targetScenes, {
+						sceneRepository,
+						breakpointBridge,
+						lineReader: activeLineReader,
+						conflictDetection: options?.conflictDetection,
+					});
 					return { action: "applied", targetScenes: diff.targetScenes };
 				} else if (diff.action === "clear") {
 					await sceneManager.clearAll(

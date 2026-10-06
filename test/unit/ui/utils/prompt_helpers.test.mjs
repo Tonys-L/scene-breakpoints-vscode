@@ -6,6 +6,7 @@ import {
 	confirmModalAction,
 	promptSelectScenes,
 	promptSceneCollision,
+	promptFingerprintConflict,
 	showPayloadFormatError,
 } from "#src/ui/utils/promptHelpers.ts";
 
@@ -148,6 +149,37 @@ async function testShowPayloadFormatError() {
 	}
 }
 
+async function testPromptFingerprintConflict() {
+	const info = { file: "src/auth.ts", registeredLine: 15, fingerprintLine: 12 };
+
+	// 1. 用户选择自动自愈 → "fingerprint"
+	vscode.window.showWarningMessage = async (_msg, ...actions) => actions[1];
+	const resHeal = await promptFingerprintConflict(info);
+	assert.strictEqual(resHeal, "fingerprint", "选择自愈动作必须返回 fingerprint");
+
+	// 2. 用户选择保留编辑 → "disk"
+	vscode.window.showWarningMessage = async (_msg, ...actions) => actions[0];
+	const resKeep = await promptFingerprintConflict(info);
+	assert.strictEqual(resKeep, "disk", "选择保留动作必须返回 disk");
+
+	// 3. 用户直接关闭弹窗（undefined）→ 缺省磁盘优先
+	vscode.window.showWarningMessage = async () => undefined;
+	const resClosed = await promptFingerprintConflict(info);
+	assert.strictEqual(resClosed, "disk", "关闭弹窗时必须缺省磁盘行号优先");
+
+	// 4. 弹窗文案必须携带文件与两个行号
+	let captured = null;
+	vscode.window.showWarningMessage = async (msg, ...actions) => {
+		captured = { msg, actions };
+		return actions[0];
+	};
+	await promptFingerprintConflict(info);
+	assert.ok(captured.msg.includes("src/auth.ts"), "文案必须携带文件标识");
+	assert.ok(captured.msg.includes("15"), "文案必须携带磁盘声明行号");
+	assert.ok(captured.msg.includes("12"), "文案必须携带指纹匹配行号");
+	assert.strictEqual(captured.actions.length, 2, "必须且仅提供两个裁决动作");
+}
+
 export async function runPromptHelpersTests() {
 	console.log("  ▶ [UI Utils] 运行 promptHelpers 统一交互弹窗与校验单测套件...");
 
@@ -158,6 +190,7 @@ export async function runPromptHelpersTests() {
 		await testConfirmModalAction();
 		await testPromptSelectScenes();
 		await testPromptSceneCollision();
+		await testPromptFingerprintConflict();
 		await testShowPayloadFormatError();
 	} finally {
 		__resetMockVscodeState();

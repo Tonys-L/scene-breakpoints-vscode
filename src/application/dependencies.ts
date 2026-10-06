@@ -1,10 +1,6 @@
-import type { IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
+import type { SceneActivationDeps } from "./sceneActivationPipeline";
 
-export interface ApplicationDependencies {
-	sceneRepository?: ISceneRepository;
-	breakpointBridge?: IBreakpointBridge;
-	lineReader?: ILineReader;
-}
+export interface ApplicationDependencies extends SceneActivationDeps {}
 
 let defaultDependencies: ApplicationDependencies = {};
 

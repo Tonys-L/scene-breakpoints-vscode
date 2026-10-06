@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 - Scene reference entries are now preserved through config load/save sanitize round-trips (previously silently dropped on the load path); invalid references (empty name) are discarded defensively.
 - **pureSha256 restored to standard SHA-256 (FIPS 180-4)**: the bundled zero-dependency pure TS SHA-256 deviated from the standard due to a transcription error (prime sieve limit written as 300 instead of upstream's 313, misjudging composites 300/301 as primes and corrupting the last two K constants). The sieve is now aligned to 313, restoring byte-for-byte standard output (cross-verified against `node:crypto`), and the official skill fingerprint history table was regenerated through the domain pipeline accordingly.
+- **External edit vs. fingerprint self-heal conflict resolution (INV-031)**: when a user externally re-anchors a breakpoint (e.g. editing `.vscode/debug-scenes.json` or saving a moved line) and the fingerprint engine would silently roll the edit back to the old line, a warning prompt now asks whether to keep the user's edited line (default, also when the prompt is dismissed) or auto-heal to the fingerprint line. Conflict detection gates on the file watcher marker or a disk-drift signal; Git Pull silent self-healing is preserved via cold-start baseline seeding, and the backfill `lineReader` dependency is now correctly forwarded through `handleExternalChange`.
 
 ---
 

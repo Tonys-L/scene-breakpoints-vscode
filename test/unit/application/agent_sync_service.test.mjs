@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { agentSyncService } from "#src/application/agentSyncService";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { getDependencies, resetDependencies } from "#src/application/dependencies";
+import { configureDependencies, getDependencies, resetDependencies } from "#src/application/dependencies";
 
 /**
  * agentSyncService 1:1 镜像单测
@@ -306,6 +306,102 @@ export async function runAgentSyncServiceTests() {
 			const files = bridgeCalls[0].bps.map((b) => b.file);
 			assert.ok(files.includes("src/core.ts"), "重刷下发流必须包含被引用场景断点（展开流而非 merge 窄流）");
 			assert.ok(files.includes("src/pay.ts"), "重刷下发流必须包含活跃场景自有断点");
+		}
+		// ----------------------------------------------------
+		// I. 【INV-031】conflictDetection 标记透传：watcher apply 路径激活必须开启冲突门控
+		// ----------------------------------------------------
+		{
+			sceneStateManager.resetState();
+			resetDependencies();
+			const conflictCalls = [];
+			configureDependencies({
+				resolveFingerprintConflict: (info) => {
+					conflictCalls.push(info);
+					return "disk";
+				},
+			});
+			const repo = new MockSceneRepository({
+				scenes: {
+					"ext-edit": [
+						{
+							file: "src/e.ts",
+							line: 5,
+							type: "line",
+							enabled: true,
+							contextSnippet: { current: "targetLine();" },
+						},
+					],
+				},
+				activeScenes: ["ext-edit"],
+			});
+			// 当前内存态为空 → 磁盘 activeScenes 差异触发 apply（watcher AI 声明式激活路径）
+			sceneStateManager.resetState();
+			const driftedLines = ["// a", "// b", "targetLine();", "// c", "// d"];
+			const bridge = {
+				applySceneBreakpoints: async (_ws, label, bps) => {
+					bridgeCalls.push({ label, bps });
+					return { loadedCount: bps.length, healedCount: 0 };
+				},
+			};
+			const bridgeCalls = [];
+
+			// I-1. 带 conflictDetection 标记：门控开启，磁盘优先保留用户重锚定行号
+			const resMarked = await agentSyncService.handleExternalChange(workspaceRoot, {
+				allowAiActivation: true,
+				sceneRepository: repo,
+				breakpointBridge: bridge,
+				lineReader: makeLineReader({ "/mock/workspace/src/e.ts": driftedLines }, []),
+				conflictDetection: "enabled",
+			});
+			assert.strictEqual(resMarked.action, "applied", "标记路径必须正常应用场景");
+			assert.strictEqual(conflictCalls.length, 1, "conflictDetection 标记必须传导至激活管道触发裁决");
+			assert.deepStrictEqual(
+				conflictCalls[0],
+				{ file: "src/e.ts", registeredLine: 5, fingerprintLine: 3 },
+				"裁决信息必须携带磁盘声明行号与指纹匹配行号",
+			);
+			assert.strictEqual(
+				repo.config.scenes["ext-edit"][0].line,
+				5,
+				"磁盘优先裁决下落盘必须保留用户重锚定行号",
+			);
+
+			// I-2. 无标记：门控关闭（防 lastSavedContent 洗白），静默自愈维持旧行为且不弹裁决
+			sceneStateManager.resetState();
+			resetDependencies();
+			configureDependencies({
+				resolveFingerprintConflict: () => {
+					conflictCalls.push("should-not-be-called");
+					return "disk";
+				},
+			});
+			const repo2 = new MockSceneRepository({
+				scenes: {
+					"ext-edit": [
+						{
+							file: "src/e.ts",
+							line: 5,
+							type: "line",
+							enabled: true,
+							contextSnippet: { current: "targetLine();" },
+						},
+					],
+				},
+				activeScenes: ["ext-edit"],
+			});
+			const resUnmarked = await agentSyncService.handleExternalChange(workspaceRoot, {
+				allowAiActivation: true,
+				sceneRepository: repo2,
+				breakpointBridge: bridge,
+				lineReader: makeLineReader({ "/mock/workspace/src/e.ts": driftedLines }, []),
+			});
+			assert.strictEqual(resUnmarked.action, "applied");
+			assert.strictEqual(conflictCalls.length, 1, "无标记时严禁触发裁决回调（防止误伤 Git Pull 静默自愈）");
+			assert.strictEqual(
+				repo2.config.scenes["ext-edit"][0].line,
+				3,
+				"无标记时维持现状静默自愈回滚",
+			);
 		}
 	} finally {
 		sceneStateManager.resetState();

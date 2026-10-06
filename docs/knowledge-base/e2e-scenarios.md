@@ -28,14 +28,14 @@
 | `06_inlay_hints.test.ts` | 编辑器行末注解 Inlay Hints 渲染 | TC-HINT-01 |
 | `07_clipboard.test.ts` | 剪贴板场景导入导出与数据清洗 | TC-CLIP-01 ~ TC-CLIP-03 |
 | `08_commands_registry.test.ts` | 扩展命令总线就绪与快捷键触发契约 | TC-CMD-01, TC-KEY-01 |
-| `09_breakpoint_healing.test.ts` | 智能断点自然漂移自愈与持久化回写 | TC-HEAL-01 ~ TC-HEAL-04, TC-ENRICH-01 |
+| `09_breakpoint_healing.test.ts` | 智能断点自然漂移自愈与持久化回写 | TC-HEAL-01 ~ TC-HEAL-05, TC-ENRICH-01 |
 | `10_agent_skills.test.ts` | Agent 技能分发、巡检与平滑升级 | CMD-08, CMD-09, TC-SKILL-01 ~ TC-SKILL-04 |
 | `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-01 ~ TC-SESS-02, TC-CONF-01 ~ TC-CONF-05 |
 | `12_scene_references.test.ts` | 场景引用组合激活、成环拦截、悬空降级、引用启停与导出保真 | TC-REF-01 ~ TC-REF-05 |
 
 ---
 
-## 2. 全量 58 大 E2E 测试场景矩阵
+## 2. 全量 59 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -131,6 +131,7 @@
 | **TC-HEAL-03** | **Python 缩进敏感与 # 注释生态自愈** | 在 Python 模块函数内漂移，上层插入 `#` 注释行 | 识别 `#` 行尾注释与 `def` 作用域缩进边界，杜绝跨函数误伤，DAP 命中精准行并持久化回写 | INV-003<br>KDD-HEALING-POLYGLOT |
 | **TC-HEAL-04** | **Go 接收者方法与多语言作用域自愈** | 在 Go 结构体方法 `func (c *Calculator)` 内源码漂移 | 识别 Go 接收者方法签名模式与 `//` 注释，快速锁定正确执行行并反向回写 `debug-scenes.json` | INV-003<br>KDD-HEALING-POLYGLOT |
 | **TC-ENRICH-01** | **外部保存空指纹场景自动预加固与多场景激活持久化闭环** | 1. 外部写入包含空指纹断点（无 `contextSnippet`）的多场景配置并保存；<br>2. 验证保存触发的 `handleExternalChange` 自动静默加固未激活场景断点指纹并持久化回写；<br>3. 多场景叠加激活后，校验所有断点指纹与 DAP 装配 100% 存盘闭环。 | 1. 未激活场景的断点在文件保存后自动被抓取 3 行伴随源码并落盘填补 `contextSnippet`；<br>2. 多场景激活后，内存与磁盘的 `contextSnippet` 均保持完整，无任何指纹遗失；<br>3. 自动保存防回环机制生效，无死循环写盘。 | INV-001<br>INV-011<br>KDD-AUTO-ENRICH-001 |
+| **TC-HEAL-05** | **外部编辑与指纹自愈冲突显式裁决（磁盘行号优先）** | 1. 场景断点登记行号 3、指纹匹配行 3；外部编辑将断点重锚定至行 5 后激活/外部保存；<br>2. 冲突门控命中（watcher 显式标记 `conflictDetection:"enabled"` 或命令路径磁盘漂移信号 `isDiskContentModifiedSinceLastSave()`）且 `heal.isHealed === true` 时，弹出警告弹窗提供「保留我编辑的行」与「自动自愈至第 N 行」两个选项；<br>3. 分别验证两个选项与弹窗被直接关闭（返回 `undefined`）的行为。 | 1. 选择「保留我编辑的行」（或关闭弹窗默认）：磁盘行号 5 保留，旧指纹作废并按磁盘声明行重新提取 `contextSnippet`，DAP 命中行 5，绝不静默回滚；<br>2. 选择「自动自愈」：维持现状回滚至指纹行 3 并回写；<br>3. 无冲突门控信号（如 Git Pull 冷启动基线播种后 `seedBaseline` 判定无漂移）时零弹窗、静默自愈特性保留；<br>4. 裁决回调缺失时维持向后兼容的静默自愈。 | INV-031 |
 
 
 
@@ -210,6 +211,7 @@
 
 | 日期 | 变更内容 | 变更人 | 关联变更 |
 |------|----------|--------|----------|
+| 2026-10-07 | 维度七新增 TC-HEAL-05（外部编辑与指纹自愈冲突显式裁决），场景矩阵 58 → 59，套件 `09_breakpoint_healing` 覆盖范围同步扩展 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同步更新 constraints.md / flows.md / glossary.md / lessons / CHANGELOG |
 | 2026-10-06 | 新增套件 `12_scene_references.test.ts` 与维度十二（TC-REF-01 ~ TC-REF-05），场景矩阵 53 → 58 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / glossary.md / adr/005 |
 
 ---

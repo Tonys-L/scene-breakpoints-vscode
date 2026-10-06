@@ -1,4 +1,7 @@
 {
+  "Breakpoint in {0} was externally moved to line {1}, but its fingerprint matches line {2}. Keep your line or auto-heal?": "Breakpoint in {0} was externally moved to line {1}, but its fingerprint matches line {2}. Keep your line or auto-heal?",
+  "Keep My Edited Line": "Keep My Edited Line",
+  "Auto-heal to Line {0}": "Auto-heal to Line {0}",
   "Failed to read debug-scenes.json: {0}": "Failed to read debug-scenes.json: {0}",
   "Circular scene reference: {0}": "Circular scene reference: {0}",
   "No active editor file detected": "No active editor file detected",

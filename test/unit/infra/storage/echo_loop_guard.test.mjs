@@ -118,6 +118,68 @@ export async function runEchoLoopGuardTests() {
 	});
 	assert.strictEqual(longActionGuard.isInternalSaving(), true, "action 执行完后 finally 必须无条件重新激活防护（斩杀 finally 缺失与调用丢失变异）");
 
+	// 10. 【INV-031 前置】冷启动基线播种 seedBaseline（空基线才播种，已有内部写盘指纹时 no-op）
+	const seedGuard = new EchoLoopGuard();
+	assert.strictEqual(seedGuard.getLastSavedContent(), "", "前置：初始基线为空");
+	seedGuard.seedBaseline("");
+	assert.strictEqual(seedGuard.getLastSavedContent(), "", "空内容不得播种基线");
+	seedGuard.seedBaseline('{"seeded":true}');
+	assert.strictEqual(seedGuard.getLastSavedContent(), '{"seeded":true}', "空基线时必须以磁盘现状播种");
+	seedGuard.seedBaseline('{"later":1}');
+	assert.strictEqual(
+		seedGuard.getLastSavedContent(),
+		'{"seeded":true}',
+		"已有基线时播种必须为 no-op（不得覆盖扩展内部写盘指纹）",
+	);
+
+	// 11. 【INV-031】isDiskContentModifiedSinceLastSave 外部编辑判定（冷启动防误伤）
+	const driftGuard = new EchoLoopGuard();
+	const baseConfig = JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 10 }] } }, null, 2);
+	driftGuard.setLastSavedContent(baseConfig);
+
+	// (1) 无基线（冷启动）时一律不判定为外部编辑（防 Git Pull 漂移误伤）
+	const coldGuard = new EchoLoopGuard();
+	assert.strictEqual(
+		coldGuard.isDiskContentModifiedSinceLastSave('{"x":1}'),
+		false,
+		"冷启动无基线时必须返回 false（Git Pull 漂移静默自愈保护）",
+	);
+	// (2) 空内容不判定
+	assert.strictEqual(driftGuard.isDiskContentModifiedSinceLastSave(""), false, "空内容不得判为外部编辑");
+	// (3) 语义一致（格式化差异）不得判为外部编辑
+	assert.strictEqual(
+		driftGuard.isDiskContentModifiedSinceLastSave(
+			JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 10 }] } }),
+		),
+		false,
+		"语义一致（仅格式差异）不得判为外部编辑",
+	);
+	// (4) 内容实质变化必须判为外部编辑
+	assert.strictEqual(
+		driftGuard.isDiskContentModifiedSinceLastSave(
+			JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 15 }] } }),
+		),
+		true,
+		"内容实质变化必须判为外部编辑",
+	);
+	// (5) seedBaseline 播种后判定链路全通
+	const seedDriftGuard = new EchoLoopGuard();
+	seedDriftGuard.seedBaseline(baseConfig);
+	assert.strictEqual(
+		seedDriftGuard.isDiskContentModifiedSinceLastSave(
+			JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 10 }] } }),
+		),
+		false,
+		"播种基线后语义一致内容不得判为外部编辑",
+	);
+	assert.strictEqual(
+		seedDriftGuard.isDiskContentModifiedSinceLastSave(
+			JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 12 }] } }),
+		),
+		true,
+		"播种基线后内容变化必须判为外部编辑",
+	);
+
 	console.log("  ✅ [Echo Loop Guard] EchoLoopGuard 单元测试全部通过！");
 }
 

@@ -1,4 +1,7 @@
 {
+  "Breakpoint in {0} was externally moved to line {1}, but its fingerprint matches line {2}. Keep your line or auto-heal?": "场景断点 {0} 已被外部修改重锚定至第 {1} 行，但其代码指纹匹配第 {2} 行。保留您的行号，还是自动自愈？",
+  "Keep My Edited Line": "保留我编辑的行",
+  "Auto-heal to Line {0}": "自动自愈至第 {0} 行",
   "Failed to read debug-scenes.json: {0}": "读取 debug-scenes.json 失败: {0}",
   "Circular scene reference: {0}": "场景引用成环: {0}",
   "No active editor file detected": "未检测到活动的编辑器文件",
