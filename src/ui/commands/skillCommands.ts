@@ -94,6 +94,11 @@ async function promptAndHandleSkillUpdates(
 
 	const selected = await vscode.window.showInformationMessage(promptMsg, ...actions);
 
+	// 用户直接关闭提示（undefined）时不得误匹配任何 undefined 动作分支
+	if (selected === undefined) {
+		return;
+	}
+
 	if (selected === updateAction) {
 		for (const { target } of cleanOutdatedList) {
 			await writeSkillToTarget(context, workspaceRoot, target);
