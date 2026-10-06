@@ -111,93 +111,19 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 	}
 
 	/**
-	 * 构建单行断点注解的装饰项配置
-	 */
-	private createLineDecoration(
-		document: vscode.TextDocument,
-		bpLine: number,
-		stepItems: BreakpointStepItem[],
-	): vscode.DecorationOptions | undefined {
-		const zeroBasedLine = bpLine - 1;
-		if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return undefined;
-
-		const lineLength = document.lineAt(zeroBasedLine).text.length;
-		const pos = new vscode.Position(zeroBasedLine, lineLength);
-
-		const labelParts = stepItems.map((item) => {
-			const base = `[${item.sceneName} #${item.stepIndex}]`;
-			const desc = item.breakpoint.desc?.trim();
-			return desc ? `${base} ${desc}` : base;
-		});
-
-		return {
-			range: new vscode.Range(pos, pos),
-			renderOptions: {
-				after: {
-					contentText: ` 💡 ${labelParts.join(" | ")}`,
-					color: new vscode.ThemeColor("editorInlayHint.foreground"),
-					backgroundColor: new vscode.ThemeColor("editorInlayHint.background"),
-				},
-			},
-			hoverMessage: this.buildHintTooltip(stepItems),
-		};
-	}
-
-	/**
-	 * 对单个文本编辑器执行行末注解装饰渲染
-	 */
-	private renderSingleEditorDecorations(
-		editor: vscode.TextEditor,
-		deco: vscode.TextEditorDecorationType,
-	): void {
-		const uri = editor.document.uri;
-		if (uri.scheme !== "file" && uri.scheme !== "untitled") return;
-
-		const lineToStepsMap = this.getGroupedBreakpointsForDocument(uri.fsPath);
-		if (!lineToStepsMap || lineToStepsMap.size === 0) {
-			editor.setDecorations(deco, []);
-			return;
-		}
-
-		const decorations: vscode.DecorationOptions[] = [];
-		for (const [bpLine, stepItems] of lineToStepsMap.entries()) {
-			const itemDeco = this.createLineDecoration(editor.document, bpLine, stepItems);
-			if (itemDeco) {
-				decorations.push(itemDeco);
-			}
-		}
-
-		editor.setDecorations(deco, decorations);
-	}
-
-	/**
-	 * 主动向可见文本编辑器推送断点行末注解装饰，
-	 * 彻底绕过 Monaco 内核对失焦编辑器的重绘惰性节流屏障，实现 0ms 响应式同步。
+	 * 主动向可见文本编辑器触发无感微触唤醒，
+	 * 唤醒 Monaco 底层 deltaDecorations 调度，穿透失焦节流屏障，且避免在行末生成双重文本重影。
 	 */
 	public updateDecorations(editors?: readonly vscode.TextEditor[]): void {
 		const targetEditors = editors ?? vscode.window.visibleTextEditors;
 		if (!targetEditors || targetEditors.length === 0) return;
 
 		const deco = getSceneAnnotationDecorationType();
-		const enabled = this.enabledGetter();
-		const activeScenes = sceneStateManager.getActiveScenes();
-
-		if (!enabled || (activeScenes.length === 0 && sceneStateManager.hasExplicitState())) {
-			for (const editor of targetEditors) {
-				try {
-					editor.setDecorations(deco, []);
-				} catch {
-					// 容错：忽略失焦环境下的编辑器微触异常
-				}
-			}
-			return;
-		}
-
 		for (const editor of targetEditors) {
 			try {
-				this.renderSingleEditorDecorations(editor, deco);
+				editor.setDecorations(deco, []);
 			} catch {
-				// 容错：忽略单个编辑器装饰异常
+				// 容错：忽略失焦环境下的编辑器微触异常
 			}
 		}
 	}

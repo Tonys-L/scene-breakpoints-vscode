@@ -81,7 +81,11 @@ export function activate(context: vscode.ExtensionContext) {
 			{ pattern: "**/debug-scenes.json" },
 			new SceneCodeLensProvider(),
 		),
-		// 行末场景断点注解主动推送装饰器服务 (规避 Monaco 失焦节流与双重重影)
+		// 行末场景断点注解与幽灵文本透视提供者 (Inlay Hints)
+		vscode.languages.registerInlayHintsProvider(
+			[{ scheme: "file" }, { scheme: "untitled" }],
+			inlayHintsProvider,
+		),
 		inlayHintsProvider,
 		// Skill 官方模版虚拟文档比对提供者
 		vscode.workspace.registerTextDocumentContentProvider(

@@ -3450,72 +3450,16 @@ var SceneInlayHintsProvider = class {
     this.updateDecorations();
   }
   /**
-   * 构建单行断点注解的装饰项配置
-   */
-  createLineDecoration(document, bpLine, stepItems) {
-    const zeroBasedLine = bpLine - 1;
-    if (zeroBasedLine < 0 || zeroBasedLine >= document.lineCount) return void 0;
-    const lineLength = document.lineAt(zeroBasedLine).text.length;
-    const pos = new vscode6.Position(zeroBasedLine, lineLength);
-    const labelParts = stepItems.map((item) => {
-      const base = `[${item.sceneName} #${item.stepIndex}]`;
-      const desc = item.breakpoint.desc?.trim();
-      return desc ? `${base} ${desc}` : base;
-    });
-    return {
-      range: new vscode6.Range(pos, pos),
-      renderOptions: {
-        after: {
-          contentText: ` \u{1F4A1} ${labelParts.join(" | ")}`,
-          color: new vscode6.ThemeColor("editorInlayHint.foreground"),
-          backgroundColor: new vscode6.ThemeColor("editorInlayHint.background")
-        }
-      },
-      hoverMessage: this.buildHintTooltip(stepItems)
-    };
-  }
-  /**
-   * 对单个文本编辑器执行行末注解装饰渲染
-   */
-  renderSingleEditorDecorations(editor, deco) {
-    const uri = editor.document.uri;
-    if (uri.scheme !== "file" && uri.scheme !== "untitled") return;
-    const lineToStepsMap = this.getGroupedBreakpointsForDocument(uri.fsPath);
-    if (!lineToStepsMap || lineToStepsMap.size === 0) {
-      editor.setDecorations(deco, []);
-      return;
-    }
-    const decorations = [];
-    for (const [bpLine, stepItems] of lineToStepsMap.entries()) {
-      const itemDeco = this.createLineDecoration(editor.document, bpLine, stepItems);
-      if (itemDeco) {
-        decorations.push(itemDeco);
-      }
-    }
-    editor.setDecorations(deco, decorations);
-  }
-  /**
-   * 主动向可见文本编辑器推送断点行末注解装饰，
-   * 彻底绕过 Monaco 内核对失焦编辑器的重绘惰性节流屏障，实现 0ms 响应式同步。
+   * 主动向可见文本编辑器触发无感微触唤醒，
+   * 唤醒 Monaco 底层 deltaDecorations 调度，穿透失焦节流屏障，且避免在行末生成双重文本重影。
    */
   updateDecorations(editors) {
     const targetEditors = editors ?? vscode6.window.visibleTextEditors;
     if (!targetEditors || targetEditors.length === 0) return;
     const deco = getSceneAnnotationDecorationType();
-    const enabled = this.enabledGetter();
-    const activeScenes = sceneStateManager.getActiveScenes();
-    if (!enabled || activeScenes.length === 0 && sceneStateManager.hasExplicitState()) {
-      for (const editor of targetEditors) {
-        try {
-          editor.setDecorations(deco, []);
-        } catch {
-        }
-      }
-      return;
-    }
     for (const editor of targetEditors) {
       try {
-        this.renderSingleEditorDecorations(editor, deco);
+        editor.setDecorations(deco, []);
       } catch {
       }
     }
@@ -6120,7 +6064,11 @@ function activate(context) {
       { pattern: "**/debug-scenes.json" },
       new SceneCodeLensProvider()
     ),
-    // 行末场景断点注解主动推送装饰器服务 (规避 Monaco 失焦节流与双重重影)
+    // 行末场景断点注解与幽灵文本透视提供者 (Inlay Hints)
+    vscode28.languages.registerInlayHintsProvider(
+      [{ scheme: "file" }, { scheme: "untitled" }],
+      inlayHintsProvider
+    ),
     inlayHintsProvider,
     // Skill 官方模版虚拟文档比对提供者
     vscode28.workspace.registerTextDocumentContentProvider(
