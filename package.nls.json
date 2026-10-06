@@ -6,6 +6,7 @@
   "command.clearAll": "Clear All Breakpoints",
   "command.exportScene": "Export Current Breakpoints to Scene...",
   "command.showMenu": "Show Scene Menu...",
+  "command.captureCallStack": "Save Current Call Stack as Scene...",
   "command.refreshView": "Refresh Scenes",
   "command.createNewScene": "New Scene...",
   "command.applySceneItem": "Activate Scene",

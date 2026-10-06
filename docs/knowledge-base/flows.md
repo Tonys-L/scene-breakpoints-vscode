@@ -125,6 +125,34 @@ flowchart TD
 
 ---
 
+### 4. 调用栈一键固化流程 (Capture Call Stack, v1.2.0)
+
+**触发条件**：调试器暂停（`stopped` 事件登记捕获上下文）后，用户在编辑器右键菜单或命令面板执行 `sceneBreakpoints.captureCallStack`。
+
+```mermaid
+flowchart TD
+    Start([DAP stopped 事件]) --> Register[debugLifecycleListener 登记捕获上下文 session + threadId]
+    Register --> Cmd[用户执行 captureCallStack 命令]
+    Cmd --> Paused{捕获上下文存在?}
+    Paused -->|否| InfoPause[info 提示仅在暂停态可用并终止]
+    Paused -->|是| Root{工作区存在?}
+    Root -->|否| WarnRoot[警告并终止]
+    Root -->|是| Stack["customRequest(stackTrace) 读取堆栈帧 (≤ 20)"]
+    Stack --> Filter[过滤: 无 source / 工作区外 / 行号非法; 同 file+line 去重]
+    Filter --> Empty{存在可固化帧?}
+    Empty -->|否| WarnEmpty[warning 提示并终止]
+    Empty -->|是| Input[InputBox 输入场景名; 取消则零写盘]
+    Input --> Save["importScene append-upsert (INV-001)<br>新场景缺省落 local 私有层 (INV-032)"]
+    Save --> Notify[成功通知固化帧数与场景名]
+    Resumed([continued / terminated 事件]) --> Clear[即刻清除捕获上下文, 杜绝陈旧堆栈]
+```
+
+**关键约束**：
+- 捕获上下文状态实体存于应用层 `debugPauseContext`（`ui → application ← infra` 依赖方向合规），infra 监听器仅在 DAP 事件驱动下写入/清除；
+- 堆栈帧固化复用既有 `importScene` 串行管道，零新增写盘路径；帧名沉淀为断点描述，指纹经既有 `extractContextSnippet` 管线提取。
+
+---
+
 ## 状态机
 
 ### 全局场景激活状态机 (Scene State Machine)
@@ -179,4 +207,5 @@ stateDiagram-v2
 |------|----------|--------|----------|
 | 2026-10-06 | 场景激活主流程新增 expandScenes 引用展开步骤与成环中止/悬空禁用降级分支（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / glossary.md / adr/005 / e2e-scenarios.md |
 | 2026-10-07 | 新增「外部编辑与指纹自愈冲突裁决流程」（INV-031）：门控判定、弹窗裁决与磁盘优先缺省语义 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / glossary.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
+| 2026-10-07 | 新增「调用栈一键固化流程」（v1.2.0 Capture Call Stack）：DAP 暂停登记捕获上下文、堆栈过滤去重与 local 层固化 | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / glossary.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
 

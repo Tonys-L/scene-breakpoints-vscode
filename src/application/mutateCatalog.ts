@@ -1,4 +1,4 @@
-import type { IBreakpointBridge, ISceneRepository } from "#src/domain/ports";
+import type { IBreakpointBridge, ISceneRepository, SceneLayerOrigin } from "#src/domain/ports";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { expandScenes } from "#src/domain/services/sceneResolver";
 import { computeTopologyHash } from "#src/domain/services/activeScenesDiffResolver";
@@ -83,7 +83,9 @@ export async function mutateCatalog<T = boolean>(
 			throw new Error("mutateCatalog: sceneRepository must be configured");
 		}
 
-		const config = sceneRepository.loadScenesConfig(workspaceRoot);
+		// v1.2.0 分层加载 (INV-032)：优先走分层端口获取来源溯源表；仓储替身（未实现分层）回退单文件语义
+		const merged = sceneRepository.loadMergedScenesConfig?.(workspaceRoot);
+		const config = merged ? merged.config : sceneRepository.loadScenesConfig(workspaceRoot);
 		const catalog = new SceneCatalog(config);
 
 		const shouldSyncActive = options?.syncActive !== false;
@@ -91,7 +93,16 @@ export async function mutateCatalog<T = boolean>(
 
 		const result = await action(catalog);
 		if (result) {
-			sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+			if (merged && sceneRepository.saveScenesLayers) {
+				// 分层回写路由 (INV-032)：新增场景（合并视图中不存在）缺省落 local 私有层，杜绝临时场景污染 Git
+				const originByScene: Record<string, SceneLayerOrigin> = { ...merged.originByScene };
+				for (const name of Object.keys(catalog.toJSON().scenes || {})) {
+					if (!(name in originByScene)) originByScene[name] = "local";
+				}
+				sceneRepository.saveScenesLayers(workspaceRoot, catalog.toJSON(), originByScene);
+			} else {
+				sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
+			}
 
 			if (shouldSyncActive) {
 				await syncActiveBreakpointsIfNeeded(workspaceRoot, catalog, activeScenes, breakpointBridge);

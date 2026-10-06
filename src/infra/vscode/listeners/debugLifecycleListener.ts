@@ -4,6 +4,7 @@ import { sceneStateManager } from "#src/application/sceneStateManager";
 import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
 import { appEventBus } from "#src/application/eventBus";
 import { loadScenesConfig } from "#src/infra/storage/jsonFileSceneRepository";
+import { setCapturablePauseContext } from "#src/application/debugPauseContext";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 import { handleExternalScenesFileChange } from "./configFileWatcherListener";
 
@@ -65,6 +66,12 @@ interface DapMessagePayload {
 	};
 }
 
+/**
+ * 调试暂停态捕获上下文 (v1.2.0 Capture Call Stack)
+ * 状态实体存于应用层 `debugPauseContext`（ui → application ← infra 依赖方向合规）；
+ * 本监听器仅在 stopped/continued/terminated 事件驱动下写入/清除
+ */
+
 function createRevealAndClearCallbacks() {
 	const revealPausedBreakpoint = async (file: string, line: number): Promise<void> => {
 		appEventBus.emit("debug:paused", { file, line });
@@ -82,7 +89,7 @@ function createDapTrackerFactory(
 	clearPausedBreakpoint: () => void,
 ): vscode.Disposable {
 	return vscode.debug.registerDebugAdapterTrackerFactory("*", {
-		createDebugAdapterTracker(_session: vscode.DebugSession) {
+		createDebugAdapterTracker(session: vscode.DebugSession) {
 			let sessionPausedThreadId: number | undefined;
 
 			return {
@@ -103,16 +110,20 @@ function createDapTrackerFactory(
 						if (msg.event === "stopped") {
 							if (typeof msg.body?.threadId === "number") {
 								sessionPausedThreadId = msg.body.threadId;
+								// v1.2.0：登记可捕获暂停上下文，供 captureCallStack 命令固化调用栈
+								setCapturablePauseContext({ session, threadId: msg.body.threadId });
 							}
 						} else if (msg.event === "continued") {
 							const continuedThreadId = msg.body?.threadId;
 							const allContinued = msg.body?.allThreadsContinued === true;
 							if (allContinued || (sessionPausedThreadId !== undefined && continuedThreadId === sessionPausedThreadId)) {
 								sessionPausedThreadId = undefined;
+								setCapturablePauseContext(undefined);
 								clearPausedBreakpoint();
 							}
 						} else if (msg.event === "terminated") {
 							sessionPausedThreadId = undefined;
+							setCapturablePauseContext(undefined);
 							clearPausedBreakpoint();
 						}
 					}
@@ -173,6 +184,7 @@ export function registerDebugPauseService(): vscode.Disposable {
 
 	disposables.push(
 		vscode.debug.onDidTerminateDebugSession(() => {
+			setCapturablePauseContext(undefined);
 			clearPausedBreakpoint();
 		}),
 	);

@@ -51,6 +51,7 @@ import { runTemplateProviderTests } from "./unit/ui/views/template_content_provi
 import { runCommandsRegistryTests } from "./unit/ui/commands/commands_registry.test.mjs";
 import { runCommandsExecutionTests } from "./unit/ui/commands/commands_execution.test.mjs";
 import { runAddBreakpointCommandTests } from "./unit/ui/commands/add_breakpoint_command.test.mjs";
+import { runCaptureCallStackCommandTests } from "./unit/ui/commands/capture_call_stack_command.test.mjs";
 import { runSkillCommandsTests } from "./unit/ui/commands/skill_commands.test.mjs";
 import { runSceneCommandsTests } from "./unit/ui/commands/scene_commands.test.mjs";
 import { runTreeCommandsTests } from "./unit/ui/commands/tree_commands.test.mjs";
@@ -175,6 +176,8 @@ try {
 	await runCommandsExecutionTests();
 	console.log("");
 	await runAddBreakpointCommandTests();
+	console.log("");
+	await runCaptureCallStackCommandTests();
 	console.log("");
 	await runSkillCommandsTests();
 	console.log("");

@@ -35,7 +35,7 @@
 
 ---
 
-## 2. 全量 59 大 E2E 测试场景矩阵
+## 2. 全量 66 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -194,6 +194,22 @@
 
 ---
 
+### 维度十三：分层配置与调用栈固化 (TC-LAYER / TC-CAP)
+
+> v1.2.0 新增维度。当前版本先以单元测试（真实源码 1:1 镜像）保障，真实宿主 E2E 自动化在后续版本补齐。
+
+| 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
+| :--- | :--- | :--- | :--- | :--- |
+| **TC-LAYER-01** | **新场景缺省落 local 私有层** | 无 `debug-scenes.local.json` 时经 UI 新建场景/导出断点/固化调用栈 | `.vscode/debug-scenes.local.json` 被创建且新场景仅存在于该文件；团队主文件未被改写 | INV-032 |
+| **TC-LAYER-02** | **同名场景 local 覆盖 team 合并视图** | 主文件与 local 文件声明同名场景（断点集不同），打开侧边栏与激活 | 所有读取链路返回合并视图：local 版本生效，team 版本被覆盖；两文件均不丢失 | INV-032 |
+| **TC-LAYER-03** | **gitignore 自动引导幂等** | 扩展冷启动两次（local 条目已存在/缺失两种初始态） | `.gitignore` 恰好包含 `.vscode/debug-scenes.local.json` 一条，重复激活不重复追加 | INV-032 |
+| **TC-LAYER-04** | **激活态仅存团队主文件** | local 与 team 场景均存在时激活某场景 | `activeScenes` 字段仅写入团队主文件；local 文件不出现该字段 | INV-032 |
+| **TC-CAP-01** | **暂停态固化调用栈** | 断点命中暂停后执行 `sceneBreakpoints.captureCallStack` 并输入场景名 | 工作区内源码帧按相对路径固化（≤20 帧、去重、携带 `contextSnippet`），追加 upsert 落 local 层，推送成功通知 | INV-001, INV-032 |
+| **TC-CAP-02** | **非暂停态拦截零写盘** | 无调试会话时执行固化命令 | info 提示"仅在暂停态可用"；local 与主文件均零写盘 | GR-011 |
+| **TC-CAP-03** | **堆栈过滤与继续执行失效** | 堆栈含无 source/工作区外/重复位置帧；随后 `continued` | 前三类帧被过滤去重；`continued` 后捕获上下文即刻清除，命令恢复非可用态提示 | INV-032 |
+
+---
+
 ## 3. 用例维护与演进规范
 
 为了确保测试资产与项目演进绝对同步，建立以下铁律：
@@ -213,5 +229,6 @@
 |------|----------|--------|----------|
 | 2026-10-07 | 维度七新增 TC-HEAL-05（外部编辑与指纹自愈冲突显式裁决），场景矩阵 58 → 59，套件 `09_breakpoint_healing` 覆盖范围同步扩展 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同步更新 constraints.md / flows.md / glossary.md / lessons / CHANGELOG |
 | 2026-10-06 | 新增套件 `12_scene_references.test.ts` 与维度十二（TC-REF-01 ~ TC-REF-05），场景矩阵 53 → 58 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / glossary.md / adr/005 |
+| 2026-10-07 | 新增维度十三（TC-LAYER-01 ~ 04 / TC-CAP-01 ~ 03），场景矩阵 59 → 66；v1.2.0 先以单测保障，真实宿主 E2E 后续补齐 | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / flows.md / glossary.md / roadmap / CHANGELOG 双语 |
 
 ---

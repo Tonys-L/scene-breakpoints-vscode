@@ -42,7 +42,7 @@ export async function runSkillCommandsTests() {
 			extensionUri: vscode.Uri.file(root),
 			workspaceState: memState,
 			globalState: memState,
-			extension: { packageJSON: { version: "1.1.0" } },
+			extension: { packageJSON: { version: "1.2.0" } },
 		};
 	};
 
@@ -71,7 +71,7 @@ export async function runSkillCommandsTests() {
 		{
 			const ws = mkWorkspace();
 			const context = mkContext(extensionRoot);
-			await context.workspaceState.update("lastNotifiedSkillVersion", "1.1.0");
+			await context.workspaceState.update("lastNotifiedSkillVersion", "1.2.0");
 			lastMsg = "SENTINEL";
 			await checkAndPromptSkillUpdates(context, ws);
 			assert.strictEqual(lastMsg, "SENTINEL", "同版本已通知过必须静默跳过");
@@ -119,7 +119,7 @@ export async function runSkillCommandsTests() {
 			assert.strictEqual(lastActions.length, 3, "仅 CleanOutdated 时动作 = [更新, 诊断, 稍后]");
 			assert.strictEqual(
 				context.workspaceState._map.get("lastNotifiedSkillVersion"),
-				"1.1.0",
+				"1.2.0",
 				"提示前必须先写入 lastNotifiedSkillVersion 闸门",
 			);
 			fs.rmSync(ws, { recursive: true, force: true });

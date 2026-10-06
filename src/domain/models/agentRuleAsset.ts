@@ -85,7 +85,7 @@ export function pureSha256(ascii: string): string {
 /**
  * 插件当前内置的最新 AI 规则资产版本号 (默认与 package.json 对齐)
  */
-export const LATEST_SKILL_VERSION = "1.1.0";
+export const LATEST_SKILL_VERSION = "1.2.0";
 export const LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 
 /**
@@ -99,7 +99,7 @@ export const LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 export const OFFICIAL_SKILL_HISTORY: Record<string, string> = {
 	"f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
 	"be86d3a35575f137d075f49867c9a8ead61e60d7c7e43e2f05d26a13c1d21a42": "1.0.8",
-	"fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.1.0",
+	"fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.2.0",
 };
 export const OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 

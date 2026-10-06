@@ -180,6 +180,70 @@ export async function runEchoLoopGuardTests() {
 		"播种基线后内容变化必须判为外部编辑",
 	);
 
+	// 12. 【v1.2.0 INV-032】键控基线：team 主文件与 local 私有文件双基线独立隔离
+	const keyedGuard = new EchoLoopGuard();
+	const teamContent = JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 10 }] } });
+	const localContent = JSON.stringify({ scenes: { temp: [{ file: "src/b.ts", line: 5 }] } });
+
+	// (1) 空基线读取
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("team.json"), "", "未写盘键的基线必须为空字符串");
+	// (2) 双键独立写读，互不串扰
+	keyedGuard.setLastSavedContentForKey("team.json", teamContent);
+	keyedGuard.setLastSavedContentForKey("local.json", localContent);
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("team.json"), teamContent);
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("local.json"), localContent);
+	// (3) 键控播种：空键播种生效、非空键 no-op
+	keyedGuard.seedBaselineForKey("seeded.json", '{"seeded":1}');
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("seeded.json"), '{"seeded":1}');
+	keyedGuard.seedBaselineForKey("team.json", '{"must-not-overwrite":1}');
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("team.json"), teamContent, "已有内部写盘指纹的键播种必须 no-op");
+	keyedGuard.seedBaselineForKey("empty.json", "");
+	assert.strictEqual(keyedGuard.getLastSavedContentForKey("empty.json"), "", "空内容不得播种");
+	// (4) 键控漂移判定：local 变化不影响 team 判定
+	assert.strictEqual(
+		keyedGuard.isDiskContentModifiedSinceLastSaveForKey(
+			"team.json",
+			JSON.stringify({ scenes: { auth: [{ file: "src/a.ts", line: 10 }] } }),
+		),
+		false,
+		"team 键语义一致不得判为外部编辑",
+	);
+	assert.strictEqual(
+		keyedGuard.isDiskContentModifiedSinceLastSaveForKey("team.json", localContent),
+		true,
+		"team 键内容被 local 内容替换必须判为外部编辑",
+	);
+	assert.strictEqual(
+		keyedGuard.isDiskContentModifiedSinceLastSaveForKey("cold.json", '{"x":1}'),
+		false,
+		"无基线冷键必须返回 false（防冷启动误伤）",
+	);
+	// (5) 双文件交错写回后基线各自刷新（模拟 mutateCatalog 分层回写时序）
+	keyedGuard.setLastSavedContentForKey("team.json", teamContent.replace("10", "11"));
+	keyedGuard.setLastSavedContentForKey("local.json", localContent.replace("5", "6"));
+	assert.strictEqual(
+		keyedGuard.isContentMatchingLastSavedForKey("team.json", teamContent.replace("10", "11")),
+		true,
+		"team 键基线必须随最近一次写盘刷新",
+	);
+	assert.strictEqual(
+		keyedGuard.isContentMatchingLastSavedForKey("local.json", localContent),
+		false,
+		"local 键旧内容相对新基线必须判定不一致",
+	);
+	// (6) 旧单值 API 与默认键委托一致性（向后兼容主文件链路）
+	const legacyGuard = new EchoLoopGuard();
+	legacyGuard.setLastSavedContent('{"legacy":true}');
+	assert.strictEqual(legacyGuard.getLastSavedContentForKey("__default__"), '{"legacy":true}', "旧 API 必须委托默认键");
+	assert.strictEqual(legacyGuard.getLastSavedContent(), '{"legacy":true}');
+	legacyGuard.seedBaseline('{"seed-late":1}');
+	assert.strictEqual(legacyGuard.getLastSavedContent(), '{"legacy":true}', "旧 seedBaseline 在默认键已有指纹时必须 no-op");
+	assert.strictEqual(
+		legacyGuard.isDiskContentModifiedSinceLastSave('{"legacy":false}'),
+		true,
+		"旧 API 漂移判定必须走默认键",
+	);
+
 	console.log("  ✅ [Echo Loop Guard] EchoLoopGuard 单元测试全部通过！");
 }
 

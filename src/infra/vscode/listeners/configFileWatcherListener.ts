@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { agentSyncService } from "#src/application";
-import { isContentMatchingLastSaved, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository";
+import { jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 
 
@@ -44,7 +44,8 @@ export async function handleExternalScenesFileChange(workspaceRoot: string): Pro
  */
 export function registerConfigFileWatcherService(): vscode.Disposable {
 	let fileChangeDebounceTimer: NodeJS.Timeout | undefined;
-	const fileWatcher = vscode.workspace.createFileSystemWatcher("**/debug-scenes.json");
+	// v1.2.0 (INV-032)：glob 覆盖 team 主文件与 local 私有文件，双文件外部编辑统一调度
+	const fileWatcher = vscode.workspace.createFileSystemWatcher("**/debug-scenes*.json");
 
 	fileWatcher.onDidChange((uri) => {
 		if (fileChangeDebounceTimer) {
@@ -52,11 +53,11 @@ export function registerConfigFileWatcherService(): vscode.Disposable {
 		}
 		fileChangeDebounceTimer = setTimeout(async () => {
 			fileChangeDebounceTimer = undefined;
-			// 严密指纹守卫：比对磁盘内容，若与扩展最近一次内部写盘内容一致，确定为自身持久化行为，阻断二次重复刷新
+			// 严密指纹守卫：按键控比对磁盘内容（per-file 基线），若与扩展最近一次内部写盘内容一致，确定为自身持久化行为，阻断二次重复刷新
 			try {
 				if (fs.existsSync(uri.fsPath)) {
 					const currentDiskContent = fs.readFileSync(uri.fsPath, "utf-8");
-					if (isContentMatchingLastSaved(currentDiskContent)) {
+					if (echoLoopGuard.isContentMatchingLastSavedForKey(uri.fsPath, currentDiskContent)) {
 						return;
 					}
 				}

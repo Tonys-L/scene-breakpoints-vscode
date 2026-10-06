@@ -16,6 +16,8 @@
 | **启动项联动激活** | • 捕获调试启动并按优先级（`env` > `bindings` > 同名）推导场景<br>• 幽灵场景（未在配置中定义）强行拦截（INV-009） | ❌ 仅作为预装配拦截，不修改用户的 `launch.json` 规则 | `launchBindingResolver`<br>`debugLifecycleListener` |
 | **AI 声明式编排** | • AI 直接声明式读写 `debug-scenes.json` 激活场景<br>• 8 大主流 VS Code AI 规则一键分发与正文哈希版本诊断 | ❌ 受用户 `allowAiFileActivation` 开关授权控制<br>❌ 插件自身不内置大模型运行时 | `agentSyncService`<br>`skillCommands` |
 | **场景引用组合解析** | • 组合激活经 `sceneResolver` 深度优先展开引用为纯断点流，声明时序 100% 保真（INV-030）<br>• 成环在写盘/DAP 前拦截；悬空降级警告跳过；`enabled: false` 整棵子树摘除<br>• 自愈回写按 ownerScene（断点定义场景）路由，同源多引用单次回写 | ❌ 不支持跨文件/跨工作区引用（同 `debug-scenes.json` 内按 name 解析）<br>❌ 引用子树在树视图中只读，断点须回源场景编辑 | `sceneResolver`<br>`sceneActivationPipeline` |
+| **团队/个人配置隔离** | • 双层配置（team 主文件 + `*.local.json` 私有层）合并加载，同名场景 local 覆盖 team（INV-032）<br>• UI 新建场景缺省落 local 私有层，激活时自动幂等写入 `.gitignore` | ❌ 暂不提供场景跨层移动命令<br>❌ local 文件不入 Git，插件不代为版本管理 | `jsonFileSceneRepository`<br>`mutateCatalog` |
+| **调用栈一键固化 (Capture Call Stack)** | • 调试暂停时经 DAP `stackTrace` 读取当前线程堆栈帧（≤20 帧），过滤工作区源码帧并按 file+line 去重，提取三行上下文指纹<br>• 以追加 upsert（INV-001）固化为新场景，缺省落 local 私有层 | ❌ 仅调试暂停态可用（`stopped` 登记、`continued`/`terminated` 即刻清除捕获上下文）<br>❌ 不固化无 source 或工作区外的栈帧 | `captureCallStackCommand`<br>`debugPauseContext`<br>`debugLifecycleListener` |
 
 ---
 
@@ -34,4 +36,5 @@
 | 日期 | 变更内容 | 变更人 | 关联变更 |
 |------|----------|--------|----------|
 | 2026-10-06 | 核心能力矩阵新增"场景引用组合解析"能力边界（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / flows.md / glossary.md / adr/005 / e2e-scenarios.md |
+| 2026-10-07 | 核心能力矩阵新增"团队/个人配置隔离"（INV-032）与"调用栈一键固化 (Capture Call Stack)"能力边界 | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / flows.md / glossary.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
 

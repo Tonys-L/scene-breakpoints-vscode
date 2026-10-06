@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.2.0] - 2026-10-07
+
+### Added
+- **Team/Personal Config Isolation (`*.local.json`)** (INV-032):
+  - `.vscode/debug-scenes.json` stays the team-shared scene library under Git; `.vscode/debug-scenes.local.json` becomes the personal private layer and is automatically added to `.gitignore` on extension activation — temporary debug scenes no longer pollute the repository.
+  - Sidebar and all read paths load a merged view where local scenes override team scenes of the same name; scenes newly created from the UI (manual creation, export, capture) default to the local layer.
+  - Activation state (`activeScenes`) remains exclusively in the team main file; the file watcher now watches both files with a per-file echo-loop write baseline, and cold-start seeds baselines for both layers.
+- **Capture Call Stack (Incident-to-Scene, roadmap §4)**: while the debugger is paused, the new `sceneBreakpoints.captureCallStack` command (editor context menu / command palette) reads the current thread's stack frames via DAP, filters to in-workspace source frames with same file+line deduplication, extracts 3-line context fingerprints, and saves them as a new scene (append upsert, INV-001) into the personal local layer. The capture context is registered on debugger `stopped` and cleared on `continued`/`terminated` to prevent stale stacks.
+
+---
+
 ## [1.1.0] - 2026-10-06
 
 ### Added

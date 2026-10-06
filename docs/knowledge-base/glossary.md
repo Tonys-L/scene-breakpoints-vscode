@@ -16,7 +16,10 @@
 ### C
 
 #### 能力契约 (Capability Contract)
-核心层定义的业务能力接口，表达“能做什么”。示例：自愈探测能力 `HealingEngine.heal`、配置清洗与读写能力 `loadScenesConfig`。
+核心层定义的业务能力接口，表达"能做什么"。示例：自愈探测能力 `HealingEngine.heal`、配置清洗与读写能力 `loadScenesConfig`。
+
+#### 调用栈固化 (Capture Call Stack)
+调试暂停态下将当前线程 DAP 堆栈帧逆向固化为场景断点的一键能力：过滤工作区源码帧并按 file+line 去重，帧名沉淀为断点描述，自动提取三行上下文指纹后以追加 upsert（INV-001）落入新场景（缺省 local 私有层）。捕获上下文随 `stopped` 登记、`continued`/`terminated` 清除。
 
 #### 上下文伴随指纹 (Context Snippet / Context Triple)
 在保存断点时自动抓取的目标代码行核心文本（`current`），以及可选的前一行（`prev`）和后一行（`next`）文本。用于在行号漂移时进行高置信度的上下文协同验证。
@@ -80,6 +83,9 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 
 #### 日志断点 (Logpoint)
 命中时不暂停程序执行，而是在调试控制台动态输出带有 `{var}` 变量插值日志消息的高级断点。
+
+#### 个人私有层 (Local Layer / debug-scenes.local.json)
+分层配置体系（INV-032）中面向开发者个人的私有场景文件 `.vscode/debug-scenes.local.json`：扩展激活时自动幂等写入 `.gitignore`，杜绝临时调试断点污染 Git。读取链路一律返回合并视图（同名场景 local 覆盖团队层）；UI 新建场景缺省落此层；激活态 `activeScenes` 仅存团队主文件。
 
 ---
 
@@ -171,4 +177,5 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 |------|----------|--------|----------|
 | 2026-10-06 | 新增术语：场景引用、声明态与展开态、收窄点、断点定义场景 (ownerScene)、悬空引用、循环引用 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / adr/005 / e2e-scenarios.md |
 | 2026-10-07 | 新增术语：指纹冲突 (Fingerprint Conflict)、基线播种 (Baseline Seeding) | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / flows.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
+| 2026-10-07 | 新增术语：调用栈固化 (Capture Call Stack)、个人私有层 (Local Layer) | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / flows.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
 

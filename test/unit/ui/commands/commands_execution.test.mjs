@@ -54,7 +54,7 @@ export async function runCommandsExecutionTests() {
 		workspaceState: memState,
 		globalState: memState,
 		extension: {
-			packageJSON: { version: "1.1.0" },
+			packageJSON: { version: "1.2.0" },
 		},
 	};
 	registerAllCommands(context, { treeDataProvider: mockTreeDataProvider });

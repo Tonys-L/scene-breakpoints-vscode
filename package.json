@@ -2,7 +2,7 @@
   "name": "scene-breakpoints-vscode",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "tony-l",
   "author": "Tony.L <286269159@qq.com>",
   "license": "MIT",
@@ -110,6 +110,11 @@
       {
         "command": "sceneBreakpoints.showMenu",
         "title": "%command.showMenu%",
+        "category": "Scene"
+      },
+      {
+        "command": "sceneBreakpoints.captureCallStack",
+        "title": "%command.captureCallStack%",
         "category": "Scene"
       },
       {
@@ -238,6 +243,10 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "sceneBreakpoints.captureCallStack",
+          "when": "inDebugMode && debugState == 'stopped'"
+        },
         {
           "command": "sceneBreakpoints.refreshView",
           "when": "false"
@@ -461,6 +470,11 @@
           "command": "sceneBreakpoints.clearAll",
           "group": "debug@4",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "sceneBreakpoints.captureCallStack",
+          "group": "debug@5",
+          "when": "inDebugMode && debugState == 'stopped'"
         }
       ]
     },

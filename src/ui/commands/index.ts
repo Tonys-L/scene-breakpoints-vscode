@@ -8,6 +8,7 @@ import {
 	registerResolveWarningsNotifier,
 } from "./sceneCommands";
 import { showMenuCommand } from "./menuCommands";
+import { captureCallStackCommand } from "./captureCallStackCommand";
 import {
 	copySceneToClipboardCommand,
 	importSceneFromClipboardCommand,
@@ -40,6 +41,8 @@ export function registerAllCommands(
 		["sceneBreakpoints.clearAll", clearAllCommand],
 		["sceneBreakpoints.exportScene", exportSceneCommand],
 		["sceneBreakpoints.showMenu", showMenuCommand],
+		// 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
+		["sceneBreakpoints.captureCallStack", captureCallStackCommand],
 		// 剪贴板快速流转与团队共享
 		["sceneBreakpoints.copySceneToClipboard", copySceneToClipboardCommand],
 		["sceneBreakpoints.importSceneFromClipboard", importSceneFromClipboardCommand],
@@ -63,6 +66,7 @@ export function registerAllCommands(
 export * from "./addBreakpointCommand";
 export * from "./sceneCommands";
 export * from "./menuCommands";
+export * from "./captureCallStackCommand";
 export * from "./clipboardCommands";
 export * from "./treeCommands";
 export * from "./skillCommands";

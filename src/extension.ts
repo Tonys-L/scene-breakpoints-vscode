@@ -21,6 +21,7 @@ import {
 	getWorkspaceRoot,
 	jsonFileSceneRepository,
 	seedEchoLoopBaselineFromDisk,
+	ensureLocalScenesGitignore,
 	isDiskContentModifiedSinceLastSaved,
 	vscodeBreakpointBridge,
 	vscodeLineReader,
@@ -54,9 +55,11 @@ export function activate(context: vscode.ExtensionContext) {
 	setupCompositionRoot();
 
 	// 0.1 冷启动基线播种 (INV-031 前置)：以磁盘现状为 lastSavedContent 基线，保留 Git Pull 漂移静默自愈
+	// 0.2 个人私有层引导 (v1.2.0 INV-032)：确保 .gitignore 包含 debug-scenes.local.json（幂等）
 	const wsRootSeed = getWorkspaceRoot();
 	if (wsRootSeed) {
 		seedEchoLoopBaselineFromDisk(wsRootSeed);
+		ensureLocalScenesGitignore(wsRootSeed);
 	}
 
 	// 1. 初始化底部常驻状态栏
@@ -92,9 +95,9 @@ export function activate(context: vscode.ExtensionContext) {
 		registerSessionLifecycleService(),
 		// AI Agent Chat Skill 动态注入服务
 		registerChatSkillService(context),
-		// 场景一键激活 CodeLens 透镜按钮
+		// 场景一键激活 CodeLens 透镜按钮（v1.2.0：覆盖 team 主文件与 local 私有文件）
 		vscode.languages.registerCodeLensProvider(
-			{ pattern: "**/debug-scenes.json" },
+			[{ pattern: "**/debug-scenes.json" }, { pattern: "**/debug-scenes.local.json" }],
 			new SceneCodeLensProvider(),
 		),
 		// 行末场景断点注解与幽灵文本透视提供者 (Inlay Hints)
