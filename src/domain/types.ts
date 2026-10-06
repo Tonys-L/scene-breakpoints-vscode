@@ -33,9 +33,20 @@ export interface FunctionSceneBreakpoint extends BaseBreakpoint {
 
 export type SceneBreakpoint = SourceSceneBreakpoint | FunctionSceneBreakpoint;
 
+/** 引用项 DTO —— 磁盘 JSON 形状（场景内联引用其他场景的断点集合） */
+export interface SceneRefItem {
+	type: "scene";
+	name: string; // 被引用场景名（同文件内解析）
+	desc?: string; // 引用意图说明（树视图展示）
+	enabled?: boolean; // 缺省 true；false 时整棵子树跳过
+}
+
+/** 场景条目 DTO —— scenes 字典数组元素的判别联合（具象断点 + 引用节点） */
+export type SceneItem = SceneBreakpoint | SceneRefItem;
+
 export interface ScenesConfig {
 	$schema?: string;
 	activeScenes?: string[]; // 当前激活的一个或多个场景名称（支持多场景叠加）
 	bindings?: Record<string, string | string[]>; // launch.json 配置名称与场景的映射关系
-	scenes: Record<string, SceneBreakpoint[]>;
+	scenes: Record<string, SceneItem[]>;
 }

@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -40,7 +40,7 @@ export async function runTreeViewTests() {
 		assert.strictEqual(ok, true, "重命名应该成功执行");
 		assert.strictEqual(catalog.hasScene("legacy-auth-flow"), false, "旧场景名必须被删除");
 		assert.ok(catalog.hasScene("modern-oauth2-flow"), "新场景名必须存在");
-		assert.strictEqual(catalog.getScene("modern-oauth2-flow").getBreakpoints().length, 2, "内部断点数据必须无损完整保留");
+		assert.strictEqual(catalog.getScene("modern-oauth2-flow").getSteps().length, 2, "内部断点数据必须无损完整保留");
 
 		// 2. 空名称或不存在名称保护
 		assert.strictEqual(catalog.renameScene("not-exist", "any"), false);
@@ -88,15 +88,15 @@ export async function runTreeViewTests() {
 		const scene = catalog.getScene("order-flow");
 
 		// 移除中间断点 (step2.ts:20)
-		const removed = scene.removeBreakpoint(1);
+		const removed = scene.removeStep(1);
 		assert.strictEqual(removed, true);
-		assert.strictEqual(scene.getBreakpoints().length, 2);
-		assert.strictEqual(scene.getBreakpoints()[0].file, "step1.ts");
-		assert.strictEqual(scene.getBreakpoints()[1].file, "step3.ts");
+		assert.strictEqual(scene.getSteps().length, 2);
+		assert.strictEqual(scene.getSteps()[0].file, "step1.ts");
+		assert.strictEqual(scene.getSteps()[1].file, "step3.ts");
 
 		// 越界安全拦截
-		assert.strictEqual(scene.removeBreakpoint(-1), false);
-		assert.strictEqual(scene.removeBreakpoint(99), false);
+		assert.strictEqual(scene.removeStep(-1), false);
+		assert.strictEqual(scene.removeStep(99), false);
 
 		console.log("    ✔ 单断点移除与越界拦截测试通过");
 	}
@@ -118,16 +118,16 @@ export async function runTreeViewTests() {
 		const scene = catalog.getScene("debug-flow");
 
 		// 1. 默认缺省 (true) 切换为 false
-		scene.toggleBreakpointEnabled(0);
-		assert.strictEqual(scene.getBreakpoints()[0].enabled, false);
+		scene.toggleStep(0);
+		assert.strictEqual(scene.getSteps()[0].enabled, false);
 
 		// 2. true 切换为 false
-		scene.toggleBreakpointEnabled(1);
-		assert.strictEqual(scene.getBreakpoints()[1].enabled, false);
+		scene.toggleStep(1);
+		assert.strictEqual(scene.getSteps()[1].enabled, false);
 
 		// 3. false 切换为 true
-		scene.toggleBreakpointEnabled(2);
-		assert.strictEqual(scene.getBreakpoints()[2].enabled, true);
+		scene.toggleStep(2);
+		assert.strictEqual(scene.getSteps()[2].enabled, true);
 
 		console.log("    ✔ 断点启用/禁用切换 (Toggle) 测试通过");
 	}
@@ -257,33 +257,33 @@ export async function runTreeViewTests() {
 		const scene = catalog.getScene("sort-test");
 
 		// 1. 下移首项
-		assert.strictEqual(scene.moveBreakpoint(0, "down"), true);
-		assert.strictEqual(scene.getBreakpoints()[0].file, "b.ts");
-		assert.strictEqual(scene.getBreakpoints()[1].file, "a.ts");
+		assert.strictEqual(scene.moveStep(0, "down"), true);
+		assert.strictEqual(scene.getSteps()[0].file, "b.ts");
+		assert.strictEqual(scene.getSteps()[1].file, "a.ts");
 
 		// 2. 上移次项
-		assert.strictEqual(scene.moveBreakpoint(1, "up"), true);
-		assert.strictEqual(scene.getBreakpoints()[0].file, "a.ts");
+		assert.strictEqual(scene.moveStep(1, "up"), true);
+		assert.strictEqual(scene.getSteps()[0].file, "a.ts");
 
 		// 3. 置顶 (top)
-		assert.strictEqual(scene.moveBreakpoint(2, "top"), true);
-		assert.strictEqual(scene.getBreakpoints()[0].file, "c.ts");
-		assert.strictEqual(scene.moveBreakpoint(0, "top"), false); // 已经是第 0 个
+		assert.strictEqual(scene.moveStep(2, "top"), true);
+		assert.strictEqual(scene.getSteps()[0].file, "c.ts");
+		assert.strictEqual(scene.moveStep(0, "top"), false); // 已经是第 0 个
 
 		// 4. 置底 (bottom)
-		assert.strictEqual(scene.moveBreakpoint(0, "bottom"), true);
-		assert.strictEqual(scene.getBreakpoints()[2].file, "c.ts");
-		assert.strictEqual(scene.moveBreakpoint(2, "bottom"), false); // 已经是末尾
+		assert.strictEqual(scene.moveStep(0, "bottom"), true);
+		assert.strictEqual(scene.getSteps()[2].file, "c.ts");
+		assert.strictEqual(scene.moveStep(2, "bottom"), false); // 已经是末尾
 
 		// 5. 拖拽重排 (reorderBreakpoint)
-		assert.strictEqual(scene.reorderBreakpoint(2, 0), true);
-		assert.strictEqual(scene.getBreakpoints()[0].file, "c.ts");
-		assert.strictEqual(scene.reorderBreakpoint(0, 0), false);
-		assert.strictEqual(scene.reorderBreakpoint(-1, 1), false);
+		assert.strictEqual(scene.reorderStep(2, 0), true);
+		assert.strictEqual(scene.getSteps()[0].file, "c.ts");
+		assert.strictEqual(scene.reorderStep(0, 0), false);
+		assert.strictEqual(scene.reorderStep(-1, 1), false);
 
 		// 6. 边界越界保护 (首项不能再上移，末项不能再下移)
-		assert.strictEqual(scene.moveBreakpoint(0, "up"), false);
-		assert.strictEqual(scene.moveBreakpoint(2, "down"), false);
+		assert.strictEqual(scene.moveStep(0, "up"), false);
+		assert.strictEqual(scene.moveStep(2, "down"), false);
 
 		console.log("    ✔ 断点排序微调、置顶/置底、拖拽重排与边界越界保护测试通过");
 	}

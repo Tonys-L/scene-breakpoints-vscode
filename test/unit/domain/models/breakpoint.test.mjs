@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Breakpoint } from "#src/domain/models/breakpoint.ts";
+import { SceneRef } from "#src/domain/models/sceneRef.ts";
 import { Fingerprint } from "#src/domain/models/fingerprint.ts";
 import { HealingEngine, defaultHealingEngine } from "#src/domain/services/healingEngine.ts";
 
@@ -280,13 +281,13 @@ export function runBreakpointEntityTests() {
 	}
 
 	// ----------------------------------------------------
-	// 8. 【变异斩杀】toggle 与 setEnabled 启闭控制
+	// 8. 【变异斩杀】toggle 与 setEnabled 启闭控制（协议化后 toggle 返回 void，仅断言状态翻转）
 	// ----------------------------------------------------
 	{
 		const bp = new Breakpoint({ file: "src/b.ts", line: 1, enabled: true });
-		assert.strictEqual(bp.toggle(), false);
+		bp.toggle();
 		assert.strictEqual(bp.enabled, false);
-		assert.strictEqual(bp.toggle(), true);
+		bp.toggle();
 		assert.strictEqual(bp.enabled, true);
 
 		bp.setEnabled(false);
@@ -479,7 +480,7 @@ export function runBreakpointEntityTests() {
 	}
 
 	// ----------------------------------------------------
-	// 12. 【变异斩杀】matches 跨平台大小写与空对象防御
+	// 12. 【变异斩杀】matches 跨平台大小写与防御（协议化后仅接受 SceneStep 实例，裸 DTO 一律 false）
 	// ----------------------------------------------------
 	{
 		const bpA = new Breakpoint({ file: "SRC\\UTILS\\CALC.TS", line: 10 });
@@ -491,15 +492,20 @@ export function runBreakpointEntityTests() {
 		const fnC = new Breakpoint({ type: "function", functionName: "otherName" });
 		assert.strictEqual(fnA.matches(fnB), true);
 		assert.strictEqual(fnA.matches(fnC), false);
-		assert.strictEqual(fnA.matches({ type: "line", file: "a.ts", line: 1 }), false);
-		assert.strictEqual(bpA.matches({ type: "function", functionName: "f" }), false);
+		assert.strictEqual(fnA.matches(new Breakpoint({ type: "line", file: "a.ts", line: 1 })), false);
+		assert.strictEqual(bpA.matches(new Breakpoint({ type: "function", functionName: "f" })), false);
+
+		// 协议守卫：裸 DTO（非 SceneStep 实例）与引用节点永不判等
+		assert.strictEqual(bpA.matches({ type: "line", file: "src\\utils\\calc.ts", line: 10 }), false, "裸 DTO 不参与匹配");
+		const ref = new SceneRef("child-scene");
+		assert.strictEqual(bpA.matches(ref), false, "场景引用与断点永不判等");
 
 		// 源码断点 file 为空或 other.file 为空
 		const bpEmptyFile = new Breakpoint({ line: 10 });
 		bpEmptyFile.file = "";
-		assert.strictEqual(bpEmptyFile.matches({ file: "a.ts", line: 10 }), false);
-		assert.strictEqual(bpA.matches({ file: "", line: 10 }), false);
-		assert.strictEqual(bpA.matches({ file: "src\\utils\\calc.ts", line: 10 }), true);
+		assert.strictEqual(bpEmptyFile.matches(new Breakpoint({ file: "a.ts", line: 10 })), false);
+		assert.strictEqual(bpA.matches(new Breakpoint({ file: "", line: 10 })), false);
+		assert.strictEqual(bpA.matches(new Breakpoint({ file: "src\\utils\\calc.ts", line: 10 })), true);
 
 		// toJSON 空串回退
 		const emptyFuncBp = new Breakpoint({ type: "function" });

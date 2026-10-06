@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { Scene } from "#src/domain/models/scene.ts";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog.ts";
 import { Breakpoint } from "#src/domain/models/breakpoint.ts";
@@ -13,12 +13,12 @@ export function runSceneAndCatalogTests() {
 	{
 		const scene = new Scene("auth-flow");
 		assert.strictEqual(scene.name, "auth-flow");
-		assert.strictEqual(scene.getBreakpoints().length, 0);
+		assert.strictEqual(scene.getSteps().length, 0);
 
 		// A. 基础添加断点
 		const bp1 = new Breakpoint({ file: "src/auth.ts", line: 10, type: "line" });
-		scene.upsertBreakpoint(bp1);
-		assert.strictEqual(scene.getBreakpoints().length, 1);
+		scene.upsertStep(bp1);
+		assert.strictEqual(scene.getSteps().length, 1);
 
 		// B. 查重覆盖：同一文件同一行号，必须覆盖而非追加 (INV-001)
 		const bp1Updated = new Breakpoint({
@@ -27,44 +27,44 @@ export function runSceneAndCatalogTests() {
 			type: "condition",
 			condition: "token !== null",
 		});
-		scene.upsertBreakpoint(bp1Updated);
-		assert.strictEqual(scene.getBreakpoints().length, 1, "同位置断点必须唯一覆盖");
-		assert.strictEqual(scene.getBreakpoints()[0].condition, "token !== null", "覆盖后属性必须更新");
+		scene.upsertStep(bp1Updated);
+		assert.strictEqual(scene.getSteps().length, 1, "同位置断点必须唯一覆盖");
+		assert.strictEqual(scene.getSteps()[0].condition, "token !== null", "覆盖后属性必须更新");
 
 		// C. 添加第二个不同行断点
 		const bp2 = new Breakpoint({ file: "src/auth.ts", line: 20 });
-		scene.upsertBreakpoint(bp2);
-		assert.strictEqual(scene.getBreakpoints().length, 2);
+		scene.upsertStep(bp2);
+		assert.strictEqual(scene.getSteps().length, 2);
 
 		// D. 排序微调：下移与上移
-		scene.moveBreakpoint(0, "down");
-		assert.strictEqual(scene.getBreakpoints()[0].line, 20);
-		assert.strictEqual(scene.getBreakpoints()[1].line, 10);
+		scene.moveStep(0, "down");
+		assert.strictEqual(scene.getSteps()[0].line, 20);
+		assert.strictEqual(scene.getSteps()[1].line, 10);
 
-		scene.moveBreakpoint(1, "up");
-		assert.strictEqual(scene.getBreakpoints()[0].line, 10);
-		assert.strictEqual(scene.getBreakpoints()[1].line, 20);
+		scene.moveStep(1, "up");
+		assert.strictEqual(scene.getSteps()[0].line, 10);
+		assert.strictEqual(scene.getSteps()[1].line, 20);
 
 		// E. 置顶与置底
-		scene.moveBreakpoint(1, "top");
-		assert.strictEqual(scene.getBreakpoints()[0].line, 20);
-		scene.moveBreakpoint(0, "bottom");
-		assert.strictEqual(scene.getBreakpoints()[1].line, 20);
+		scene.moveStep(1, "top");
+		assert.strictEqual(scene.getSteps()[0].line, 20);
+		scene.moveStep(0, "bottom");
+		assert.strictEqual(scene.getSteps()[1].line, 20);
 
 		// F. 批量控制：全部禁用与全部启用
-		scene.setAllEnabled(false);
-		assert.ok(scene.getBreakpoints().every((b) => b.enabled === false), "必须全部设为禁用");
+		scene.setAllStepsEnabled(false);
+		assert.ok(scene.getSteps().every((b) => b.enabled === false), "必须全部设为禁用");
 
-		scene.setAllEnabled(true);
-		assert.ok(scene.getBreakpoints().every((b) => b.enabled === true), "必须全部设为启用");
+		scene.setAllStepsEnabled(true);
+		assert.ok(scene.getSteps().every((b) => b.enabled === true), "必须全部设为启用");
 
 		// G. 场景克隆：深拷贝
 		const cloned = scene.clone("auth-flow-copy");
 		assert.strictEqual(cloned.name, "auth-flow-copy");
-		assert.strictEqual(cloned.getBreakpoints().length, 2);
-		cloned.removeBreakpoint(0);
-		assert.strictEqual(cloned.getBreakpoints().length, 1);
-		assert.strictEqual(scene.getBreakpoints().length, 2, "克隆修改绝不影响源场景");
+		assert.strictEqual(cloned.getSteps().length, 2);
+		cloned.removeStep(0);
+		assert.strictEqual(cloned.getSteps().length, 1);
+		assert.strictEqual(scene.getSteps().length, 2, "克隆修改绝不影响源场景");
 
 		// H. Scene.merge 静态聚合能力（先到先得排重，INV-004/011）
 		const scene1 = new Scene("s1", [
@@ -77,59 +77,59 @@ export function runSceneAndCatalogTests() {
 		]);
 		const mergedScene = Scene.merge([scene1, scene2], "combined");
 		assert.strictEqual(mergedScene.name, "combined");
-		assert.strictEqual(mergedScene.getBreakpoints().length, 3);
-		assert.strictEqual(mergedScene.getBreakpoints()[0].enabled, true, "先到先得保证首发断点生效");
+		assert.strictEqual(mergedScene.getSteps().length, 3);
+		assert.strictEqual(mergedScene.getSteps()[0].enabled, true, "先到先得保证首发断点生效");
 
 		// I. scene.mergeFrom 实例吸收合并能力
 		const targetScene = new Scene("target", [new Breakpoint({ file: "src/x.ts", line: 1 })]);
 		targetScene.mergeFrom(scene1);
-		assert.strictEqual(targetScene.getBreakpoints().length, 3);
+		assert.strictEqual(targetScene.getSteps().length, 3);
 		// 传入纯数组形式调用 mergeFrom
 		targetScene.mergeFrom([new Breakpoint({ file: "src/new.ts", line: 99 })]);
-		assert.strictEqual(targetScene.getBreakpoints().length, 4);
+		assert.strictEqual(targetScene.getSteps().length, 4);
 
 		// J. 【变异斩杀】Scene.merge 默认名称与 null/undefined 容错过滤
 		const defaultMerged = Scene.merge([null, undefined, scene1]);
 		assert.strictEqual(defaultMerged.name, "merged", "默认场景合并名称必须为 'merged'");
-		assert.strictEqual(defaultMerged.getBreakpoints().length, 2);
+		assert.strictEqual(defaultMerged.getSteps().length, 2);
 
 		// K. 【变异斩杀】moveBreakpoint 极值与边界拦截
-		assert.strictEqual(scene.moveBreakpoint(-1, "up"), false);
-		assert.strictEqual(scene.moveBreakpoint(99, "down"), false);
-		assert.strictEqual(scene.moveBreakpoint(0, "top"), false, "在第 0 位置顶必须返回 false");
-		assert.strictEqual(scene.moveBreakpoint(scene.getBreakpoints().length - 1, "bottom"), false, "在末位置底必须返回 false");
-		assert.strictEqual(scene.moveBreakpoint(0, "up"), false, "在第 0 位上移必须返回 false");
-		assert.strictEqual(scene.moveBreakpoint(scene.getBreakpoints().length - 1, "down"), false, "在末位下移必须返回 false");
+		assert.strictEqual(scene.moveStep(-1, "up"), false);
+		assert.strictEqual(scene.moveStep(99, "down"), false);
+		assert.strictEqual(scene.moveStep(0, "top"), false, "在第 0 位置顶必须返回 false");
+		assert.strictEqual(scene.moveStep(scene.getSteps().length - 1, "bottom"), false, "在末位置底必须返回 false");
+		assert.strictEqual(scene.moveStep(0, "up"), false, "在第 0 位上移必须返回 false");
+		assert.strictEqual(scene.moveStep(scene.getSteps().length - 1, "down"), false, "在末位下移必须返回 false");
 
 		// L. 【变异斩杀】reorderBreakpoint 极值与非法入参
-		assert.strictEqual(scene.reorderBreakpoint(-1, 1), false);
-		assert.strictEqual(scene.reorderBreakpoint(0, 99), false);
-		assert.strictEqual(scene.reorderBreakpoint(0, -1), false);
-		assert.strictEqual(scene.reorderBreakpoint(99, 1), false);
-		assert.strictEqual(scene.reorderBreakpoint(0, 0), false, "源与目标相同位置应返回 false");
-		assert.strictEqual(scene.reorderBreakpoint(0, 1), true, "合法拖拽重排返回 true");
+		assert.strictEqual(scene.reorderStep(-1, 1), false);
+		assert.strictEqual(scene.reorderStep(0, 99), false);
+		assert.strictEqual(scene.reorderStep(0, -1), false);
+		assert.strictEqual(scene.reorderStep(99, 1), false);
+		assert.strictEqual(scene.reorderStep(0, 0), false, "源与目标相同位置应返回 false");
+		assert.strictEqual(scene.reorderStep(0, 1), true, "合法拖拽重排返回 true");
 
 		// M. 【变异斩杀】toggleBreakpoint 与 toggleBreakpointEnabled
-		assert.strictEqual(scene.toggleBreakpoint(-1), false);
-		assert.strictEqual(scene.toggleBreakpoint(99), false);
-		const prevEnabled = scene.getBreakpoints()[0].enabled;
-		assert.strictEqual(scene.toggleBreakpoint(0), true);
-		assert.strictEqual(scene.getBreakpoints()[0].enabled, !prevEnabled);
-		assert.strictEqual(scene.toggleBreakpointEnabled(0), true);
-		assert.strictEqual(scene.getBreakpoints()[0].enabled, prevEnabled);
+		assert.strictEqual(scene.toggleStep(-1), false);
+		assert.strictEqual(scene.toggleStep(99), false);
+		const prevEnabled = scene.getSteps()[0].enabled;
+		assert.strictEqual(scene.toggleStep(0), true);
+		assert.strictEqual(scene.getSteps()[0].enabled, !prevEnabled);
+		assert.strictEqual(scene.toggleStep(0), true);
+		assert.strictEqual(scene.getSteps()[0].enabled, prevEnabled);
 
 		// N. 【变异斩杀】setAllEnabled 状态变更布尔返回值
-		assert.strictEqual(scene.setAllEnabled(prevEnabled), false, "断点全部已处于目标状态时返回 false");
-		assert.strictEqual(scene.setAllEnabled(!prevEnabled), true, "有状态改变时返回 true");
+		assert.strictEqual(scene.setAllStepsEnabled(prevEnabled), false, "断点全部已处于目标状态时返回 false");
+		assert.strictEqual(scene.setAllStepsEnabled(!prevEnabled), true, "有状态改变时返回 true");
 
 		// O. 【变异斩杀】getBreakpoint / removeBreakpoint 越界与 clear / toJSON
-		assert.strictEqual(scene.getBreakpoint(-1), undefined);
-		assert.strictEqual(scene.getBreakpoint(99), undefined);
-		assert.strictEqual(scene.removeBreakpoint(-1), false);
-		assert.strictEqual(scene.removeBreakpoint(99), false);
+		assert.strictEqual(scene.getStep(-1), undefined);
+		assert.strictEqual(scene.getStep(99), undefined);
+		assert.strictEqual(scene.removeStep(-1), false);
+		assert.strictEqual(scene.removeStep(99), false);
 		const jsonExport = scene.toJSON();
-		assert.strictEqual(jsonExport.length, scene.getBreakpoints().length);
-		assert.strictEqual(jsonExport[0].file, scene.getBreakpoints()[0].file);
+		assert.strictEqual(jsonExport.length, scene.getSteps().length);
+		assert.strictEqual(jsonExport[0].file, scene.getSteps()[0].file);
 
 		// P. 【变异斩杀】syncBreakpointEnabled 启闭双向同步（函数断点与多路径归一化匹配）
 		const syncScene = new Scene("sync-demo", [
@@ -138,7 +138,7 @@ export function runSceneAndCatalogTests() {
 		]);
 		// (1) 函数断点启闭同步
 		assert.strictEqual(syncScene.syncBreakpointEnabled({ functionName: "authHandler", enabled: false }), true);
-		assert.strictEqual(syncScene.getBreakpoints()[0].enabled, false);
+		assert.strictEqual(syncScene.getSteps()[0].enabled, false);
 		assert.strictEqual(syncScene.syncBreakpointEnabled({ functionName: "authHandler", enabled: false }), false, "状态无变化返回 false");
 		assert.strictEqual(syncScene.syncBreakpointEnabled({ functionName: "nonExistentFunc", enabled: true }), false);
 
@@ -148,7 +148,7 @@ export function runSceneAndCatalogTests() {
 			true,
 			"外部绝对路径必须匹配内部相对路径",
 		);
-		assert.strictEqual(syncScene.getBreakpoints()[1].enabled, false);
+		assert.strictEqual(syncScene.getSteps()[1].enabled, false);
 
 		// (3) 源码断点反向相对路径匹配
 		assert.strictEqual(
@@ -156,7 +156,7 @@ export function runSceneAndCatalogTests() {
 			true,
 			"外部尾部相对路径必须匹配内部较长路径",
 		);
-		assert.strictEqual(syncScene.getBreakpoints()[1].enabled, true);
+		assert.strictEqual(syncScene.getSteps()[1].enabled, true);
 
 		// (4) 行号不匹配或文件不匹配
 		assert.strictEqual(syncScene.syncBreakpointEnabled({ file: "src/api/order.ts", line: 999, enabled: false }), false);
@@ -181,7 +181,7 @@ export function runSceneAndCatalogTests() {
 			contextSnippet: { current: "const order = await getOrder();" },
 		});
 		assert.strictEqual(healScene.backfillHealed([healedTarget]), true);
-		assert.strictEqual(healScene.getBreakpoints()[0].line, 50);
+		assert.strictEqual(healScene.getSteps()[0].line, 50);
 		// 再次回填相同断点，无实质变更返回 false
 		assert.strictEqual(healScene.backfillHealed([healedTarget]), false);
 
@@ -192,10 +192,10 @@ export function runSceneAndCatalogTests() {
 		assert.strictEqual(nullNameScene.name, "");
 
 		// S. setBreakpoints / clearBreakpoints
-		syncScene.clearBreakpoints();
-		assert.strictEqual(syncScene.getBreakpoints().length, 0);
-		syncScene.setBreakpoints([new Breakpoint({ file: "new.ts", line: 1 })]);
-		assert.strictEqual(syncScene.getBreakpoints().length, 1);
+		syncScene.clearSteps();
+		assert.strictEqual(syncScene.getSteps().length, 0);
+		syncScene.setSteps([new Breakpoint({ file: "new.ts", line: 1 })]);
+		assert.strictEqual(syncScene.getSteps().length, 1);
 
 		// T. 【变异斩杀】moveBreakpoint 极值越界与定向移动布尔返回值
 		const moveScene = new Scene("move-test", [
@@ -204,30 +204,30 @@ export function runSceneAndCatalogTests() {
 			new Breakpoint({ file: "c.ts", line: 3 }),
 		]);
 		// 索引等于 length 时必须被拦截返回 false
-		assert.strictEqual(moveScene.moveBreakpoint(3, "up"), false);
-		assert.strictEqual(moveScene.moveBreakpoint(-1, "down"), false);
+		assert.strictEqual(moveScene.moveStep(3, "up"), false);
+		assert.strictEqual(moveScene.moveStep(-1, "down"), false);
 		// 移动到顶：中间元素移至首位
-		assert.strictEqual(moveScene.moveBreakpoint(1, "top"), true);
-		assert.strictEqual(moveScene.getBreakpoints()[0].file, "b.ts");
+		assert.strictEqual(moveScene.moveStep(1, "top"), true);
+		assert.strictEqual(moveScene.getSteps()[0].file, "b.ts");
 		// 移动到底：首位元素移至末尾
-		assert.strictEqual(moveScene.moveBreakpoint(0, "bottom"), true);
-		assert.strictEqual(moveScene.getBreakpoints()[2].file, "b.ts");
+		assert.strictEqual(moveScene.moveStep(0, "bottom"), true);
+		assert.strictEqual(moveScene.getSteps()[2].file, "b.ts");
 		// 相邻微移：up / down 返回 true 且调整顺序
-		assert.strictEqual(moveScene.moveBreakpoint(2, "up"), true);
-		assert.strictEqual(moveScene.getBreakpoints()[1].file, "b.ts");
-		assert.strictEqual(moveScene.moveBreakpoint(1, "down"), true);
-		assert.strictEqual(moveScene.getBreakpoints()[2].file, "b.ts");
+		assert.strictEqual(moveScene.moveStep(2, "up"), true);
+		assert.strictEqual(moveScene.getSteps()[1].file, "b.ts");
+		assert.strictEqual(moveScene.moveStep(1, "down"), true);
+		assert.strictEqual(moveScene.getSteps()[2].file, "b.ts");
 
 		// U. 【变异斩杀】reorderBreakpoint 边界拦截与目标索引为 0 的正常插入
 		// sourceIndex 越界
-		assert.strictEqual(moveScene.reorderBreakpoint(3, 1), false);
+		assert.strictEqual(moveScene.reorderStep(3, 1), false);
 		// targetIndex 越界
-		assert.strictEqual(moveScene.reorderBreakpoint(1, 3), false);
-		assert.strictEqual(moveScene.reorderBreakpoint(1, -1), false);
+		assert.strictEqual(moveScene.reorderStep(1, 3), false);
+		assert.strictEqual(moveScene.reorderStep(1, -1), false);
 		// targetIndex 为 0 的合法拖拽：把末尾元素拖拽至最前面
-		assert.strictEqual(moveScene.reorderBreakpoint(2, 0), true);
-		assert.strictEqual(moveScene.getBreakpoints().length, 3, "拖拽后数组元素总数保持不变");
-		assert.strictEqual(moveScene.getBreakpoints()[0].file, "b.ts");
+		assert.strictEqual(moveScene.reorderStep(2, 0), true);
+		assert.strictEqual(moveScene.getSteps().length, 3, "拖拽后数组元素总数保持不变");
+		assert.strictEqual(moveScene.getSteps()[0].file, "b.ts");
 
 		// V. 【变异斩杀】toggleBreakpoint 与 setAllEnabled 的 undefined 默认值测试
 		const undefScene = new Scene("undef-test", [
@@ -235,17 +235,17 @@ export function runSceneAndCatalogTests() {
 			new Breakpoint({ file: "u2.ts", line: 20, enabled: false }),
 		]);
 		// 未指定 enabled 默认为 true，toggle 后必须严格变为 false
-		assert.strictEqual(undefScene.toggleBreakpoint(0), true);
-		assert.strictEqual(undefScene.getBreakpoints()[0].enabled, false);
+		assert.strictEqual(undefScene.toggleStep(0), true);
+		assert.strictEqual(undefScene.getSteps()[0].enabled, false);
 		// setAllEnabled 对 undefined 默认值的判定
 		const undefScene2 = new Scene("undef-test-2", [
 			new Breakpoint({ file: "u3.ts", line: 30 }), // enabled is undefined
 		]);
 		// 设为 true 时因为默认视为 true，所以无实质变更返回 false
-		assert.strictEqual(undefScene2.setAllEnabled(true), false);
+		assert.strictEqual(undefScene2.setAllStepsEnabled(true), false);
 		// 设为 false 产生实质变更返回 true
-		assert.strictEqual(undefScene2.setAllEnabled(false), true);
-		assert.strictEqual(undefScene2.getBreakpoints()[0].enabled, false);
+		assert.strictEqual(undefScene2.setAllStepsEnabled(false), true);
+		assert.strictEqual(undefScene2.getSteps()[0].enabled, false);
 
 		// W. 【变异斩杀】syncBreakpointEnabled 缺字段与伪前缀（border.ts vs order.ts）拦截
 		const pathSyncScene = new Scene("path-sync", [
@@ -258,11 +258,11 @@ export function runSceneAndCatalogTests() {
 		// 伪子路径拦截：border.ts 绝不能匹配 order.ts（验证斜杠分隔符拼接）
 		assert.strictEqual(pathSyncScene.syncBreakpointEnabled({ file: "src/border.ts", line: 100, enabled: false }), false);
 		// 默认 target.enabled 未传时按 true 处理
-		pathSyncScene.getBreakpoints()[0].enabled = false;
+		pathSyncScene.getSteps()[0].enabled = false;
 		assert.strictEqual(pathSyncScene.syncBreakpointEnabled({ file: "src/order.ts", line: 100 }), true);
-		assert.strictEqual(pathSyncScene.getBreakpoints()[0].enabled, true);
+		assert.strictEqual(pathSyncScene.getSteps()[0].enabled, true);
 		// 对包含函数断点的场景执行行断点同步，函数断点不被影响
-		assert.strictEqual(pathSyncScene.getBreakpoints()[1].enabled, true);
+		assert.strictEqual(pathSyncScene.getSteps()[1].enabled, true);
 
 		// X. 【变异斩杀】getUnfingerprintedBreakpoints 与 backfillHealed 对函数断点和空值的隔离
 		const mixedScene = new Scene("mixed-test", [
@@ -284,15 +284,15 @@ export function runSceneAndCatalogTests() {
 			new Breakpoint({ file: "unique.ts", line: 2 }), // 新断点，必须被吸收
 		]);
 		mergeTarget.mergeFrom(mergeSource);
-		assert.strictEqual(mergeTarget.getBreakpoints().length, 2);
-		assert.strictEqual(mergeTarget.getBreakpoints()[1].file, "unique.ts");
+		assert.strictEqual(mergeTarget.getSteps().length, 2);
+		assert.strictEqual(mergeTarget.getSteps()[1].file, "unique.ts");
 		// 传入纯数组形式的 mergeFrom
 		mergeTarget.mergeFrom([
 			new Breakpoint({ file: "common.ts", line: 1 }),
 			new Breakpoint({ file: "extra.ts", line: 3 }),
 		]);
-		assert.strictEqual(mergeTarget.getBreakpoints().length, 3);
-		assert.strictEqual(mergeTarget.getBreakpoints()[2].file, "extra.ts");
+		assert.strictEqual(mergeTarget.getSteps().length, 3);
+		assert.strictEqual(mergeTarget.getSteps()[2].file, "extra.ts");
 
 		// Z. 【变异斩杀】getBreakpoint 边界斩杀、removeBreakpoint 极值与 setBreakpoints 默认值转换
 		const boundaryScene = new Scene("boundary-test", [
@@ -300,29 +300,29 @@ export function runSceneAndCatalogTests() {
 			new Breakpoint({ file: "last.ts", line: 20 }),
 		]);
 		// getBreakpoint 越界与合法索引
-		assert.strictEqual(boundaryScene.getBreakpoint(-1), undefined);
-		assert.strictEqual(boundaryScene.getBreakpoint(2), undefined); // index === length
-		assert.strictEqual(boundaryScene.getBreakpoint(3), undefined); // index > length
-		assert.strictEqual(boundaryScene.getBreakpoint(0)?.file, "first.ts");
-		assert.strictEqual(boundaryScene.getBreakpoint(1)?.file, "last.ts");
+		assert.strictEqual(boundaryScene.getStep(-1), undefined);
+		assert.strictEqual(boundaryScene.getStep(2), undefined); // index === length
+		assert.strictEqual(boundaryScene.getStep(3), undefined); // index > length
+		assert.strictEqual(boundaryScene.getStep(0)?.file, "first.ts");
+		assert.strictEqual(boundaryScene.getStep(1)?.file, "last.ts");
 
 		// removeBreakpoint 边界与正常删除
-		assert.strictEqual(boundaryScene.removeBreakpoint(2), false); // index === length
-		assert.strictEqual(boundaryScene.removeBreakpoint(-1), false);
-		assert.strictEqual(boundaryScene.removeBreakpoint(0), true);
-		assert.strictEqual(boundaryScene.getBreakpoints().length, 1);
-		assert.strictEqual(boundaryScene.getBreakpoints()[0].file, "last.ts");
+		assert.strictEqual(boundaryScene.removeStep(2), false); // index === length
+		assert.strictEqual(boundaryScene.removeStep(-1), false);
+		assert.strictEqual(boundaryScene.removeStep(0), true);
+		assert.strictEqual(boundaryScene.getSteps().length, 1);
+		assert.strictEqual(boundaryScene.getSteps()[0].file, "last.ts");
 
 		// toggleBreakpointEnabled 边界
-		assert.strictEqual(boundaryScene.toggleBreakpoint(1), false); // 当前只有 1 个断点，index 1 越界
+		assert.strictEqual(boundaryScene.toggleStep(1), false); // 当前只有 1 个断点，index 1 越界
 
 		// setBreakpoints 默认参数与纯 DTO 实例化
-		boundaryScene.setBreakpoints([{ file: "raw-dto.ts", line: 99, type: "line" }]);
-		assert.strictEqual(boundaryScene.getBreakpoints().length, 1);
-		assert.ok(boundaryScene.getBreakpoints()[0] instanceof Breakpoint, "传入纯对象必须自动提升为 Breakpoint 充血实体");
+		boundaryScene.setSteps([{ file: "raw-dto.ts", line: 99, type: "line" }]);
+		assert.strictEqual(boundaryScene.getSteps().length, 1);
+		assert.ok(boundaryScene.getSteps()[0] instanceof Breakpoint, "传入纯对象必须自动提升为 Breakpoint 充血实体");
 		// 不传参时默认赋空数组
-		boundaryScene.setBreakpoints();
-		assert.strictEqual(boundaryScene.getBreakpoints().length, 0);
+		boundaryScene.setSteps();
+		assert.strictEqual(boundaryScene.getSteps().length, 0);
 
 		// syncBreakpointEnabled 源码断点相同状态幂等返回 false
 		const noopSyncScene = new Scene("noop-sync", [
@@ -361,7 +361,7 @@ export function runSceneAndCatalogTests() {
 			false,
 			"非函数断点即使包含 functionName 字段也绝不能被函数同步器匹配",
 		);
-		assert.strictEqual(trickySyncScene.getBreakpoints()[0].enabled, true);
+		assert.strictEqual(trickySyncScene.getSteps()[0].enabled, true);
 
 		// target.line 为 undefined 或缺少 line 时，严禁穿透匹配
 		assert.strictEqual(
@@ -381,7 +381,7 @@ export function runSceneAndCatalogTests() {
 			true,
 			"正反斜杠归一化必须正常命中",
 		);
-		assert.strictEqual(pathSlashScene.getBreakpoints()[0].enabled, false);
+		assert.strictEqual(pathSlashScene.getSteps()[0].enabled, false);
 
 		// 伪子串隔离：order.ts 绝不可匹配 path-order.ts（击杀 endsWith("" + normBp) 突变体）
 		assert.strictEqual(
@@ -433,16 +433,16 @@ export function runSceneAndCatalogTests() {
 		assert.strictEqual(catalog.getBindings()["Launch Pay"], undefined, "bindings 必须联动清除");
 
 		// C. 场景克隆与目标文件过滤 (INV-004)
-		catalog.getOrCreateScene("source-scene").upsertBreakpoint(new Breakpoint({ file: "src/file1.ts", line: 10 }));
-		catalog.getOrCreateScene("source-scene").upsertBreakpoint(new Breakpoint({ file: "src/file2.ts", line: 20 }));
+		catalog.getOrCreateScene("source-scene").upsertStep(new Breakpoint({ file: "src/file1.ts", line: 10 }));
+		catalog.getOrCreateScene("source-scene").upsertStep(new Breakpoint({ file: "src/file2.ts", line: 20 }));
 		const dupAll = catalog.duplicateScene("source-scene", "dup-all");
 		assert.strictEqual(dupAll, true);
-		assert.strictEqual(catalog.getScene("dup-all").getBreakpoints().length, 2);
+		assert.strictEqual(catalog.getScene("dup-all").getSteps().length, 2);
 
 		const dupFiltered = catalog.duplicateScene("source-scene", "dup-filtered", "src/file1.ts");
 		assert.strictEqual(dupFiltered, true);
-		assert.strictEqual(catalog.getScene("dup-filtered").getBreakpoints().length, 1);
-		assert.strictEqual(catalog.getScene("dup-filtered").getBreakpoints()[0].file, "src/file1.ts");
+		assert.strictEqual(catalog.getScene("dup-filtered").getSteps().length, 1);
+		assert.strictEqual(catalog.getScene("dup-filtered").getSteps()[0].file, "src/file1.ts");
 	}
 
 	// ----------------------------------------------------
@@ -477,7 +477,7 @@ export function runSceneAndCatalogTests() {
 
 		// 获取叠加合并后的全量断点 (通过 Scene.merge 组合)
 		const activeScenes = catalog.getActiveScenes().map((n) => catalog.getScene(n));
-		const mergedBreakpoints = Scene.merge(activeScenes).getBreakpoints();
+		const mergedBreakpoints = Scene.merge(activeScenes).getSteps();
 		assert.strictEqual(mergedBreakpoints.length, 3, "共 3 处唯一物理断点");
 
 		// 冲突断点必须先到先得保留前序 sceneA 的属性
@@ -526,7 +526,7 @@ export function runSceneAndCatalogTests() {
 		// 验证 sceneA 内的原始断点是否被精准回填
 		const sceneA = catalog.getScene("sceneA");
 		assert.ok(sceneA);
-		const bp = sceneA.getBreakpoints()[0];
+		const bp = sceneA.getSteps()[0];
 		assert.strictEqual(bp.line, 12, "sceneA 内断点行号必须已自动同步回填");
 		assert.strictEqual(bp.contextSnippet?.current, "const healed = true;");
 	}
@@ -558,8 +558,8 @@ export function runSceneAndCatalogTests() {
 			}
 		}
 
-		assert.strictEqual(catalog.getScene("scene1").getBreakpoints()[0].contextSnippet?.current, "export const A = 1;");
-		assert.strictEqual(catalog.getScene("scene2").getBreakpoints()[0].contextSnippet?.current, "export const B = 2;");
+		assert.strictEqual(catalog.getScene("scene1").getSteps()[0].contextSnippet?.current, "export const A = 1;");
+		assert.strictEqual(catalog.getScene("scene2").getSteps()[0].contextSnippet?.current, "export const B = 2;");
 
 		// 再次查询未提取断点，必须为 0
 		const remaining = catalog.getAllScenes().flatMap((s) => s.getUnfingerprintedBreakpoints());
@@ -569,11 +569,11 @@ export function runSceneAndCatalogTests() {
 		// 8. 边缘分支防灾与覆盖率提升
 		// ----------------------------------------------------
 		const testScene = catalog.getScene("scene1");
-		assert.strictEqual(testScene.moveBreakpoint(-1, "up"), false);
-		assert.strictEqual(testScene.moveBreakpoint(99, "down"), false);
-		assert.strictEqual(testScene.toggleBreakpoint(-1), false);
-		assert.strictEqual(testScene.toggleBreakpoint(99), false);
-		assert.strictEqual(testScene.toggleBreakpoint(0), true);
+		assert.strictEqual(testScene.moveStep(-1, "up"), false);
+		assert.strictEqual(testScene.moveStep(99, "down"), false);
+		assert.strictEqual(testScene.toggleStep(-1), false);
+		assert.strictEqual(testScene.toggleStep(99), false);
+		assert.strictEqual(testScene.toggleStep(0), true);
 
 		// Scene.syncBreakpointEnabled 相对路径与后缀匹配
 		const mockEpBps = [
@@ -705,8 +705,8 @@ export function runSceneAndCatalogTests() {
 		const dupScene = dupCatalog.getScene("dupFiltered");
 		assert.ok(dupScene);
 		// 必须只包含 order.ts，绝不可包含 auth 函数断点与 border.ts 伪子路径
-		assert.strictEqual(dupScene.getBreakpoints().length, 1);
-		assert.strictEqual(dupScene.getBreakpoints()[0].file, "src/api/order.ts");
+		assert.strictEqual(dupScene.getSteps().length, 1);
+		assert.strictEqual(dupScene.getSteps()[0].file, "src/api/order.ts");
 
 		// F. activate 与 clearActive 显式持久化标记
 		const actCatalog = new SceneCatalog({
@@ -768,8 +768,8 @@ export function runSceneAndCatalogTests() {
 		});
 		assert.strictEqual(corruptCatalog.duplicateScene("corruptScene", "clonedCorrupt", "valid.ts"), true);
 		const clonedValid = corruptCatalog.getScene("clonedCorrupt");
-		assert.strictEqual(clonedValid?.getBreakpoints().length, 1);
-		assert.strictEqual(clonedValid?.getBreakpoints()[0].file, "valid.ts");
+		assert.strictEqual(clonedValid?.getSteps().length, 1);
+		assert.strictEqual(clonedValid?.getSteps()[0].file, "valid.ts");
 	}
 
 	console.log("  ✅ [Scene & Catalog] 场景实体与目录聚合根全维单元测试全部通过！");

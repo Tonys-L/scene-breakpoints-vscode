@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { getWorkspaceRoot } from "#src/ui/utils/commandRunner";
 import { sceneManager, breakpointManager, appEventBus, activeBreakpointIndex } from "#src/application";
+import type { SceneBreakpoint } from "#src/domain/types";
 
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import { BreakpointNode, PlaceholderNode, SceneNode, treeViewState, type SceneTreeItem } from "./treeNodes";
@@ -177,18 +178,22 @@ export class SceneTreeDataProvider
 			? config.scenes[sceneName]
 			: [];
 		const isActive = sceneStateManager.isSceneActive(sceneName);
-		return list.map((bp, idx) => {
-			const isUnmatched = bp.type !== "function" && isActive && sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
-			return new BreakpointNode(
-				sceneName,
-				idx,
-				bp,
-				workspaceRoot,
-				this.extensionPath,
-				this._pausedLocation,
-				{ isUnmatched },
-			);
-		});
+		// 批次 1 最小投影：引用条目暂不出现在平铺断点列表（嵌套投影属批次 4）；保留原始索引保证命令定位一致
+		return list
+			.map((item, idx) => ({ item, idx }))
+			.filter((it): it is { item: SceneBreakpoint; idx: number } => it.item.type !== "scene")
+			.map(({ item: bp, idx }) => {
+				const isUnmatched = bp.type !== "function" && isActive && sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
+				return new BreakpointNode(
+					sceneName,
+					idx,
+					bp,
+					workspaceRoot,
+					this.extensionPath,
+					this._pausedLocation,
+					{ isUnmatched },
+				);
+			});
 	}
 
 	public async getChildren(element?: SceneTreeItem): Promise<SceneTreeItem[]> {

@@ -6,7 +6,7 @@ import {
 	OFFICIAL_RULE_HISTORY,
 	AgentRuleAsset,
 	pureSha256,
-} from "#src/domain/models/agentRuleAsset";
+} from "#src/domain/models/agentRuleAsset.ts";
 
 // 便捷函数：等价于已删除的 skillLifecycleResolver 中的薄包装
 function stripSkillFrontmatter(content) {

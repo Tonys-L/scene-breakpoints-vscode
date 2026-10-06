@@ -1,9 +1,11 @@
 import { Fingerprint } from "./fingerprint";
+import type { SceneStep } from "./sceneStep";
 import type {
 	BreakpointType,
 	ContextSnippet,
 	FunctionSceneBreakpoint,
 	SceneBreakpoint,
+	SceneItem,
 	SourceSceneBreakpoint,
 } from "#src/domain/types";
 
@@ -23,8 +25,10 @@ export interface RawBreakpointInput {
 /**
  * 断点充血领域实体 (Breakpoint Entity)
  * 职责：封装 5 类断点的物理属性、启用状态、伴随指纹提取与物理行号自我修正
+ * 同时实现 SceneStep 协议（声明世界一等公民）；指纹/自愈等物理世界行为不进协议
  */
-export class Breakpoint {
+export class Breakpoint implements SceneStep {
+	public readonly kind = "breakpoint" as const;
 	public type: BreakpointType;
 	public file?: string;
 	public line?: number;
@@ -95,11 +99,10 @@ export class Breakpoint {
 	}
 
 	/**
-	 * 启闭切换
+	 * 启闭切换 (SceneStep 协议实现)
 	 */
-	public toggle(): boolean {
+	public toggle(): void {
 		this.enabled = !this.enabled;
-		return this.enabled;
 	}
 
 	/**
@@ -197,37 +200,30 @@ export class Breakpoint {
 	}
 
 	/**
-	 * 物理位置比对与跨平台路径归一化匹配
+	 * 物理位置比对与跨平台路径归一化匹配 (SceneStep 协议实现)
+	 * 非 Breakpoint（引用节点等）直接返回 false —— 引用与断点永不判等
 	 */
-	public matches(other: Breakpoint | SceneBreakpoint): boolean {
-		if (!other) return false;
+	public matches(other: SceneStep): boolean {
+		if (!(other instanceof Breakpoint)) return false;
 
 		if (this.type === "function") {
-			return (
-				(other as any).type === "function" &&
-				(other as any).functionName === this.functionName
-			);
+			return other.type === "function" && other.functionName === this.functionName;
 		}
 
-		if ((other as any).type === "function") {
+		if (other.type === "function") {
 			return false;
 		}
 
-		const otherFile = (other as SourceSceneBreakpoint).file
-			? (other as SourceSceneBreakpoint).file.replace(/\\/g, "/")
-			: "";
+		const otherFile = other.file ? other.file.replace(/\\/g, "/") : "";
 		const currentFile = this.file ? this.file.replace(/\\/g, "/") : "";
 
-		return (
-			currentFile.toLowerCase() === otherFile.toLowerCase() &&
-			this.line === (other as SourceSceneBreakpoint).line
-		);
+		return currentFile.toLowerCase() === otherFile.toLowerCase() && this.line === other.line;
 	}
 
 	/**
-	 * 导出为符合 schema.json 规范的纯 DTO 对象
+	 * 导出为符合 schema.json 规范的纯 DTO 对象 (SceneStep 协议实现)
 	 */
-	public toJSON(): SceneBreakpoint {
+	public toJSON(): SceneItem {
 		if (this.type === "function") {
 			const res: FunctionSceneBreakpoint = {
 				type: "function",
@@ -257,10 +253,10 @@ export class Breakpoint {
 	}
 
 	public get raw(): SceneBreakpoint {
-		return this.toJSON();
+		return this.toJSON() as SceneBreakpoint;
 	}
 
 	public clone(): Breakpoint {
-		return new Breakpoint(this.toJSON());
+		return new Breakpoint(this.toJSON() as SceneBreakpoint);
 	}
 }

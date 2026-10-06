@@ -1,5 +1,6 @@
 import assert from "node:assert";
 import { mutateCatalog } from "#src/application/mutateCatalog";
+import { Breakpoint } from "#src/domain/models/breakpoint";
 import { SerialQueue } from "#src/application/serialQueue";
 import { appEventBus } from "#src/application/eventBus";
 import { resetDependencies } from "#src/application/dependencies";
@@ -93,7 +94,7 @@ export async function runMutateCatalogTests() {
 			"/mock/workspace",
 			(catalog) => {
 				const sc = catalog.getScene("sceneA");
-				sc.upsertBreakpoint({ file: "app.ts", line: 42, enabled: true });
+				sc.upsertStep(new Breakpoint({ file: "app.ts", line: 42, enabled: true }));
 				return true;
 			},
 			{ sceneRepository: repo, notify: { sceneName: "sceneA" } },
@@ -205,7 +206,7 @@ export async function runMutateCatalogTests() {
 			"/mock/workspace",
 			(catalog) => {
 				const sc = catalog.getScene("activeScene");
-				return sc.removeBreakpoint(0);
+				return sc.removeStep(0);
 			},
 			{ sceneRepository: repo, breakpointBridge: mockBridge },
 		);

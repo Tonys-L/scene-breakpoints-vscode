@@ -1,10 +1,11 @@
 import { Breakpoint } from "#src/domain/models/breakpoint";
+import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { sceneStateManager } from "./sceneStateManager";
 import { applicationSerialQueue, type SerialQueue } from "./serialQueue";
 import { getDependencies } from "./dependencies";
 import { appEventBus } from "./eventBus";
-import type { SceneBreakpoint, ScenesConfig } from "#src/domain/types";
+import type { SceneItem, ScenesConfig } from "#src/domain/types";
 import { mutateCatalog } from "./mutateCatalog";
 import {
 	type ActivateSceneResult,
@@ -122,9 +123,9 @@ export class SceneManager {
 				(catalog) => {
 					const scene = catalog.getOrCreateScene(targetScene);
 					if (mode === "append") {
-						for (const bp of exportedBps) scene.upsertBreakpoint(new Breakpoint(bp));
+						for (const bp of exportedBps) scene.upsertStep(new Breakpoint(bp));
 					} else {
-						scene.setBreakpoints(exportedBps.map((b) => new Breakpoint(b)));
+						scene.setSteps(exportedBps.map((b) => new Breakpoint(b)));
 					}
 					return true;
 				},
@@ -203,12 +204,12 @@ export class SceneManager {
 	}
 
 	/**
-	 * 从外部断点列表导入场景（支持覆盖与追加合并）
+	 * 从外部步骤列表导入场景（支持覆盖与追加合并；断点与引用条目均按声明态适配）
 	 */
 	public async importScene(
 		workspaceRoot: string,
 		sceneName: string,
-		breakpoints: SceneBreakpoint[],
+		items: SceneItem[],
 		mode: "overwrite" | "append" = "overwrite",
 		options?: SceneOpOptions,
 	): Promise<boolean> {
@@ -219,9 +220,10 @@ export class SceneManager {
 			(catalog) => {
 				const scene = catalog.getOrCreateScene(target);
 				if (mode === "append") {
-					for (const bp of breakpoints) scene.upsertBreakpoint(new Breakpoint(bp));
+					const incoming = new Scene(target, items);
+					for (const step of incoming.getSteps()) scene.upsertStep(step);
 				} else {
-					scene.setBreakpoints(breakpoints.map((b) => new Breakpoint(b)));
+					scene.setSteps(items);
 				}
 				return true;
 			},

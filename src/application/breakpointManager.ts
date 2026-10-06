@@ -57,8 +57,8 @@ export class BreakpointManager {
 				workspaceRoot,
 				(catalog) => {
 					const scene = catalog.getOrCreateScene(targetScene);
-					scene.upsertBreakpoint(new Breakpoint(breakpoint));
-					totalBreakpoints = scene.getBreakpoints().length;
+					scene.upsertStep(new Breakpoint(breakpoint));
+					totalBreakpoints = scene.getSteps().length;
 					return true;
 				},
 				{
@@ -108,7 +108,7 @@ export class BreakpointManager {
 			(catalog) => {
 				const scene = catalog.getScene(sceneName);
 				if (!scene) return false;
-				return scene.removeBreakpoint(index);
+				return scene.removeStep(index);
 			},
 			{
 				...options,
@@ -135,10 +135,11 @@ export class BreakpointManager {
 			(catalog) => {
 				const scene = catalog.getScene(sceneName);
 				if (!scene) return false;
-				const bp = scene.getBreakpoint(index);
-				if (!bp) return false;
-				newEnabled = targetEnabled !== undefined ? targetEnabled : !bp.enabled;
-				bp.enabled = newEnabled;
+				const step = scene.getStep(index);
+				if (!step) return false;
+				const currentEnabled = step.toJSON().enabled !== false;
+				newEnabled = targetEnabled !== undefined ? targetEnabled : !currentEnabled;
+				if (newEnabled !== currentEnabled) step.toggle();
 				return true;
 			},
 			{
@@ -172,7 +173,7 @@ export class BreakpointManager {
 			(catalog) => {
 				const scene = catalog.getScene(sceneName);
 				if (!scene) return false;
-				scene.setAllEnabled(enabled);
+				scene.setAllStepsEnabled(enabled);
 				return true;
 			},
 			{
@@ -198,7 +199,7 @@ export class BreakpointManager {
 			(catalog) => {
 				const scene = catalog.getScene(sceneName);
 				if (!scene) return false;
-				return scene.moveBreakpoint(index, direction);
+				return scene.moveStep(index, direction);
 			},
 			{
 				...options,
@@ -223,7 +224,7 @@ export class BreakpointManager {
 			(catalog) => {
 				const scene = catalog.getScene(sceneName);
 				if (!scene) return false;
-				return scene.reorderBreakpoint(sourceIndex, targetIndex);
+				return scene.reorderStep(sourceIndex, targetIndex);
 			},
 			{
 				...options,

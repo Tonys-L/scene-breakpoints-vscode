@@ -1,4 +1,4 @@
-import type { SceneBreakpoint, ScenesConfig } from "#src/domain/types";
+import type { SceneBreakpoint, SceneItem, SceneRefItem, ScenesConfig } from "#src/domain/types";
 import { Scene } from "#src/domain/models/scene";
 import { stripMarkdown, stripComments } from "#src/shared/utils/textUtils";
 
@@ -10,7 +10,7 @@ export interface SupportedFormatsTitles {
 }
 
 export type ParsePayloadResult =
-	| { success: true; sceneName: string; breakpoints: SceneBreakpoint[] }
+	| { success: true; sceneName: string; breakpoints: SceneItem[] }
 	| { success: false; error: string };
 
 export const SCHEMA_URL =
@@ -18,18 +18,19 @@ export const SCHEMA_URL =
 export const MAX_PAYLOAD_SIZE = 1024 * 1024; // 1MB
 
 /**
- * 将指定场景实体或断点列表无损序列化为标准 JSON 字符串 (纯函数)
+ * 将指定场景实体或步骤列表无损序列化为标准 JSON 字符串 (纯函数)
+ * 导出为声明态（含引用条目，引用是声明的一部分）
  */
 export function encodeScenePayload(
 	sceneOrName: Scene | string,
-	breakpoints?: SceneBreakpoint[],
+	breakpoints?: SceneItem[],
 ): string {
 	let name: string;
-	let bps: SceneBreakpoint[];
+	let bps: SceneItem[];
 
 	if (sceneOrName instanceof Scene) {
 		name = sceneOrName.name;
-		bps = sceneOrName.getBreakpoints().map((b) => b.raw);
+		bps = sceneOrName.getSteps().map((s) => s.toJSON());
 	} else {
 		name = sceneOrName;
 		bps = breakpoints || [];
@@ -41,7 +42,7 @@ export function encodeScenePayload(
 		sceneName: name.trim(),
 		exportedAt: new Date().toISOString(),
 		breakpoints: bps.map((bp) => {
-			if (bp.type !== "function") {
+			if (bp.type !== "function" && "file" in bp && bp.file) {
 				return {
 					...bp,
 					file: bp.file.replace(/\\/g, "/"),
@@ -91,41 +92,63 @@ function resolveCandidatePayload(
 	return { targetSceneName: fallbackSceneName, candidateBreakpoints: [] };
 }
 
-function sanitizeBreakpoints(candidates: any[]): SceneBreakpoint[] {
-	const validBreakpoints: SceneBreakpoint[] = [];
-	for (const item of candidates) {
-		if (!item || typeof item !== "object") continue;
+/** 引用条目清洗：name 非空必填，键白名单（仅 desc/enabled），非法引用丢弃 (INV-030.7) */
+function sanitizeSceneRefItem(item: any): SceneRefItem | undefined {
+	const name = typeof item.name === "string" ? item.name.trim() : "";
+	if (!name) return undefined;
+	const out: SceneRefItem = { type: "scene", name };
+	const trimmedDesc = typeof item.desc === "string" ? item.desc.trim() : "";
+	if (trimmedDesc) out.desc = trimmedDesc;
+	if (item.enabled === false) out.enabled = false;
+	return out;
+}
 
-		if (item.type === "function") {
-			if (typeof item.functionName === "string" && item.functionName.trim()) {
-				validBreakpoints.push({
-					type: "function",
-					functionName: item.functionName.trim(),
-					condition: item.condition?.trim() || undefined,
-					hitCondition: item.hitCondition?.trim() || undefined,
-					enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-					desc: item.desc?.trim() || undefined,
-				});
-			}
-			continue;
-		}
-
-		if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
-			const type = ["condition", "hitCount", "logpoint"].includes(item.type) ? item.type : "line";
-			validBreakpoints.push({
-				type,
-				file: item.file.trim().replace(/\\/g, "/"),
-				line: Math.floor(item.line),
+/** 断点条目清洗（file/line 或 functionName 合法性校验） */
+function sanitizeBreakpointEntry(item: any): SceneBreakpoint | undefined {
+	if (item.type === "function") {
+		if (typeof item.functionName === "string" && item.functionName.trim()) {
+			return {
+				type: "function",
+				functionName: item.functionName.trim(),
 				condition: item.condition?.trim() || undefined,
 				hitCondition: item.hitCondition?.trim() || undefined,
-				logMessage: item.logMessage?.trim() || undefined,
 				enabled: typeof item.enabled === "boolean" ? item.enabled : true,
 				desc: item.desc?.trim() || undefined,
-				contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : undefined,
-			});
+			};
 		}
+		return undefined;
 	}
-	return validBreakpoints;
+
+	if (typeof item.file === "string" && item.file.trim() && typeof item.line === "number" && item.line > 0) {
+		const type = ["condition", "hitCount", "logpoint"].includes(item.type) ? item.type : "line";
+		return {
+			type,
+			file: item.file.trim().replace(/\\/g, "/"),
+			line: Math.floor(item.line),
+			condition: item.condition?.trim() || undefined,
+			hitCondition: item.hitCondition?.trim() || undefined,
+			logMessage: item.logMessage?.trim() || undefined,
+			enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+			desc: item.desc?.trim() || undefined,
+			contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : undefined,
+		};
+	}
+	return undefined;
+}
+
+/**
+ * 场景条目多态清洗：引用走白名单校验，断点沿用既有字段校验，非对象/非法条目丢弃 (INV-006 / INV-030.7)
+ */
+function sanitizeSceneItem(item: any): SceneItem | undefined {
+	if (!item || typeof item !== "object") return undefined;
+	if (item.type === "scene") return sanitizeSceneRefItem(item);
+	return sanitizeBreakpointEntry(item);
+}
+
+function sanitizeBreakpoints(candidates: any[]): SceneItem[] {
+	return candidates
+		.map((item) => sanitizeSceneItem(item))
+		.filter((item): item is SceneItem => !!item);
 }
 
 /**
@@ -241,10 +264,12 @@ export function sanitizeScenesConfig(parsed: any): ScenesConfig {
 		? parsed.scenes
 		: parsed;
 
-	const cleanScenes: Record<string, any[]> = {};
+	const cleanScenes: Record<string, SceneItem[]> = {};
 	for (const [k, v] of Object.entries(candidateScenes)) {
 		if (k !== "$schema" && k !== "bindings" && k !== "activeScenes" && Array.isArray(v)) {
-			cleanScenes[k] = (v as any[]).filter((it) => it && typeof it === "object");
+			cleanScenes[k] = (v as unknown[])
+				.map((it) => sanitizeSceneItem(it))
+				.filter((it): it is SceneItem => !!it);
 		}
 	}
 

@@ -1,4 +1,4 @@
-import type { Breakpoint } from "./breakpoint";
+import { Breakpoint } from "./breakpoint";
 import { Scene } from "./scene";
 import type { ScenesConfig } from "#src/domain/types";
 
@@ -178,11 +178,11 @@ export class SceneCatalog {
 		if (targetFile) {
 			const normTargetFile = targetFile.replace(/\\/g, "/").toLowerCase();
 			const clonedBreakpoints: Breakpoint[] = [];
-			for (const bp of sourceScene.getBreakpoints()) {
-				if (bp.type === "function") continue;
-				const bpFile = (bp.file || "").replace(/\\/g, "/").toLowerCase();
+			for (const step of sourceScene.getSteps()) {
+				if (!(step instanceof Breakpoint)) continue; // 引用节点无文件归属，不参与文件过滤克隆
+				const bpFile = (step.file || "").replace(/\\/g, "/").toLowerCase();
 				if (bpFile === normTargetFile || bpFile.endsWith("/" + normTargetFile)) {
-					clonedBreakpoints.push(bp.clone());
+					clonedBreakpoints.push(step.clone());
 				}
 			}
 			this.scenes.set(trimmedTarget, new Scene(trimmedTarget, clonedBreakpoints));

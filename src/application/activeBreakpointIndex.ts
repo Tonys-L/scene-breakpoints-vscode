@@ -1,4 +1,4 @@
-import type { SceneBreakpoint, ScenesConfig, SourceSceneBreakpoint } from "#src/domain/types";
+import type { SceneItem, ScenesConfig, SourceSceneBreakpoint } from "#src/domain/types";
 import { isFilePathMatch, normalizeFsPath } from "#src/shared/utils/pathUtils";
 import { appEventBus, type IDisposable } from "./eventBus";
 
@@ -54,7 +54,7 @@ export class ActiveBreakpointIndex {
 	 */
 	public sync(
 		workspaceRoot: string,
-		scenes: Record<string, SceneBreakpoint[]>,
+		scenes: Record<string, SceneItem[]>,
 		activeScenes: string[],
 	): void {
 		this.workspaceRoot = workspaceRoot;
@@ -70,7 +70,8 @@ export class ActiveBreakpointIndex {
 
 			let stepIndex = 0;
 			for (const bp of sceneBps) {
-				if (!bp || typeof bp !== "object" || bp.type === "function") continue;
+				// 引用条目无物理身份，不参与物理断点索引（声明世界 → 物理世界投影收窄点）
+				if (!bp || typeof bp !== "object" || bp.type === "function" || bp.type === "scene") continue;
 				stepIndex++;
 
 				const srcBp = bp as SourceSceneBreakpoint;

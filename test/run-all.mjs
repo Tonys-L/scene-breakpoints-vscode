@@ -12,6 +12,7 @@ import { runFingerprintVoTests } from "./unit/domain/models/fingerprint.test.mjs
 import { runBreakpointEntityTests } from "./unit/domain/models/breakpoint.test.mjs";
 import { runSceneAndCatalogTests } from "./unit/domain/models/scene_catalog.test.mjs";
 import { runConfigTests } from "./unit/domain/models/scene.test.mjs";
+import { runSceneStepTests } from "./unit/domain/models/scene_step.test.mjs";
 import { runSkillLifecycleTests } from "./unit/domain/models/agent_rule_asset.test.mjs";
 import { runHealingTests } from "./unit/domain/services/healing_engine.test.mjs";
 import { runAiActivationTests } from "./unit/domain/services/active_scenes_diff_resolver.test.mjs";
@@ -96,6 +97,8 @@ try {
 	await runHealingTests();
 	console.log("");
 	runConfigTests();
+	console.log("");
+	runSceneStepTests();
 	console.log("");
 	runAiActivationTests();
 	console.log("");

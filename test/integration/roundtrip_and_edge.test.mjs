@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -86,7 +86,7 @@ export function runRoundtripAndEdgeTests() {
 	const catalog = SceneCatalog.fromConfig(config);
 	const scene = catalog.getScene("checkout-flow");
 	for (const bp of exportedBps) {
-		scene.upsertBreakpoint(new Breakpoint(bp));
+		scene.upsertStep(new Breakpoint(bp));
 	}
 
 	const list = catalog.toJSON().scenes["checkout-flow"];

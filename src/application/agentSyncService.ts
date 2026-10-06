@@ -1,4 +1,5 @@
 import type { IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
+import type { Breakpoint } from "#src/domain/models/breakpoint";
 import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { computeTopologyHash, resolveActiveScenesDiff } from "#src/domain/services/activeScenesDiffResolver";
@@ -137,7 +138,11 @@ export class AgentSyncService {
 		const activeScenes = currentActives
 			.map((name) => catalog.getScene(name))
 			.filter((s): s is Scene => !!s);
-		const merged = Scene.merge(activeScenes).getBreakpoints().map((bp) => bp.toJSON());
+		// 视图场景恒为纯断点（merge 仅吸收具象断点）；引用展开流接入见批次 3（expandScenes）
+		const merged = Scene.merge(activeScenes)
+			.getSteps()
+			.filter((s): s is Breakpoint => s.kind === "breakpoint")
+			.map((bp) => bp.raw);
 		const newTopologyHash = computeTopologyHash(merged);
 
 		if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {

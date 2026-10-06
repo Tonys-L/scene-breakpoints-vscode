@@ -1,4 +1,5 @@
 import type { IBreakpointBridge, ISceneRepository } from "#src/domain/ports";
+import type { Breakpoint } from "#src/domain/models/breakpoint";
 import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { computeTopologyHash } from "#src/domain/services/activeScenesDiffResolver";
@@ -24,7 +25,11 @@ export type CatalogMutationOptions = MutateCatalogOptions;
 function getMergedActiveBreakpoints(catalog: SceneCatalog, activeScenes: string[]): SceneBreakpoint[] {
 	const validScenes = activeScenes.map((name) => catalog.getScene(name)).filter((s): s is Scene => !!s);
 	if (validScenes.length === 0) return [];
-	return Scene.merge(validScenes).getBreakpoints().map((b) => b.toJSON());
+	// 视图场景恒为纯断点（merge 仅吸收具象断点）；引用展开流接入见批次 3（expandScenes）
+	return Scene.merge(validScenes)
+		.getSteps()
+		.filter((s): s is Breakpoint => s.kind === "breakpoint")
+		.map((b) => b.raw);
 }
 
 async function syncActiveBreakpointsIfNeeded(

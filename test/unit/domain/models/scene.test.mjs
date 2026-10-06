@@ -1,4 +1,4 @@
-import assert from "node:assert";
+﻿import assert from "node:assert";
 import { SceneCatalog, Scene, Breakpoint } from "#src/domain/models/index.ts";
 import { LaunchBindingResolver, resolveLaunchBoundScenes } from "#src/domain/services/launchBindingResolver.ts";
 
@@ -28,14 +28,14 @@ export function upsertBreakpointToSceneDomain(config, sceneName, bp) {
 	if (!config || !config.scenes || !sceneName || !sceneName.trim() || !bp) return;
 	const catalog = SceneCatalog.fromConfig(config);
 	const scene = catalog.getOrCreateScene(sceneName);
-	scene.upsertBreakpoint(new Breakpoint(bp));
+	scene.upsertStep(new Breakpoint(bp));
 	config.scenes[sceneName.trim()] = scene.toJSON();
 }
 
 export function mergeScenesBreakpoints(config, sceneNames) {
 	const catalog = SceneCatalog.fromConfig(config);
 	const targetScenes = sceneNames.map((n) => catalog.getScene(n)).filter(Boolean);
-	return Scene.merge(targetScenes).getBreakpoints().map((b) => b.toJSON());
+	return Scene.merge(targetScenes).getSteps().map((b) => b.toJSON());
 }
 
 export function setAllBreakpointsEnabledInScene(config, sceneName, enabled) {
@@ -43,7 +43,7 @@ export function setAllBreakpointsEnabledInScene(config, sceneName, enabled) {
 	const catalog = SceneCatalog.fromConfig(config);
 	const scene = catalog.getScene(sceneName);
 	if (!scene) return false;
-	const changed = scene.setAllEnabled(enabled);
+	const changed = scene.setAllStepsEnabled(enabled);
 	if (changed) {
 		config.scenes[sceneName] = scene.toJSON();
 	}
@@ -89,7 +89,7 @@ export function removeBreakpointFromConfig(config, sceneName, index) {
 	const catalog = SceneCatalog.fromConfig(config);
 	const scene = catalog.getScene(sceneName);
 	if (!scene) return false;
-	const ok = scene.removeBreakpoint(index);
+	const ok = scene.removeStep(index);
 	if (ok) {
 		config.scenes[sceneName] = scene.toJSON();
 	}
@@ -101,7 +101,7 @@ export function toggleBreakpointEnabledInConfig(config, sceneName, index) {
 	const catalog = SceneCatalog.fromConfig(config);
 	const scene = catalog.getScene(sceneName);
 	if (!scene) return false;
-	const ok = scene.toggleBreakpointEnabled(index);
+	const ok = scene.toggleStep(index);
 	if (ok) {
 		config.scenes[sceneName] = scene.toJSON();
 	}

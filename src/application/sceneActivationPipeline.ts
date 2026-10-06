@@ -143,8 +143,11 @@ export async function executeSceneActivation(
 	const missingScenes = actResult.missingScenes;
 
 	// 2. 聚合多场景断点并去重 (先到先得策略 INV-001, INV-011)
+	// 视图场景恒为纯断点（merge 仅吸收具象断点）；引用展开流接入见批次 3（expandScenes）
 	const activeScenes = validTargetScenes.map((name) => catalog.getScene(name)).filter((s): s is Scene => !!s);
-	const mergedBreakpoints = Scene.merge(activeScenes).getBreakpoints();
+	const mergedBreakpoints = Scene.merge(activeScenes)
+		.getSteps()
+		.filter((s): s is Breakpoint => s.kind === "breakpoint");
 
 	// 2.1 应用层前置自愈与指纹富化管道 (Healing & Fingerprint Enrich Pipeline)
 	const {
@@ -158,7 +161,7 @@ export async function executeSceneActivation(
 		unmatchedBreakpoints.map((bp) => `${bp.file.replace(/\\/g, "/")}:${bp.line}`),
 	);
 
-	const bpsToLoad = mergedBreakpoints.map((b) => b.toJSON());
+	const bpsToLoad = mergedBreakpoints.map((b) => b.raw);
 	const primarySceneLabel = validTargetScenes.length === 1 ? validTargetScenes[0] : validTargetScenes.join(" + ");
 
 	// 3. 权威持久化 SSOT 写入约束：若 activeScenes 变化，先落盘 (INV-010)
