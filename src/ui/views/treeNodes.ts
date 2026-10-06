@@ -366,11 +366,7 @@ export class SceneRefTreeItem extends vscode.TreeItem {
 			: options.enabled
 				? new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"))
 				: new vscode.ThemeIcon("circle-slash");
-		this.command = {
-			command: "sceneBreakpoints.revealRefSource",
-			title: vscode.l10n.t("Reveal Referenced Scene Source"),
-			arguments: [ctx.refName, ctx.sceneName],
-		};
+		// 单击 = 展开/折叠（与顶层场景一致）；跳转源场景由 inline $(go-to-file) 图标与右键菜单承接
 	}
 
 	/** 声明所在场景（toggle/remove/move 的路由目标） */

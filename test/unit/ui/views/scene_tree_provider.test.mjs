@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -547,7 +547,7 @@ export async function runTreeViewTests() {
 		assert.strictEqual(refNode.id, "scene:payment-debug/ref:auth-core", "稳定 id 必须编码声明路径");
 		assert.strictEqual(refNode.index, 0, "引用节点必须携带声明索引（toggle/remove 用）");
 		assert.strictEqual(refNode.sceneName, "payment-debug", "引用节点必须携带声明所在场景");
-		assert.strictEqual(refNode.command?.command, "sceneBreakpoints.revealRefSource", "引用节点点击必须触发源场景导航");
+		assert.strictEqual(refNode.command, undefined, "引用节点单击必须保持展开/折叠语义（跳转由 inline 图标与右键菜单承接）");
 		assert.strictEqual(refNode.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
 
 		// B. 引用子树一层展开：源场景声明态 + 只读断点 + 二级嵌套引用
