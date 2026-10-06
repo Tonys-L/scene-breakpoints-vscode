@@ -17,6 +17,7 @@ import { runSkillLifecycleTests } from "./unit/domain/models/agent_rule_asset.te
 import { runHealingTests } from "./unit/domain/services/healing_engine.test.mjs";
 import { runAiActivationTests } from "./unit/domain/services/active_scenes_diff_resolver.test.mjs";
 import { runScenePayloadCodecTests } from "./unit/domain/services/scene_payload_codec.test.mjs";
+import { runSceneResolverTests } from "./unit/domain/services/scene_resolver.test.mjs";
 
 // Application Layer Unit Tests (coordinators & services)
 import { runSceneServiceTests } from "./unit/application/scene_manager.test.mjs";
@@ -66,7 +67,7 @@ import { runRoundtripAndEdgeTests } from "./integration/roundtrip_and_edge.test.
 import { runI18nTests } from "./integration/i18n.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 50 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
+console.log("🚀 开始执行 Scene Breakpoints 全量 51 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -105,6 +106,8 @@ try {
 	runSkillLifecycleTests();
 	console.log("");
 	runScenePayloadCodecTests();
+	console.log("");
+	runSceneResolverTests();
 	console.log("");
 
 	// 3. 应用层服务编排测试 (Application 1:1 镜像)
@@ -192,7 +195,7 @@ try {
 
 	const duration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 50 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
+	console.log(`🎉 全部 51 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
 	console.log("=======================================================\n");
 } catch (error) {
 	console.error("\n❌ 测试套件执行失败：\n", error);
