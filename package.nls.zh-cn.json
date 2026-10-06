@@ -24,6 +24,7 @@
   "command.moveBreakpointDown": "下移断点 (Alt+↓)",
   "command.moveBreakpointToTop": "置顶断点",
   "command.moveBreakpointToBottom": "置底断点",
+  "command.revealRefSource": "跳转到引用源场景",
   "command.diagnoseAiIntegration": "诊断 AI Agent 集成状态...",
   "command.installSkill": "安装 AI Agent 断点场景管理 Skill...",
   "config.autoActivateOnLaunch": "启动调试配置时自动联动激活关联的场景断点",

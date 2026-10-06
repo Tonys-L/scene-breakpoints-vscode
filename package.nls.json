@@ -24,6 +24,7 @@
   "command.moveBreakpointDown": "Move Breakpoint Down (Alt+↓)",
   "command.moveBreakpointToTop": "Move Breakpoint to Top",
   "command.moveBreakpointToBottom": "Move Breakpoint to Bottom",
+  "command.revealRefSource": "Reveal Referenced Scene Source",
   "command.diagnoseAiIntegration": "Diagnose AI Integration...",
   "command.installSkill": "Install AI Agent Skill...",
   "config.autoActivateOnLaunch": "Automatically activate bound scene breakpoints when a debug launch configuration is started",

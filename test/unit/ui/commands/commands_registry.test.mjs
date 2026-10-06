@@ -49,7 +49,7 @@ export function runCommandsRegistryTests() {
 		for (const cmdId of expectedCoreCmds) {
 			assert.strictEqual(vscode.commands._registered.has(cmdId), true, `核心命令 [${cmdId}] 必须被生产代码正确注册`);
 		}
-		assert.strictEqual(context.subscriptions.length, 9, "基础交互命令数量必须严格对齐 9 个");
+		assert.strictEqual(context.subscriptions.length, 10, "基础交互命令 + 解析警告通知器数量必须严格对齐 10 个");
 	}
 
 	// 2. 测试带 TreeDataProvider 依赖注入时的 14 大级联树命令与真实方法调度
@@ -87,7 +87,7 @@ export function runCommandsRegistryTests() {
 		for (const cmdId of treeCmds) {
 			assert.strictEqual(vscode.commands._registered.has(cmdId), true, `树命令 [${cmdId}] 必须被生产代码正确级联注册`);
 		}
-		assert.strictEqual(context.subscriptions.length, 9 + 16, "核心命令 + 树命令总数必须严格为 25 个");
+		assert.strictEqual(context.subscriptions.length, 10 + 17, "核心命令 + 通知器 + 树命令（含 revealRefSource）总数必须严格为 27 个");
 
 		// 测试 refreshView 处理器真实调度
 		assert.strictEqual(refreshed, false);
@@ -151,7 +151,7 @@ export function runCommandsRegistryTests() {
 		const context = new MockExtensionContext();
 		registerAllCommands(context, { treeDataProvider: { refresh: () => {} } });
 
-		assert.strictEqual(vscode.commands._registered.size, 25, "注册完成后应有 25 个已注册命令");
+		assert.strictEqual(vscode.commands._registered.size, 26, "注册完成后应有 26 个已注册命令");
 
 		// 模拟插件停用或重载，逐一调用 subscriptions 中的 dispose
 		for (const sub of context.subscriptions) {

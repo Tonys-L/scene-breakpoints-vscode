@@ -8,12 +8,13 @@ import { SceneCatalog, Scene } from "#src/domain/models/index.ts";
 import {
 	BreakpointNode,
 	SceneNode,
+	SceneRefTreeItem,
 	SceneTreeDataProvider,
 	PlaceholderNode,
 } from "#src/ui/views/sceneTreeProvider.ts";
 import { sceneStateManager } from "#src/application/sceneStateManager.ts";
 import { configureDependencies } from "#src/application/dependencies.ts";
-import { saveScenesConfig, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository.ts";
+import { saveScenesConfig, loadScenesConfig, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository.ts";
 import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator.ts";
 
 export async function runTreeViewTests() {
@@ -504,6 +505,177 @@ export async function runTreeViewTests() {
 
 		fs.rmSync(tmpWs, { recursive: true, force: true });
 		console.log("    ✔ revealPausedLocation 自动展开定位与高亮复位测试通过");
+	}
+
+	// ============================================================================
+	// Case 14: 批次4嵌套投影 —— 引用条目声明态投影（SceneRefTreeItem / 只读断点 / 悬空 / 禁用 / 稳定 id）
+	// ============================================================================
+	{
+		const tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), "sb-ref-proj-"));
+		vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpWs } }];
+		const projConfig = {
+			scenes: {
+				"payment-debug": [
+					{ type: "scene", name: "auth-core", desc: "auth chain" },
+					{ type: "line", file: "payment.ts", line: 40 },
+					{ type: "scene", name: "ghost-scene" },
+					{ type: "scene", name: "empty-core", enabled: false },
+				],
+				"auth-core": [
+					{ type: "line", file: "auth.ts", line: 12 },
+					{ type: "scene", name: "session-core" },
+				],
+				"session-core": [{ type: "line", file: "session.ts", line: 45 }],
+				"empty-core": [],
+			},
+		};
+		saveScenesConfig(tmpWs, projConfig);
+
+		const provider = new SceneTreeDataProvider("/mock/ext");
+		const rootNodes = await provider.getChildren();
+		const payNode = rootNodes.find((n) => n instanceof SceneNode && n.sceneName === "payment-debug");
+
+		// A. 场景级声明态投影：引用条目不再被过滤，与断点按声明序混合输出
+		const stepNodes = await provider.getChildren(payNode);
+		assert.strictEqual(stepNodes.length, 4, "引用与断点必须全部投影");
+		assert.ok(stepNodes[0] instanceof SceneRefTreeItem, "引用条目必须投影为 SceneRefTreeItem");
+		assert.ok(stepNodes[1] instanceof BreakpointNode);
+		const refNode = stepNodes[0];
+		assert.strictEqual(refNode.label, "auth-core");
+		assert.strictEqual(refNode.description, "auth chain", "引用 desc 必须作为节点描述");
+		assert.strictEqual(refNode.contextValue, "sceneRef");
+		assert.strictEqual(refNode.id, "scene:payment-debug/ref:auth-core", "稳定 id 必须编码声明路径");
+		assert.strictEqual(refNode.index, 0, "引用节点必须携带声明索引（toggle/remove 用）");
+		assert.strictEqual(refNode.sceneName, "payment-debug", "引用节点必须携带声明所在场景");
+		assert.strictEqual(refNode.command?.command, "sceneBreakpoints.revealRefSource", "引用节点点击必须触发源场景导航");
+		assert.strictEqual(refNode.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
+
+		// B. 引用子树一层展开：源场景声明态 + 只读断点 + 二级嵌套引用
+		const refChildren = await provider.getChildren(refNode);
+		assert.strictEqual(refChildren.length, 2);
+		const readonlyBp = refChildren[0];
+		assert.ok(readonlyBp instanceof BreakpointNode);
+		assert.strictEqual(readonlyBp.contextValue, "breakpointReadonly", "引用内断点必须标记只读 contextValue");
+		assert.strictEqual(readonlyBp.checkboxState, undefined, "只读断点不得提供复选框启停（实体主权，防双写漂移）");
+		assert.strictEqual(readonlyBp.sceneName, "auth-core", "只读断点的归属场景必须是被引用源场景");
+		assert.strictEqual(
+			readonlyBp.id,
+			"scene:payment-debug/ref:auth-core/bp:0",
+			"只读断点 id 必须走声明路径 scheme（防跨场景重复 id）",
+		);
+		const nestedRef = refChildren[1];
+		assert.ok(nestedRef instanceof SceneRefTreeItem, "二级引用必须继续投影为引用节点");
+		assert.strictEqual(nestedRef.id, "scene:payment-debug/ref:auth-core/ref:session-core", "多层引用路径逐段累积");
+		assert.strictEqual(nestedRef.sceneName, "auth-core", "二级引用的声明所在场景必须是上级源场景");
+		const nestedChildren = await provider.getChildren(nestedRef);
+		assert.strictEqual(nestedChildren.length, 1);
+		assert.strictEqual(nestedChildren[0].contextValue, "breakpointReadonly", "深层引用内断点同样只读");
+
+		// C. 悬空引用：sceneRefEmpty + 空 children + 悬空描述
+		const danglingNode = stepNodes[2];
+		assert.ok(danglingNode instanceof SceneRefTreeItem);
+		assert.strictEqual(danglingNode.contextValue, "sceneRefEmpty", "悬空引用必须降级为空引用节点");
+		assert.ok(
+			String(danglingNode.description).includes("ghost-scene"),
+			"悬空引用描述必须指明缺失的场景名",
+		);
+		assert.deepStrictEqual(await provider.getChildren(danglingNode), [], "悬空引用展开必须为空");
+
+		// D. 禁用引用优先级：disabled 优先于 empty（对照设计 §6.3 判定顺序）
+		const disabledNode = stepNodes[3];
+		assert.ok(disabledNode instanceof SceneRefTreeItem);
+		assert.strictEqual(disabledNode.contextValue, "sceneRefDisabled");
+		assert.strictEqual(disabledNode.checkboxState, vscode.TreeItemCheckboxState.Unchecked);
+		assert.deepStrictEqual(await provider.getChildren(disabledNode), [], "空目标场景引用展开必须为空");
+
+		// E. 同层重名引用 id 消歧（第二次出现追加 @index）
+		saveScenesConfig(tmpWs, {
+			scenes: {
+				"dup-scene": [{ type: "scene", name: "auth-core" }, { type: "scene", name: "auth-core" }],
+				"auth-core": [{ type: "line", file: "auth.ts", line: 12 }],
+			},
+		});
+		const dupRoot = (await provider.getChildren()).find((n) => n instanceof SceneNode && n.sceneName === "dup-scene");
+		const dupNodes = await provider.getChildren(dupRoot);
+		assert.strictEqual(dupNodes[0].id, "scene:dup-scene/ref:auth-core");
+		assert.strictEqual(dupNodes[1].id, "scene:dup-scene/ref:auth-core@1", "同层重名引用必须以 @index 消歧");
+
+		// F. 深接口 getBreakpointNodes 返回混合步骤节点且索引保真（恢复 E 节覆盖前的配置）
+		saveScenesConfig(tmpWs, projConfig);
+		const directNodes = await provider.getBreakpointNodes("payment-debug");
+		assert.strictEqual(directNodes.length, 4);
+		assert.ok(directNodes[0] instanceof SceneRefTreeItem);
+		assert.ok(directNodes[1] instanceof BreakpointNode);
+		assert.strictEqual(directNodes[1].index, 1, "断点节点必须保留原始声明索引");
+
+		// G. getParent 回归：只读断点归属源场景节点
+		const bpParent = provider.getParent(readonlyBp);
+		assert.ok(bpParent instanceof SceneNode);
+		assert.strictEqual(bpParent.sceneName, "auth-core");
+
+		fs.rmSync(tmpWs, { recursive: true, force: true });
+		console.log("    ✔ 批次4嵌套投影（引用节点/只读断点/悬空/禁用/稳定 id）测试通过");
+	}
+
+	// ============================================================================
+	// Case 15: 批次4引用交互 —— checkbox 多态启停落盘 / 拖拽排除只读 / 缓存过滤回归防护
+	// ============================================================================
+	{
+		const tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), "sb-ref-act-"));
+		vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpWs } }];
+		saveScenesConfig(tmpWs, {
+			scenes: {
+				pay: [{ type: "scene", name: "auth-core" }, { type: "line", file: "p.ts", line: 1 }],
+				"auth-core": [{ type: "line", file: "a.ts", line: 9 }],
+			},
+		});
+
+		const provider = new SceneTreeDataProvider("/mock/ext");
+		let checkboxHandler = null;
+		const mockTreeView = {
+			onDidExpandElement: () => new vscode.Disposable(() => {}),
+			onDidCollapseElement: () => new vscode.Disposable(() => {}),
+			onDidChangeCheckboxState: (cb) => {
+				checkboxHandler = cb;
+				return new vscode.Disposable(() => {});
+			},
+		};
+		provider.bindView(mockTreeView);
+
+		const rootNodes = await provider.getChildren();
+		const payNode = rootNodes.find((n) => n instanceof SceneNode && n.sceneName === "pay");
+		const stepNodes = await provider.getChildren(payNode);
+		const refNode = stepNodes[0];
+		assert.strictEqual(refNode.checkboxState, vscode.TreeItemCheckboxState.Checked, "缺省启用的引用必须呈现勾选态");
+
+		// A. 引用节点 checkbox → 多态 toggle 落盘（复用 breakpointManager.toggleBreakpoint）
+		await checkboxHandler({ items: [[refNode, vscode.TreeItemCheckboxState.Unchecked]] });
+		const cfgAfterToggle = loadScenesConfig(tmpWs);
+		assert.strictEqual(
+			cfgAfterToggle.scenes.pay[0].enabled,
+			false,
+			"引用 checkbox 取消勾选必须落盘 enabled:false",
+		);
+
+		// B. 拖拽排除：只读断点禁止拖拽，引用节点非断点不参与，本场景断点正常参与
+		const dataTransferMap = new Map();
+		const mockDataTransfer = {
+			set: (mime, item) => dataTransferMap.set(mime, item),
+			get: (mime) => dataTransferMap.get(mime),
+		};
+		const refChildren = await provider.getChildren(refNode);
+		provider.handleDrag([refChildren[0], stepNodes[1]], mockDataTransfer, {});
+		const transfer = dataTransferMap.get("application/vnd.code.tree.sceneBreakpointsView");
+		assert.ok(transfer, "本场景断点必须可拖拽");
+		assert.strictEqual(transfer.value.length, 1, "只读断点必须被拖拽过滤器排除");
+
+		// C. 缓存过滤回归防护：引用节点不得混入 _activeBreakpointNodes（防 findPausedBreakpointNode TypeError）
+		assert.doesNotThrow(() => provider.findPausedBreakpointNode(), "缓存混入引用节点将导致暂停定位崩溃");
+		provider.setPausedLocation("p.ts", 1);
+		assert.doesNotThrow(() => provider.findPausedBreakpointNode());
+
+		fs.rmSync(tmpWs, { recursive: true, force: true });
+		console.log("    ✔ 批次4引用交互（多态启停/拖拽排除/缓存过滤防护）测试通过");
 	}
 
 	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（直连生产源码）全部通过！");

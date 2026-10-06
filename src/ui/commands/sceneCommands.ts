@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { sceneManager } from "#src/application";
+import { sceneManager, appEventBus } from "#src/application";
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import { promptInlayHintsModeIfFirstTime } from "#src/ui/utils/inlayHintsCoordinator";
 import { flushVisibleEditors } from "#src/ui/views/sceneInlayHintsProvider";
@@ -265,5 +265,24 @@ export async function exportSceneCommand(): Promise<void> {
 				vscode.l10n.t("Successfully exported {0} active breakpoint(s) to scene [{1}]!", result.count, targetScene),
 			);
 		}
+	});
+}
+
+// ==============================
+// 5. 解析警告通知 (Resolve Warnings)
+// ==============================
+
+export function registerResolveWarningsNotifier(): vscode.Disposable {
+	return appEventBus.on("scene:resolve-warnings", ({ warnings }) => {
+		if (!warnings?.length) return;
+		const lines = warnings.map((w) =>
+			w.code === "dangling-ref"
+				? vscode.l10n.t('Scene reference "{0}" not found; skipped. Scene: {1}', w.refName, w.refPath.join(" → "))
+				: vscode.l10n.t('Referenced scene "{0}" is disabled; skipped.', w.refName),
+		);
+		void vscode.window.showWarningMessage(
+			vscode.l10n.t("Scene activated with {0} warning(s)", warnings.length),
+			{ detail: lines.join("\n") },
+		);
 	});
 }

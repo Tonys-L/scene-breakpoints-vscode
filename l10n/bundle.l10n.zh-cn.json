@@ -188,5 +188,12 @@
   "Don't Ask Again": "不再提示",
   "Scene configuration has Git merge conflicts. Please resolve them first.": "场景配置文件包含未解决的 Git 合并冲突，请先解决冲突。",
   "Scene configuration self-healed: {0}": "场景配置已启动自愈修复：{0}",
-  "Command failed: {0}": "命令执行失败：{0}"
+  "Command failed: {0}": "命令执行失败：{0}",
+  "{0} breakpoints": "{0} 个断点",
+  "Dangling reference: scene \"{0}\" not found": "悬空引用：场景「{0}」不存在",
+  "Breakpoints inside a referenced scene are read-only. Edit them in the source scene.": "被引用场景内的断点为只读，请跳转源场景编辑。",
+  "Scene reference \"{0}\" not found; skipped. Scene: {1}": "场景引用「{0}」不存在，已跳过。引用位置：{1}",
+  "Referenced scene \"{0}\" is disabled; skipped.": "被引用场景「{0}」已禁用，已跳过。",
+  "Scene activated with {0} warning(s)": "场景已激活，含 {0} 条警告",
+  "Reveal Referenced Scene Source": "跳转到引用源场景"
 }

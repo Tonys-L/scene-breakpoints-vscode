@@ -288,6 +288,50 @@ export async function runSceneCommandsTests() {
 				vscode.window.showErrorMessage = prevShowError;
 			}
 		}
+
+		// ----------------------------------------------------
+		// 4. 批次4：resolve-warnings UI 通知（悬空/禁用引用以 Warning 级展示，不阻断）
+		// ----------------------------------------------------
+		{
+			const { registerResolveWarningsNotifier } = await import("#src/ui/commands/sceneCommands");
+			const { appEventBus } = await import("#src/application/eventBus");
+
+			// 全量回归时其他套件可能经 registerAllCommands 泄漏全局订阅，先清空总线保证通知计数隔离
+			appEventBus.clear();
+			const disposable = registerResolveWarningsNotifier();
+			try {
+				warningCalls.length = 0;
+				appEventBus.emit("scene:resolve-warnings", {
+					workspaceRoot: tmpRoot,
+					warnings: [
+						{ code: "dangling-ref", refName: "ghost", refPath: ["pay"] },
+						{ code: "disabled-ref", refName: "off-scene", refPath: ["pay"] },
+					],
+				});
+
+				assert.strictEqual(warningCalls.length, 1, "解析警告必须聚合为单条 Warning 通知");
+				assert.ok(warningCalls[0].message.includes("2"), "通知必须携带警告总数");
+				assert.ok(
+					String(warningCalls[0].rest[0]?.detail).includes("ghost") &&
+						String(warningCalls[0].rest[0]?.detail).includes("pay"),
+					"通知 detail 必须逐条列出悬空引用与引用位置",
+				);
+				assert.ok(
+					String(warningCalls[0].rest[0]?.detail).includes("off-scene"),
+					"通知 detail 必须逐条列出禁用引用",
+				);
+			} finally {
+				disposable.dispose();
+			}
+
+			// dispose 后必须停止通知（无监听泄漏）
+			warningCalls.length = 0;
+			appEventBus.emit("scene:resolve-warnings", {
+				workspaceRoot: tmpRoot,
+				warnings: [{ code: "dangling-ref", refName: "ghost", refPath: ["pay"] }],
+			});
+			assert.strictEqual(warningCalls.length, 0, "dispose 后必须停止解析警告通知");
+		}
 	} finally {
 		__resetMockVscodeState();
 		sceneStateManager.resetState();

@@ -5,6 +5,7 @@ import {
 	clearAllCommand,
 	exportSceneCommand,
 	setExtensionGlobalState,
+	registerResolveWarningsNotifier,
 } from "./sceneCommands";
 import { showMenuCommand } from "./menuCommands";
 import {
@@ -50,6 +51,9 @@ export function registerAllCommands(
 	for (const [commandId, handler] of commands) {
 		context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));
 	}
+
+	// 解析警告通知（引用悬空/禁用等激活告警）
+	context.subscriptions.push(registerResolveWarningsNotifier());
 
 	if (deps?.treeDataProvider) {
 		registerTreeCommands(context, deps.treeDataProvider, deps.treeView);

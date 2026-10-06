@@ -4,7 +4,7 @@ import { sceneStateManager } from "#src/application/sceneStateManager";
 import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
 import { isSameFsPath, isFilePathMatch } from "#src/shared/utils/pathUtils";
 
-export type SceneTreeItem = SceneNode | BreakpointNode | PlaceholderNode;
+export type SceneTreeItem = SceneNode | BreakpointNode | SceneRefTreeItem | PlaceholderNode;
 
 /**
  * 侧边栏树视图展开/折叠状态管理器 (Presentation State)
@@ -93,6 +93,8 @@ export class SceneNode extends vscode.TreeItem {
 
 export interface BreakpointNodeOptions {
 	isUnmatched?: boolean;
+	/** 引用子树内的只读投影：不提供 checkbox 启停与编辑菜单（实体主权，防双写漂移） */
+	readonly?: boolean;
 }
 
 /**
@@ -185,6 +187,10 @@ export class BreakpointNode extends vscode.TreeItem {
 		this.updateAppearance();
 	}
 
+	public isReadonly(): boolean {
+		return this.options?.readonly === true;
+	}
+
 	public isPausedAtBreakpoint(): boolean {
 		if (!this.pausedLocation || this.breakpoint.type === "function") {
 			return false;
@@ -210,12 +216,15 @@ export class BreakpointNode extends vscode.TreeItem {
 
 	public updateAppearance(): void {
 		const isEnabled = this.breakpoint.enabled ?? true;
-		this.checkboxState = isEnabled
+		// 只读投影不提供 checkbox 启停，杜绝从引用视图直改源场景断点（实体主权）
+		this.checkboxState = this.isReadonly() ? undefined : isEnabled
 			? vscode.TreeItemCheckboxState.Checked
 			: vscode.TreeItemCheckboxState.Unchecked;
 
 		const isPaused = this.isPausedAtBreakpoint();
-		const hintText = vscode.l10n.t("Tip: Drag to reorder, or use Alt+↑ / Alt+↓ to move");
+		const hintText = this.isReadonly()
+			? vscode.l10n.t("Breakpoints inside a referenced scene are read-only. Edit them in the source scene.")
+			: vscode.l10n.t("Tip: Drag to reorder, or use Alt+↑ / Alt+↓ to move");
 
 		this.buildDescriptionAndTooltip(isPaused, hintText);
 
@@ -228,7 +237,11 @@ export class BreakpointNode extends vscode.TreeItem {
 			srcBp?.type,
 		);
 		this.iconPath = vscode.Uri.file(path.join(this.extensionPath, "media", "icons", iconFileName));
-		this.contextValue = isEnabled ? "breakpointItemEnabled" : "breakpointItemDisabled";
+		this.contextValue = this.isReadonly()
+			? "breakpointReadonly"
+			: isEnabled
+				? "breakpointItemEnabled"
+				: "breakpointItemDisabled";
 	}
 
 	private buildDescriptionAndTooltip(isPaused: boolean, hintText: string): void {
@@ -289,5 +302,89 @@ export class PlaceholderNode extends vscode.TreeItem {
 		super(message, vscode.TreeItemCollapsibleState.None);
 		this.iconPath = new vscode.ThemeIcon(icon);
 		this.contextValue = "placeholderItem";
+	}
+}
+
+/**
+ * 节点 id 编码声明路径（多层引用逐段累积），保证 DOM Diff 稳定与 e2e 可定位
+ * 形如 scene:payment-debug / scene:payment-debug/ref:auth-core / .../ref:auth-core/bp:0
+ */
+export function buildNodeId(parts: string[]): string {
+	return parts.join("/");
+}
+
+/**
+ * 引用节点声明上下文：编码声明路径与多态操作定位所需的最小信息
+ */
+export interface RefNodeContext {
+	/** 引用声明所在场景（toggle/remove/move 的路由目标） */
+	sceneName: string;
+	/** 被引用场景名 */
+	refName: string;
+	/** 声明路径段（含 scene:/ref: 前缀段），多层引用逐段累积 */
+	path: string[];
+	/** 在父 steps 中的声明索引 */
+	index: number;
+}
+
+export interface SceneRefTreeItemOptions {
+	desc?: string;
+	enabled: boolean;
+	/** 被引用源场景的步骤数（悬空时为 0） */
+	childCount: number;
+	/** 被引用场景不存在（悬空） */
+	isDangling: boolean;
+}
+
+/**
+ * 场景引用节点 (SceneRefTreeItem)：声明世界中引用其他场景的一等树节点
+ * 树渲染走声明态投影（不走 resolver，展示与激活关注点分离，§6.1）；
+ * 整体启停（checkbox 多态 toggle）/移除/重排/跳转源场景，子树展示源场景声明态（只读）
+ */
+export class SceneRefTreeItem extends vscode.TreeItem {
+	constructor(
+		public readonly ctx: RefNodeContext,
+		options: SceneRefTreeItemOptions,
+	) {
+		super(ctx.refName, vscode.TreeItemCollapsibleState.Collapsed);
+		// ctx.path 即含自身 ref 段的完整声明路径（scene:X/ref:Y[@n]），id 直接派生保证全树唯一
+		this.id = buildNodeId(ctx.path);
+		this.description = options.isDangling
+			? vscode.l10n.t('Dangling reference: scene "{0}" not found', ctx.refName)
+			: (options.desc ?? vscode.l10n.t("{0} breakpoints", options.childCount));
+		// 判定优先级（§6.3）：disabled > empty（悬空/空场景）> sceneRef
+		this.contextValue = !options.enabled
+			? "sceneRefDisabled"
+			: options.isDangling || options.childCount === 0
+				? "sceneRefEmpty"
+				: "sceneRef";
+		this.checkboxState = options.enabled
+			? vscode.TreeItemCheckboxState.Checked
+			: vscode.TreeItemCheckboxState.Unchecked;
+		this.iconPath = options.isDangling
+			? new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"))
+			: options.enabled
+				? new vscode.ThemeIcon("references")
+				: new vscode.ThemeIcon("circle-slash");
+		this.command = {
+			command: "sceneBreakpoints.revealRefSource",
+			title: vscode.l10n.t("Reveal Referenced Scene Source"),
+			arguments: [ctx.refName, ctx.sceneName],
+		};
+	}
+
+	/** 声明所在场景（toggle/remove/move 的路由目标） */
+	public get sceneName(): string {
+		return this.ctx.sceneName;
+	}
+
+	/** 被引用场景名 */
+	public get refName(): string {
+		return this.ctx.refName;
+	}
+
+	/** 在父 steps 中的声明索引（多态操作定位） */
+	public get index(): number {
+		return this.ctx.index;
 	}
 }

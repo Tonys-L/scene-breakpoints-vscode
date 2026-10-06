@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import { getWorkspaceRoot } from "#src/ui/utils/commandRunner";
 import { sceneManager, breakpointManager, appEventBus, activeBreakpointIndex } from "#src/application";
-import type { SceneBreakpoint } from "#src/domain/types";
 
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { BreakpointNode, PlaceholderNode, SceneNode, treeViewState, type SceneTreeItem } from "./treeNodes";
+import { BreakpointNode, PlaceholderNode, SceneNode, SceneRefTreeItem, treeViewState, type SceneTreeItem } from "./treeNodes";
+import { projectRefChildNodes, projectSceneStepNodes, type SceneStepNode } from "./sceneRefProjection";
 
 // 重新导出节点类型，保证下游与现有单测 100% 零破坏兼容
 export * from "./treeNodes";
@@ -67,7 +67,10 @@ export class SceneTreeDataProvider
 		treeDataTransfer: vscode.DataTransfer,
 		_token: vscode.CancellationToken,
 	): void {
-		const bpNodes = source.filter((item): item is BreakpointNode => item instanceof BreakpointNode);
+		// 只读投影断点（引用子树内）禁止拖拽：重排即改写源场景声明，违反实体主权
+		const bpNodes = source.filter(
+			(item): item is BreakpointNode => item instanceof BreakpointNode && !item.isReadonly(),
+		);
 		if (bpNodes.length > 0) {
 			treeDataTransfer.set(
 				"application/vnd.code.tree.sceneBreakpointsView",
@@ -167,33 +170,13 @@ export class SceneTreeDataProvider
 	}
 
 	/**
-	 * 获取指定场景内的所有断点树节点（深接口）
+	 * 获取指定场景内的所有步骤树节点（深接口，声明态嵌套投影：引用节点 + 断点节点）
 	 * 供 getChildren 与命令层查询使用，避免外部伪造 SceneNode 实例
 	 */
-	public async getBreakpointNodes(sceneName: string): Promise<BreakpointNode[]> {
+	public getBreakpointNodes(sceneName: string): SceneStepNode[] {
 		const workspaceRoot = getWorkspaceRoot(false);
 		if (!workspaceRoot) return [];
-		const config = sceneManager.loadScenesConfig(workspaceRoot);
-		const list = (config.scenes && Array.isArray(config.scenes[sceneName]))
-			? config.scenes[sceneName]
-			: [];
-		const isActive = sceneStateManager.isSceneActive(sceneName);
-		// 批次 1 最小投影：引用条目暂不出现在平铺断点列表（嵌套投影属批次 4）；保留原始索引保证命令定位一致
-		return list
-			.map((item, idx) => ({ item, idx }))
-			.filter((it): it is { item: SceneBreakpoint; idx: number } => it.item.type !== "scene")
-			.map(({ item: bp, idx }) => {
-				const isUnmatched = bp.type !== "function" && isActive && sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
-				return new BreakpointNode(
-					sceneName,
-					idx,
-					bp,
-					workspaceRoot,
-					this.extensionPath,
-					this._pausedLocation,
-					{ isUnmatched },
-				);
-			});
+		return projectSceneStepNodes(sceneName, workspaceRoot, this.extensionPath, this._pausedLocation);
 	}
 
 	public async getChildren(element?: SceneTreeItem): Promise<SceneTreeItem[]> {
@@ -229,17 +212,23 @@ export class SceneTreeDataProvider
 			});
 		}
 
-		// 子节点：返回指定场景内的断点列表
+		// 子节点：返回指定场景内的步骤节点（引用 + 断点声明态混合投影）
 		if (element instanceof SceneNode) {
 			const nodes = await this.getBreakpointNodes(element.sceneName);
 			if (nodes.length === 0) {
 				return [new PlaceholderNode(vscode.l10n.t("No breakpoints in this scene"))];
 			}
-			// 记录缓存以备 reveal 定位
+			// 记录缓存以备 reveal 定位（仅断点节点；引用节点无暂停定位语义，混入将使 findPaused 崩溃）
+			const bpNodes = nodes.filter((n): n is BreakpointNode => n instanceof BreakpointNode);
 			this._activeBreakpointNodes = this._activeBreakpointNodes
 				.filter((n) => n.sceneName !== element.sceneName)
-				.concat(nodes);
+				.concat(bpNodes);
 			return nodes;
+		}
+
+		// 引用节点子层：被引用源场景的声明态投影（只读语义沿路径传播）
+		if (element instanceof SceneRefTreeItem) {
+			return projectRefChildNodes(element, workspaceRoot, this.extensionPath, this._pausedLocation);
 		}
 
 		return [];
@@ -366,6 +355,17 @@ export class SceneTreeDataProvider
 							item.breakpoint.enabled = result.newEnabled;
 							item.updateAppearance();
 							this.refresh(item);
+						}
+					} else if (item instanceof SceneRefTreeItem) {
+						// 引用节点 checkbox：多态 toggle（引用为一等步骤，getStep(index).toggle() 原生支持）
+						const result = await breakpointManager.toggleBreakpoint(
+							workspaceRoot,
+							item.sceneName,
+							item.index,
+							state === vscode.TreeItemCheckboxState.Checked,
+						);
+						if (result.success) {
+							this.refresh();
 						}
 					}
 				}

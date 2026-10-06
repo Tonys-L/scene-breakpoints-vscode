@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 import { saveScenesConfig, loadScenesConfig } from "#src/infra/storage/jsonFileSceneRepository";
 import { registerTreeCommands } from "#src/ui/commands/treeCommands";
-import { SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
+import { SceneRefTreeItem, SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
 
 /**
  * treeCommands 1:1 镜像单测
@@ -153,6 +153,80 @@ export async function runTreeCommandsTests() {
 			await vscode.commands.executeCommand("sceneBreakpoints.moveBreakpointUp", { sceneName: "reorder" });
 			await waitReveal();
 			assert.strictEqual(revealCalls.length, 0, "非法节点必须静默返回，不触发移动与 reveal");
+		}
+
+		// ----------------------------------------------------
+		// G. 批次4：revealRefSource 纯导航命令（字符串参 = TreeItem command 调用）
+		// ----------------------------------------------------
+		{
+			saveScenesConfig(tmpRoot, {
+				scenes: {
+					pay: [{ type: "scene", name: "auth-core" }],
+					"auth-core": [{ type: "line", file: "src/a.ts", line: 5 }],
+				},
+			});
+
+			revealCalls.length = 0;
+			await vscode.commands.executeCommand("sceneBreakpoints.revealRefSource", "auth-core", "pay");
+			assert.strictEqual(revealCalls.length, 1, "源场景存在时必须 reveal 定位");
+			assert.strictEqual(revealCalls[0].node.sceneName, "auth-core", "必须导航到被引用源场景节点");
+			assert.deepStrictEqual(
+				revealCalls[0].options,
+				{ focus: true, select: true, expand: true },
+				"导航必须聚焦、选中并展开源场景",
+			);
+
+			// 悬空引用：仅警告、不 reveal（无状态命令，不触碰 catalog）
+			revealCalls.length = 0;
+			vscode.window.messages.length = 0;
+			await vscode.commands.executeCommand("sceneBreakpoints.revealRefSource", "ghost", "pay");
+			assert.strictEqual(revealCalls.length, 0, "悬空引用必须禁止 reveal");
+			assert.ok(
+				vscode.window.messages.some((m) => m.level === "warning" && m.message.includes("ghost")),
+				"悬空引用必须弹出警告通知并指明缺失场景名",
+			);
+
+			// 菜单调用形态：直接传入 SceneRefTreeItem 节点
+			const refRoot = (await treeDataProvider.getChildren()).find((n) => n.sceneName === "pay");
+			const refNode = (await treeDataProvider.getChildren(refRoot))[0];
+			revealCalls.length = 0;
+			await vscode.commands.executeCommand("sceneBreakpoints.revealRefSource", refNode);
+			assert.strictEqual(revealCalls.length, 1, "菜单形态（引用节点参）必须同样触发导航");
+			assert.strictEqual(revealCalls[0].node.sceneName, "auth-core");
+		}
+
+		// ----------------------------------------------------
+		// H. 批次4：引用节点移除与重排（多态步骤操作穿透命令层）
+		// ----------------------------------------------------
+		{
+			saveScenesConfig(tmpRoot, {
+				scenes: {
+					pay: [{ type: "line", file: "src/p.ts", line: 1 }, { type: "scene", name: "auth-core" }],
+					"auth-core": [{ type: "line", file: "src/a.ts", line: 5 }],
+				},
+			});
+			const payRoot = (await treeDataProvider.getChildren()).find((n) => n.sceneName === "pay");
+			const stepNodes = await treeDataProvider.getChildren(payRoot);
+			const refNode = stepNodes.find((n) => n instanceof SceneRefTreeItem);
+			assert.ok(refNode, "引用条目必须投影为可操作节点");
+			assert.strictEqual(refNode.index, 1);
+
+			// 引用上移 -> 声明序变更落盘 + reveal 定位
+			revealCalls.length = 0;
+			await vscode.commands.executeCommand("sceneBreakpoints.moveBreakpointUp", refNode);
+			await waitReveal();
+			const afterMove = loadScenesConfig(tmpRoot).scenes.pay;
+			assert.strictEqual(afterMove[0].type, "scene", "引用必须上移到索引 0");
+			assert.strictEqual(revealCalls.length, 1, "引用移动成功后必须 reveal 定位");
+			assert.strictEqual(revealCalls[0].node.index, 0);
+
+			// 移除引用 -> removeStep 多态落盘
+			const payRoot2 = (await treeDataProvider.getChildren()).find((n) => n.sceneName === "pay");
+			const refNode2 = (await treeDataProvider.getChildren(payRoot2)).find((n) => n instanceof SceneRefTreeItem);
+			await vscode.commands.executeCommand("sceneBreakpoints.removeBreakpointItem", refNode2);
+			const afterRemove = loadScenesConfig(tmpRoot).scenes.pay;
+			assert.strictEqual(afterRemove.length, 1, "引用条目必须被移除");
+			assert.strictEqual(afterRemove[0].type, "line", "仅引用被移除，断点保持不变");
 		}
 	} finally {
 		__resetMockVscodeState();

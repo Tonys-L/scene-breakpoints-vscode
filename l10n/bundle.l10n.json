@@ -188,5 +188,12 @@
   "Don't Ask Again": "Don't Ask Again",
   "Scene configuration has Git merge conflicts. Please resolve them first.": "Scene configuration has Git merge conflicts. Please resolve them first.",
   "Scene configuration self-healed: {0}": "Scene configuration self-healed: {0}",
-  "Command failed: {0}": "Command failed: {0}"
+  "Command failed: {0}": "Command failed: {0}",
+  "{0} breakpoints": "{0} breakpoints",
+  "Dangling reference: scene \"{0}\" not found": "Dangling reference: scene \"{0}\" not found",
+  "Breakpoints inside a referenced scene are read-only. Edit them in the source scene.": "Breakpoints inside a referenced scene are read-only. Edit them in the source scene.",
+  "Scene reference \"{0}\" not found; skipped. Scene: {1}": "Scene reference \"{0}\" not found; skipped. Scene: {1}",
+  "Referenced scene \"{0}\" is disabled; skipped.": "Referenced scene \"{0}\" is disabled; skipped.",
+  "Scene activated with {0} warning(s)": "Scene activated with {0} warning(s)",
+  "Reveal Referenced Scene Source": "Reveal Referenced Scene Source"
 }
