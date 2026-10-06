@@ -129,6 +129,26 @@ AI Agent 在协助用户阅读代码、排查 Bug 或开发新功能时，应当
 4. **激活场景**：将根级 `"activeScenes": ["auth-login-flow"]` 设置为目标场景名并保存文件。
 5. **引导调试**：告知用户断点已就绪，提示用户按 **F5** 启动调试直接命中现场。
 
+## 配置分层与调用栈固化 (v1.2.0)
+
+### 团队/个人双层配置（写哪个文件？）
+
+| 场景性质 | 目标文件 | 说明 |
+| :--- | :--- | :--- |
+| **团队公共资产**（`feat:*` / `arch:*` 等长期沉淀、Code Tour 导览） | `.vscode/debug-scenes.json` | 入 Git，全队共享，**默认选择** |
+| **个人临时现场**（一次性 crash 复现、私有排查草稿） | `.vscode/debug-scenes.local.json` | 自动入 `.gitignore`，不污染仓库 |
+
+- 同名场景 **local 覆盖 team**（合并视图）；`activeScenes` 与 `bindings` 无论场景在哪个文件，**一律写在主文件**；
+- 【平台写入护栏】对 local 文件同样生效，兜底流程相同；
+- 两种格式的断点条目语法完全一致。
+
+### 调用栈一键固化（Capture Call Stack，IDE 侧能力）
+
+调试器**暂停**时，用户可在编辑器右键菜单或命令面板执行 **"Save Current Call Stack as Scene"**，插件自动将当前线程堆栈帧（过滤工作区源码帧、按 file+line 去重、携带上下文指纹）固化为 **local 层**新场景。
+
+- **AI 协同话术**：命中断点后可提示用户"右键 → 固化调用栈为场景"，零手工录入；
+- 固化产物出现在 `debug-scenes.local.json`，AI 可随后读取该场景：补全 `desc` 观察意图、或将其转正（复制到主文件）沉淀为团队资产。
+
 ## 平台护栏：写入被拒时的兜底 (Platform Write Guard)
 
 部分 AI IDE（如 Trae）的 Agent 工具层会默认保护 `.vscode/` 目录下的配置文件，直接写入可能被拒绝（`Access denied ... restricted to user edits`）——**这是平台权限限制，与插件无关**。遇到时按以下顺序兜底：

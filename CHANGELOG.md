@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Sidebar and all read paths load a merged view where local scenes override team scenes of the same name; scenes newly created from the UI (manual creation, export, capture) default to the local layer.
   - Activation state (`activeScenes`) remains exclusively in the team main file; the file watcher now watches both files with a per-file echo-loop write baseline, and cold-start seeds baselines for both layers.
 - **Capture Call Stack (Incident-to-Scene, roadmap §4)**: while the debugger is paused, the new `sceneBreakpoints.captureCallStack` command (editor context menu / command palette) reads the current thread's stack frames via DAP, filters to in-workspace source frames with same file+line deduplication, extracts 3-line context fingerprints, and saves them as a new scene (append upsert, INV-001) into the personal local layer. The capture context is registered on debugger `stopped` and cleared on `continued`/`terminated` to prevent stale stacks.
+- **AI Skill tutorial updated**: SKILL.md now covers the dual-layer config guidance (which file to write) and the Capture Call Stack collaboration workflow; a new fingerprint is registered in the official history, so existing clean installs will receive the update prompt.
 
 ---
 
