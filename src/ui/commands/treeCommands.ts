@@ -244,14 +244,19 @@ function registerBreakpointReorderCommands(
 /**
  * 注册「跳转到引用源场景」纯导航命令（§6.4）
  * 双形态入参：字符串参（SceneRefTreeItem 点击的 TreeItem command）或树节点参（上下文菜单调用）
- * 无状态命令：不触碰 catalog，仅驱动树视图 reveal 源场景节点；悬空时显式警告
+ * 无状态命令：不触碰 catalog，仅驱动树视图 reveal 源场景节点；悬空时显式警告。
+ * 只读断点入参（引用子树内）时逐级精定位：reveal 源场景后再 reveal 其声明序对应的具体断点节点
  */
-function registerRevealRefSourceCommand(treeView?: vscode.TreeView<any>): vscode.Disposable {
+function registerRevealRefSourceCommand(
+	treeView?: vscode.TreeView<any>,
+	treeDataProvider?: SceneTreeDataProvider,
+): vscode.Disposable {
 	return vscode.commands.registerCommand(
 		"sceneBreakpoints.revealRefSource",
 		async (raw?: string | SceneRefTreeItem | BreakpointNode, declaringScene?: string) => {
 			let targetScene: string | undefined;
 			let ownerScene = declaringScene;
+			let targetIndex: number | undefined;
 			if (typeof raw === "string") {
 				targetScene = raw;
 			} else if (raw instanceof SceneRefTreeItem) {
@@ -259,6 +264,7 @@ function registerRevealRefSourceCommand(treeView?: vscode.TreeView<any>): vscode
 				ownerScene = raw.sceneName;
 			} else if (raw instanceof BreakpointNode && raw.isReadonly()) {
 				targetScene = raw.sceneName; // 引用内断点跳转其定义场景
+				targetIndex = raw.index; // 声明序即源场景步骤序，供逐级精定位
 			}
 			if (!targetScene) return;
 
@@ -283,6 +289,19 @@ function registerRevealRefSourceCommand(treeView?: vscode.TreeView<any>): vscode
 					await treeView.reveal(sourceNode, { focus: true, select: true, expand: true });
 				} catch {
 					// 树项未完全载入时安全降级
+					return;
+				}
+				// 逐级精定位：源场景已展开后，reveal 声明序对应的具体断点节点（跳到"原始位置"而非仅场景层）
+				if (typeof targetIndex === "number" && treeDataProvider) {
+					const stepNodes = treeDataProvider.getBreakpointNodes(targetScene);
+					const targetBpNode = stepNodes[targetIndex];
+					if (targetBpNode instanceof BreakpointNode) {
+						try {
+							await treeView.reveal(targetBpNode, { select: true, focus: false, expand: true });
+						} catch {
+							// 二次 reveal 失败不影响场景层定位结果
+						}
+					}
 				}
 			});
 		},
@@ -302,6 +321,6 @@ export function registerTreeCommands(
 		...registerSceneCrudCommands(treeDataProvider),
 		...registerBreakpointMutationCommands(),
 		...registerBreakpointReorderCommands(treeDataProvider, treeView),
-		registerRevealRefSourceCommand(treeView),
+		registerRevealRefSourceCommand(treeView, treeDataProvider),
 	);
 }

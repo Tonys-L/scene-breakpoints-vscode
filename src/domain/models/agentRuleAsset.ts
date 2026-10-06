@@ -25,7 +25,9 @@ export function pureSha256(ascii: string): string {
 	const isComposite: Record<number, number> = {};
 	for (let candidate = 2; primeCounter < 64; candidate++) {
 		if (!isComposite[candidate]) {
-			for (i = 0; i < 300; i += candidate) {
+			// 素数筛上限 313 对齐上游 geraintluff/sha256（313 ≥ 312 可正确标记全部 ≤311 复合数，
+			// 保证 k[62]/k[63] 取第 63/64 个真实素数 307/311，输出与标准 SHA-256 (FIPS 180-4) 逐字节一致）
+			for (i = 0; i < 313; i += candidate) {
 				isComposite[i] = candidate;
 			}
 			hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
@@ -90,13 +92,14 @@ export const LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
  * 官方历史核心正文指纹映射表 (Hash 作为 Key，O(1) 极速秒查版本)
  * 发版仪式：每次发布新版本时，必须将本版正文的指纹登记入表（键 = 版本号），
  * 以保障存量用户的本地纯正版可被识别为 CleanOutdated 并平滑升级（INV-016 版本 SSOT 联动）。
- * ⚠️ 指纹必须经由领域实体管线生成（AgentRuleAsset.computeFingerprint，pureSha256 实现），
- * 严禁使用 node:crypto 直算——pureSha256 为项目内自洽变体，与标准 SHA-256 不逐字节一致。
+ * ⚠️ 指纹 = 规范化核心正文（剥 Frontmatter + 跨平台归一化）的标准 SHA-256 (FIPS 180-4)，
+ * 必须经由领域实体管线生成（AgentRuleAsset.computeFingerprint，已可与 node:crypto 交叉验证），
+ * 严禁对原始文件字节直接哈希——归一化语义（而非哈希算法）才是指纹一致性的根本契约。
  */
 export const OFFICIAL_SKILL_HISTORY: Record<string, string> = {
 	"f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
-	"36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8",
-	"f5d5a0c498ee18a5fa089814bf51d876d4756877fb72bda425db1faf11755266": "1.1.0",
+	"be86d3a35575f137d075f49867c9a8ead61e60d7c7e43e2f05d26a13c1d21a42": "1.0.8",
+	"fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.1.0",
 };
 export const OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 

@@ -434,6 +434,11 @@
           "command": "sceneBreakpoints.revealRefSource",
           "when": "view == sceneBreakpointsView && viewItem =~ /^(sceneRef|sceneRefDisabled|sceneRefEmpty|breakpointReadonly)$/",
           "group": "navigation@50"
+        },
+        {
+          "command": "sceneBreakpoints.revealRefSource",
+          "when": "view == sceneBreakpointsView && viewItem == breakpointReadonly",
+          "group": "inline@1"
         }
       ],
       "editor/context": [

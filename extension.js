@@ -2513,7 +2513,7 @@ function pureSha256(ascii) {
   const isComposite = {};
   for (let candidate = 2; primeCounter < 64; candidate++) {
     if (!isComposite[candidate]) {
-      for (i = 0; i < 300; i += candidate) {
+      for (i = 0; i < 313; i += candidate) {
         isComposite[i] = candidate;
       }
       hash[primeCounter] = mathPow(candidate, 0.5) * maxWord | 0;
@@ -2562,8 +2562,8 @@ var LATEST_SKILL_VERSION = "1.1.0";
 var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 var OFFICIAL_SKILL_HISTORY = {
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
-  "36c8a30d2687a7549f88ea4b74680ee66cb20cb7404e46eca04bb93894b958e1": "1.0.8",
-  "f5d5a0c498ee18a5fa089814bf51d876d4756877fb72bda425db1faf11755266": "1.1.0"
+  "be86d3a35575f137d075f49867c9a8ead61e60d7c7e43e2f05d26a13c1d21a42": "1.0.8",
+  "fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.1.0"
 };
 var OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 var AgentRuleAsset = class _AgentRuleAsset {
@@ -3139,7 +3139,7 @@ var SceneRefTreeItem = class extends vscode2.TreeItem {
     this.description = options.isDangling ? vscode2.l10n.t('Dangling reference: scene "{0}" not found', ctx.refName) : options.desc ?? vscode2.l10n.t("{0} breakpoints", options.childCount);
     this.contextValue = !options.enabled ? "sceneRefDisabled" : options.isDangling || options.childCount === 0 ? "sceneRefEmpty" : "sceneRef";
     this.checkboxState = options.enabled ? vscode2.TreeItemCheckboxState.Checked : vscode2.TreeItemCheckboxState.Unchecked;
-    this.iconPath = options.isDangling ? new vscode2.ThemeIcon("error", new vscode2.ThemeColor("charts.red")) : options.enabled ? new vscode2.ThemeIcon("references") : new vscode2.ThemeIcon("circle-slash");
+    this.iconPath = options.isDangling ? new vscode2.ThemeIcon("error", new vscode2.ThemeColor("charts.red")) : options.enabled ? new vscode2.ThemeIcon("git-branch", new vscode2.ThemeColor("charts.blue")) : new vscode2.ThemeIcon("circle-slash");
     this.command = {
       command: "sceneBreakpoints.revealRefSource",
       title: vscode2.l10n.t("Reveal Referenced Scene Source"),
@@ -5369,12 +5369,13 @@ function registerBreakpointReorderCommands(treeDataProvider, treeView) {
     })
   ];
 }
-function registerRevealRefSourceCommand(treeView) {
+function registerRevealRefSourceCommand(treeView, treeDataProvider) {
   return vscode18.commands.registerCommand(
     "sceneBreakpoints.revealRefSource",
     async (raw, declaringScene) => {
       let targetScene;
       let ownerScene = declaringScene;
+      let targetIndex;
       if (typeof raw === "string") {
         targetScene = raw;
       } else if (raw instanceof SceneRefTreeItem) {
@@ -5382,6 +5383,7 @@ function registerRevealRefSourceCommand(treeView) {
         ownerScene = raw.sceneName;
       } else if (raw instanceof BreakpointNode && raw.isReadonly()) {
         targetScene = raw.sceneName;
+        targetIndex = raw.index;
       }
       if (!targetScene) return;
       await runWithWorkspace(false, async (workspaceRoot) => {
@@ -5403,6 +5405,17 @@ function registerRevealRefSourceCommand(treeView) {
         try {
           await treeView.reveal(sourceNode, { focus: true, select: true, expand: true });
         } catch {
+          return;
+        }
+        if (typeof targetIndex === "number" && treeDataProvider) {
+          const stepNodes = treeDataProvider.getBreakpointNodes(targetScene);
+          const targetBpNode = stepNodes[targetIndex];
+          if (targetBpNode instanceof BreakpointNode) {
+            try {
+              await treeView.reveal(targetBpNode, { select: true, focus: false, expand: true });
+            } catch {
+            }
+          }
         }
       });
     }
@@ -5414,7 +5427,7 @@ function registerTreeCommands(context, treeDataProvider, treeView) {
     ...registerSceneCrudCommands(treeDataProvider),
     ...registerBreakpointMutationCommands(),
     ...registerBreakpointReorderCommands(treeDataProvider, treeView),
-    registerRevealRefSourceCommand(treeView)
+    registerRevealRefSourceCommand(treeView, treeDataProvider)
   );
 }
 

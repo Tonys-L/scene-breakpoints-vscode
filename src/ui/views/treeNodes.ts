@@ -364,7 +364,7 @@ export class SceneRefTreeItem extends vscode.TreeItem {
 		this.iconPath = options.isDangling
 			? new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"))
 			: options.enabled
-				? new vscode.ThemeIcon("references")
+				? new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"))
 				: new vscode.ThemeIcon("circle-slash");
 		this.command = {
 			command: "sceneBreakpoints.revealRefSource",

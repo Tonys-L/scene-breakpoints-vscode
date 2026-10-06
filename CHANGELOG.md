@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [1.1.0] - 2026-10-06
 
 ### Added
+- **Platform Write Guard guidance in AI Skill**: the bundled SKILL.md now teaches AI agents how to handle platform-level file protection (e.g. Trae restricting `.vscode/` edits) when writing `debug-scenes.json` — fall back to a temp file copy, guide the user to whitelist the file, or output the full JSON inline.
 - **Scene Composition Engine (Inline Scene References)**:
   - Declare inline scene references (`{ "type": "scene", "name": "..." }`) inside any scene to compose another scene's full breakpoint set at that position — shared infrastructure breakpoints (auth, session, MQ) are maintained in one place and reused everywhere.
   - Declarative order is the execution order: references expand depth-first exactly where they are declared, fully interleaved with regular breakpoints (INV-030).
@@ -18,10 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - Dangling references degrade to a non-blocking warning and are skipped; `enabled: false` removes an entire reference subtree without deleting the configuration.
   - Tree view renders nested read-only reference nodes with a `revealRefSource` quick navigation and enable/disable toggles; self-healing write-backs are routed to the owning scene, exactly once per scene.
 - **AI Skill Teaching (Module Map)**: the bundled Scene Breakpoints skill now teaches the composition workflow (module map → core scenes → business scenes with references), cutting ~60% of AI-generated configuration tokens.
+- **AI Skill Example Type Coverage**: the skill's end-to-end example now also demonstrates the `hitCount` (string `hitCondition` expression) and `function` (bare `functionName`) breakpoint types, anchoring the correct few-shot patterns for AI generation.
 - **Schema & Guardrails**: `schema.json` declares the reference branch via a `oneOf` contract (`additionalProperties: false`, `name` required); guardrails GR-006/GR-007 adapted to validate mixed breakpoint/reference maps and keep the schema 100% in sync with the domain model.
 
 ### Fixed
 - Scene reference entries are now preserved through config load/save sanitize round-trips (previously silently dropped on the load path); invalid references (empty name) are discarded defensively.
+- **pureSha256 restored to standard SHA-256 (FIPS 180-4)**: the bundled zero-dependency pure TS SHA-256 deviated from the standard due to a transcription error (prime sieve limit written as 300 instead of upstream's 313, misjudging composites 300/301 as primes and corrupting the last two K constants). The sieve is now aligned to 313, restoring byte-for-byte standard output (cross-verified against `node:crypto`), and the official skill fingerprint history table was regenerated through the domain pipeline accordingly.
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "scenes": {
-    "arch:activation-flow": [
+    "core:plugin-lifecycle": [
       {
         "type": "line",
         "file": "src/extension.ts",
@@ -16,15 +16,15 @@
       {
         "type": "line",
         "file": "src/ui/commands/index.ts",
-        "line": 30,
+        "line": 34,
         "enabled": true,
         "desc": "步骤 2: registerAllCommands 表驱动集中注册所有命令与 globalState 挂载",
         "contextSnippet": {
-          "current": "context: vscode.ExtensionContext,",
-          "prev": "export function registerAllCommands(",
-          "next": "deps?: CommandDependencies,",
+          "current": "setExtensionGlobalState(context.globalState);",
+          "prev": "): void {",
+          "next": "const commands: Array<[string, (...args: any[]) => any]> = [",
           "scopeAnchor": "registerAllCommands",
-          "indent": 1
+          "indent": 2
         }
       },
       {
@@ -42,73 +42,51 @@
       {
         "type": "line",
         "file": "src/ui/commands/skillCommands.ts",
-        "line": 43,
+        "line": 46,
         "enabled": true,
         "desc": "步骤 4: checkAndPromptSkillUpdates 检查工作区 Agent Skill 规则版本",
         "contextSnippet": {
-          "current": "context: vscode.ExtensionContext,",
-          "prev": "export async function checkAndPromptSkillUpdates(",
-          "next": "workspaceRoot: string,",
+          "current": "const currentVersion = context.extension?.packageJSON?.version || LATEST_SKILL_VERSION;",
+          "prev": "): Promise<void> {",
+          "next": "const lastNotifiedVer = context.workspaceState.get<string>(\"lastNotifiedSkillVersion\");",
           "scopeAnchor": "checkAndPromptSkillUpdates",
-          "indent": 0
+          "indent": 2
         }
       }
     ],
-    "feat:apply-and-heal-flow": [
+    "core:assemble-and-persist": [
       {
         "type": "line",
-        "file": "src/ui/commands/sceneCommands.ts",
-        "line": 29,
+        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
+        "line": 223,
         "enabled": true,
-        "desc": "步骤 1: applySceneCommand 用户触发场景激活指令",
+        "desc": "步骤 1: applySceneBreakpoints 增量 Diff 装配入口",
         "contextSnippet": {
-          "current": "async function resolveTargetScenes(",
-          "next": "workspaceRoot: string,",
-          "scopeAnchor": "resolveTargetScenes",
-          "indent": 0
+          "current": "return dapEchoGuard.withApplyingLock(async () => {",
+          "prev": "): Promise<ApplySceneResult> {",
+          "next": "const currentBreakpoints = vscode.debug.breakpoints;",
+          "scopeAnchor": "applySceneBreakpoints",
+          "indent": 2
         }
       },
       {
         "type": "line",
-        "file": "src/application/sceneManager.ts",
-        "line": 75,
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 319,
         "enabled": true,
-        "desc": "步骤 2: activateScene 进入单写者串行队列排队与校验",
+        "desc": "步骤 2: heal 两阶段自愈判定入口，快路径校验原行精确匹配",
         "contextSnippet": {
-          "current": "options?: SceneOpOptions,",
-          "prev": "targetScenes: string[],",
-          "next": "): Promise<ActivateSceneResult> {",
-          "scopeAnchor": "loadCatalog",
+          "current": "if (origIdx < lines.length && cleanLine(lines[origIdx]) === spec.targetCurrent) {",
+          "next": "return { healedLine: targetLine, isHealed: false, status: \"matched\", confidence: 1.0 };",
           "indent": 4
         }
       },
       {
         "type": "line",
         "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
-        "line": 225,
+        "line": 236,
         "enabled": true,
-        "desc": "步骤 3: applySceneBreakpoints 增量 Diff 装配入口",
-        "contextSnippet": {
-          "current": "export async function applySceneBreakpoints(",
-          "prev": "*/",
-          "next": "workspaceRoot: string,",
-          "scopeAnchor": "applySceneBreakpoints",
-          "indent": 0
-        }
-      },
-      {
-        "type": "line",
-        "file": "src/domain/services/healingEngine.ts",
-        "line": 133,
-        "enabled": true,
-        "desc": "步骤 4: resolveHealedLineFromLines 快路径校验与滑动窗口打分探测"
-      },
-      {
-        "type": "line",
-        "file": "src/infra/vscode/vscodeBreakpointBridge.ts",
-        "line": 243,
-        "enabled": true,
-        "desc": "步骤 5: 原地 0 闪烁增量下发 DAP 断点",
+        "desc": "步骤 3: 原地 0 闪烁增量下发 DAP 断点",
         "contextSnippet": {
           "current": "if (toAdd.length > 0) await vscode.debug.addBreakpoints(toAdd);",
           "prev": "if (toRemove.length > 0) await vscode.debug.removeBreakpoints(toRemove);",
@@ -119,9 +97,9 @@
       {
         "type": "line",
         "file": "src/application/sceneStateManager.ts",
-        "line": 44,
+        "line": 46,
         "enabled": true,
-        "desc": "步骤 6: 投影更新至 sceneStateManager 驱动 UI 刷新与自愈回写",
+        "desc": "步骤 4: 投影更新至 sceneStateManager 驱动 UI 刷新与自愈回写",
         "contextSnippet": {
           "current": "private unmatchedBreakpointsKeySet = new Set<string>();",
           "prev": "private baselineBreakpointCount = 0;",
@@ -129,34 +107,84 @@
           "scopeAnchor": "SceneStateManager",
           "indent": 2
         }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/jsonFileSceneRepository.ts",
+        "line": 93,
+        "enabled": true,
+        "desc": "步骤 5: saveScenesConfig 原子写入 debug-scenes.json 磁盘文件",
+        "contextSnippet": {
+          "current": "const configPath = getScenesConfigPath(workspaceRoot);",
+          "prev": "export function saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void {",
+          "next": "try {",
+          "scopeAnchor": "saveScenesConfig",
+          "indent": 2
+        }
+      }
+    ],
+    "feat:apply-and-heal-flow": [
+      {
+        "type": "scene",
+        "name": "core:assemble-and-persist",
+        "desc": "引用复用: 断点装配、自愈与持久化全闭环 (深度优先原位展开, INV-030)"
+      },
+      {
+        "type": "line",
+        "file": "src/ui/commands/sceneCommands.ts",
+        "line": 49,
+        "enabled": true,
+        "desc": "步骤 1: applySceneCommand 触发激活并由 resolveTargetScenes 解析目标场景清单",
+        "contextSnippet": {
+          "current": "const config = sceneManager.loadScenesConfig(workspaceRoot);",
+          "prev": "): Promise<string[] | undefined> {",
+          "next": "const sceneNames = Object.keys(config.scenes || {});",
+          "scopeAnchor": "resolveTargetScenes",
+          "indent": 2
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/application/sceneManager.ts",
+        "line": 66,
+        "enabled": true,
+        "desc": "步骤 2: activateScene 进入单写者串行队列排队与校验",
+        "contextSnippet": {
+          "current": "return this.queue.enqueue(async () => {",
+          "prev": "): Promise<ActivateSceneResult> {",
+          "next": "const deps = this.resolveDeps(options);",
+          "scopeAnchor": "loadCatalog",
+          "indent": 4
+        }
       }
     ],
     "feat:export-scene-flow": [
       {
         "type": "line",
         "file": "src/ui/commands/sceneCommands.ts",
-        "line": 196,
+        "line": 233,
         "enabled": true,
-        "desc": "步骤 1: exportSceneCommand 触发反向导出指令与场景名输入",
+        "desc": "步骤 1: exportSceneCommand 采集宿主断点并校验非空",
         "contextSnippet": {
-          "current": "if (result.missingScenes.length > 0) {",
-          "prev": "}",
-          "next": "void vscode.window.showWarningMessage(",
-          "scopeAnchor": "applySceneCommand",
-          "indent": 4
+          "current": "const currentBreakpoints = vscode.debug.breakpoints;",
+          "prev": "export async function exportSceneCommand(): Promise<void> {",
+          "next": "if (!currentBreakpoints || currentBreakpoints.length === 0) {",
+          "scopeAnchor": "exportSceneCommand",
+          "indent": 2
         }
       },
       {
         "type": "line",
         "file": "src/application/sceneManager.ts",
-        "line": 223,
+        "line": 113,
         "enabled": true,
         "desc": "步骤 2: exportScene 采集当前所有活动断点并封装聚合根",
         "contextSnippet": {
-          "current": "{ ...options, queue: this.queue },",
-          "prev": "},",
-          "next": ");",
-          "indent": 6
+          "current": "return this.queue.enqueue(async () => {",
+          "prev": "): Promise<ExportSceneResult> {",
+          "next": "const { sceneRepository, breakpointBridge } = this.resolveDeps(options);",
+          "scopeAnchor": "loadCatalog",
+          "indent": 4
         }
       },
       {
@@ -190,15 +218,15 @@
       {
         "type": "line",
         "file": "src/infra/storage/jsonFileSceneRepository.ts",
-        "line": 92,
+        "line": 93,
         "enabled": true,
         "desc": "步骤 5: saveScenesConfig 原子写入 debug-scenes.json 磁盘文件",
         "contextSnippet": {
-          "current": "export function saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void {",
-          "prev": "}",
-          "next": "const configPath = getScenesConfigPath(workspaceRoot);",
+          "current": "const configPath = getScenesConfigPath(workspaceRoot);",
+          "prev": "export function saveScenesConfig(workspaceRoot: string, config: ScenesConfig): void {",
+          "next": "try {",
           "scopeAnchor": "saveScenesConfig",
-          "indent": 0
+          "indent": 2
         }
       }
     ],
@@ -208,47 +236,53 @@
         "file": "src/ui/views/sceneTreeProvider.ts",
         "line": 77,
         "enabled": true,
-        "desc": "步骤 1: getChildren 构造场景与断点树节点（高亮活动与脏状态）"
-      },
-      {
-        "type": "line",
-        "file": "src/ui/commands/treeCommands.ts",
-        "line": 185,
-        "enabled": true,
-        "desc": "步骤 2: revealInConfigFile 在 debug-scenes.json 中快速定位选中断点",
+        "desc": "步骤 1: getChildren 构造场景与断点树节点（高亮活动与脏状态）",
         "contextSnippet": {
-          "current": "treeView?: vscode.TreeView<any>,",
-          "prev": "treeDataProvider: SceneTreeDataProvider,",
-          "next": "): Promise<void> {",
-          "scopeAnchor": "executeMove",
-          "indent": 2
+          "current": "new vscode.DataTransferItem(bpNodes),",
+          "prev": "\"application/vnd.code.tree.sceneBreakpointsView\",",
+          "next": ");",
+          "scopeAnchor": "dispose",
+          "indent": 8
         }
       },
       {
         "type": "line",
-        "file": "src/ui/views/sceneTreeProvider.ts",
-        "line": 178,
+        "file": "src/ui/commands/treeCommands.ts",
+        "line": 144,
         "enabled": true,
-        "desc": "步骤 3: handleDrop 树节点拖拽重排事件捕获与目标位置推导",
+        "desc": "步骤 2: revealInConfigFile 在 debug-scenes.json 中快速定位选中断点",
         "contextSnippet": {
-          "current": ": [];",
-          "prev": "? config.scenes[sceneName]",
-          "next": "const isActive = sceneStateManager.isSceneActive(sceneName);",
-          "scopeAnchor": "getTreeItem",
+          "current": "if (!node?.sceneName || !node.breakpoint) return;",
+          "prev": "vscode.commands.registerCommand(\"sceneBreakpoints.revealInConfigFile\", async (node?: BreakpointNode) => {",
+          "next": "await runWithWorkspace(true, async (workspaceRoot) => {",
+          "scopeAnchor": "registerBreakpointMutationCommands",
           "indent": 6
         }
       },
       {
         "type": "line",
-        "file": "src/domain/models/scene.ts",
-        "line": 160,
+        "file": "src/ui/views/sceneTreeProvider.ts",
+        "line": 87,
         "enabled": true,
-        "desc": "步骤 4: reorderBreakpoint 充血聚合根重排断点顺序并持久化",
+        "desc": "步骤 3: handleDrop 树节点拖拽重排事件捕获与目标位置推导",
         "contextSnippet": {
-          "current": "return this.breakpoints.filter(",
-          "prev": "public getUnfingerprintedBreakpoints(): Breakpoint[] {",
-          "next": "(bp) => bp.type !== \"function\" && !bp.isFingerprinted() && bp.file && bp.line,",
-          "scopeAnchor": "getUnfingerprintedBreakpoints",
+          "current": "const transferItem = sources.get(\"application/vnd.code.tree.sceneBreakpointsView\");",
+          "prev": "): Promise<void> {",
+          "next": "if (!transferItem || !transferItem.value) return;",
+          "scopeAnchor": "dispose",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/application/breakpointManager.ts",
+        "line": 222,
+        "enabled": true,
+        "desc": "步骤 4: reorderBreakpoint 经单写者事务管道重排断点顺序并持久化",
+        "contextSnippet": {
+          "current": "return mutateCatalog(",
+          "prev": "): Promise<boolean> {",
+          "next": "workspaceRoot,",
           "indent": 4
         }
       }
@@ -300,14 +334,28 @@
         "file": "src/domain/services/scenePayloadCodec.ts",
         "line": 37,
         "enabled": true,
-        "desc": "步骤 4: decode 容错解析不同格式并清洗不合法字段"
+        "desc": "步骤 4: decode 容错解析不同格式并清洗不合法字段",
+        "contextSnippet": {
+          "current": "}",
+          "prev": "bps = breakpoints || [];",
+          "next": "const payload = {",
+          "scopeAnchor": "encodeScenePayload",
+          "indent": 2
+        }
       },
       {
         "type": "line",
         "file": "src/ui/commands/clipboardCommands.ts",
-        "line": 105,
+        "line": 116,
         "enabled": true,
-        "desc": "步骤 5: resolveImportTargetScene 智能处理同名场景冲突（覆盖 / 追加合并 / 另存为新场景）"
+        "desc": "步骤 5: resolveImportTargetScene 智能处理同名场景冲突（覆盖 / 追加合并 / 另存为新场景）",
+        "contextSnippet": {
+          "current": "const existing = scenes[initialName];",
+          "prev": "): Promise<{ sceneName: string; mode: \"overwrite\" | \"append\" } | null> {",
+          "next": "if (!existing || (Array.isArray(existing) && existing.length === 0)) {",
+          "scopeAnchor": "resolveImportTargetScene",
+          "indent": 2
+        }
       }
     ],
     "feat:inlay-hints-flow": [
@@ -342,109 +390,314 @@
       {
         "type": "line",
         "file": "src/ui/views/sceneInlayHintsProvider.ts",
-        "line": 85,
+        "line": 188,
         "enabled": true,
-        "desc": "步骤 3: 按行聚合多断点并构造无 kind 的 InlayHint 幽灵文本",
+        "desc": "步骤 3: buildHintTooltip 构造断点步骤的丰富悬停 Markdown 信息",
         "contextSnippet": {
-          "current": "*/",
-          "prev": "* 构建断点步骤的丰富悬停 Markdown 信息",
-          "next": "private buildHintTooltip(stepItems: BreakpointStepItem[]): vscode.MarkdownString {",
-          "scopeAnchor": "refresh",
-          "indent": 3
+          "current": "const tooltipMarkdown = new vscode.MarkdownString(\"\", true);",
+          "prev": "private buildHintTooltip(stepItems: BreakpointStepItem[]): vscode.MarkdownString {",
+          "next": "tooltipMarkdown.isTrusted = true;",
+          "scopeAnchor": "buildHintTooltip",
+          "indent": 4
         }
       },
       {
         "type": "line",
         "file": "src/ui/utils/inlayHintsCoordinator.ts",
-        "line": 29,
+        "line": 30,
         "enabled": true,
         "desc": "步骤 4: promptInlayHintsModeIfFirstTime 首次激活常驻引导判定",
         "contextSnippet": {
-          "current": "export async function promptInlayHintsModeIfFirstTime(globalState?: vscode.Memento): Promise<void> {",
-          "prev": "*/",
-          "next": "try {",
+          "current": "try {",
+          "prev": "export async function promptInlayHintsModeIfFirstTime(globalState?: vscode.Memento): Promise<void> {",
+          "next": "if (isInlayHintsAlwaysOn()) return;",
           "scopeAnchor": "promptInlayHintsModeIfFirstTime",
-          "indent": 0
+          "indent": 2
         }
       }
     ],
-    "test": [
+    "core:scene-ref-resolver": [
       {
         "type": "line",
-        "file": "src/ui/commands/index.ts",
-        "line": 37,
+        "file": "src/domain/services/sceneResolver.ts",
+        "line": 101,
         "enabled": true,
-        "desc": "测试一下",
+        "desc": "步骤 1: expandScene 单场景展开入口，初始化输出流与先到先得去重集合",
         "contextSnippet": {
-          "current": "[\"sceneBreakpoints.addBreakpoint\", addBreakpointCommand],",
-          "next": "[\"sceneBreakpoints.applyScene\", applySceneCommand],",
-          "scopeAnchor": "registerAllCommands",
-          "indent": 4
+          "current": "const output: ResolvedStep[] = [];",
+          "prev": "export function expandScene(catalog: SceneCatalog, sceneName: string): ExpandResult {",
+          "next": "const warnings: ResolveWarning[] = [];",
+          "scopeAnchor": "expandScene",
+          "indent": 2
         }
       },
       {
         "type": "line",
-        "file": "src/ui/commands/index.ts",
-        "line": 43,
+        "file": "src/domain/services/sceneResolver.ts",
+        "line": 122,
         "enabled": true,
-        "desc": "测试2",
+        "desc": "步骤 2: 无恒等快路径命中时进入 DFS 深度优先引用展开",
         "contextSnippet": {
-          "current": "[\"sceneBreakpoints.copySceneToClipboard\", copySceneToClipboardCommand],",
-          "next": "[\"sceneBreakpoints.importSceneFromClipboard\", importSceneFromClipboardCommand],",
-          "scopeAnchor": "registerAllCommands",
-          "indent": 4
+          "current": "dfs(catalog, sceneName, [sceneName], seen, output, warnings);",
+          "prev": "}",
+          "next": "return { steps: output, warnings };",
+          "scopeAnchor": "expandScene",
+          "indent": 2
         }
       },
       {
         "type": "line",
-        "file": "src/ui/commands/index.ts",
-        "line": 44,
+        "file": "src/domain/services/sceneResolver.ts",
+        "line": 68,
         "enabled": true,
-        "desc": "测试3",
+        "desc": "步骤 3: 观察 INV-011 先到先得去重（同位置断点首见生效）",
         "contextSnippet": {
-          "current": "[\"sceneBreakpoints.importSceneFromClipboard\", importSceneFromClipboardCommand],",
-          "prev": "[\"sceneBreakpoints.copySceneToClipboard\", copySceneToClipboardCommand],",
-          "scopeAnchor": "registerAllCommands",
-          "indent": 4
+          "current": "if (seen.has(key)) continue;",
+          "prev": "const key = breakpointKey(bp);",
+          "next": "seen.add(key);",
+          "scopeAnchor": "dfs",
+          "indent": 6
         }
       },
       {
         "type": "line",
-        "file": "src/ui/commands/index.ts",
-        "line": 51,
+        "file": "src/domain/services/sceneResolver.ts",
+        "line": 83,
         "enabled": true,
-        "desc": "测试33",
+        "desc": "步骤 4: 悬空引用降级——警告入队并跳过子树，其余断点正常输出",
         "contextSnippet": {
-          "current": "context.subscriptions.push(vscode.commands.registerCommand(commandId, handler));",
-          "prev": "for (const [commandId, handler] of commands) {",
+          "current": "warnings.push({ code: \"dangling-ref\", refName: ref.name, refPath });",
+          "next": "continue;",
+          "scopeAnchor": "dfs",
+          "indent": 6
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/services/sceneResolver.ts",
+        "line": 89,
+        "enabled": true,
+        "desc": "步骤 5: 环检测命中——抛出携带完整环路径的 CircularReferenceError",
+        "contextSnippet": {
+          "current": "throw new CircularReferenceError([...refPath.slice(start), ref.name]);",
+          "prev": "const start = refPath.indexOf(ref.name);",
           "next": "}",
-          "scopeAnchor": "registerAllCommands",
+          "scopeAnchor": "dfs",
+          "indent": 6
+        }
+      }
+    ],
+    "core:line-drift-healing": [
+      {
+        "type": "line",
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 319,
+        "enabled": true,
+        "desc": "步骤 1: heal 两阶段自愈入口，快路径校验原行是否仍精确匹配",
+        "contextSnippet": {
+          "current": "if (origIdx < lines.length && cleanLine(lines[origIdx]) === spec.targetCurrent) {",
+          "next": "return { healedLine: targetLine, isHealed: false, status: \"matched\", confidence: 1.0 };",
           "indent": 4
         }
       },
       {
         "type": "line",
-        "file": "src/ui/commands/index.ts",
-        "line": 55,
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 200,
         "enabled": true,
-        "desc": "112312",
+        "desc": "步骤 2: 阶段一原址双向辐射探测（±30 行交替步进）",
         "contextSnippet": {
-          "current": "registerTreeCommands(context, deps.treeDataProvider, deps.treeView);",
-          "prev": "if (deps?.treeDataProvider) {",
-          "next": "}",
-          "scopeAnchor": "registerAllCommands",
+          "current": "for (let step = 1; step <= this.searchWindow; step++) {",
+          "prev": "let bestScore = -1;",
+          "next": "for (const offset of [step, -step]) {",
+          "scopeAnchor": "computeMaxPossibleScore",
           "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 87,
+        "enabled": true,
+        "desc": "步骤 3: 候选行全维特征加权打分（精确/拓扑/相似度/缩进/作用域）",
+        "contextSnippet": {
+          "current": "const lineText = cleanLine(lines[i]);",
+          "prev": "): CandidateScoreResult {",
+          "next": "let score = 0;",
+          "scopeAnchor": "calculateCandidateLineScore",
+          "indent": 2
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 253,
+        "enabled": true,
+        "desc": "步骤 4: 阶段二作用域巡航大跨度重锚定（函数体窗口扫描）",
+        "contextSnippet": {
+          "current": "for (let i = scopeHeaderIdx; i <= searchEnd; i++) {",
+          "prev": "const headerIndent = countIndent(headerLine);",
+          "next": "if (isPythonStyle && i > scopeHeaderIdx) {",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/services/healingEngine.ts",
+        "line": 336,
+        "enabled": true,
+        "desc": "步骤 5: 两阶段均未达标——安全标记 unmatched 脱靶",
+        "contextSnippet": {
+          "current": "return { healedLine: targetLine, isHealed: false, status: \"unmatched\" };",
+          "next": "}",
+          "indent": 4
+        }
+      }
+    ],
+    "core:skill-lifecycle": [
+      {
+        "type": "line",
+        "file": "src/domain/models/agentRuleAsset.ts",
+        "line": 155,
+        "enabled": true,
+        "desc": "步骤 1: computeFingerprint 规范化正文（剥 Frontmatter + 跨平台归一化）后求指纹",
+        "contextSnippet": {
+          "current": "const normalized = this.getNormalizedBody();",
+          "prev": "public computeFingerprint(hasher?: Hasher): string {",
+          "next": "if (typeof hasher === \"function\") {",
+          "scopeAnchor": "computeFingerprint",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/models/agentRuleAsset.ts",
+        "line": 185,
+        "enabled": true,
+        "desc": "步骤 2: 生命周期判定——与最新模板指纹一致时识别为 UpToDate",
+        "contextSnippet": {
+          "current": "if (localHash === latestHash) {",
+          "next": "return {",
+          "scopeAnchor": "computeFingerprint",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/models/agentRuleAsset.ts",
+        "line": 195,
+        "enabled": true,
+        "desc": "步骤 3: 命中官方史表时识别为 CleanOutdated（可平滑升级的纯净旧版）",
+        "contextSnippet": {
+          "current": "if (OFFICIAL_RULE_HISTORY[localHash]) {",
+          "next": "return {",
+          "scopeAnchor": "computeFingerprint",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/domain/models/agentRuleAsset.ts",
+        "line": 206,
+        "enabled": true,
+        "desc": "步骤 4: 双双未命中——识别为 CustomModified（用户本地定制改动）",
+        "contextSnippet": {
+          "current": "status: \"CustomModified\",",
+          "prev": "return {",
+          "next": "localHash,",
+          "scopeAnchor": "computeFingerprint",
+          "indent": 6
+        }
+      }
+    ],
+    "core:config-coldstart-recovery": [
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 84,
+        "enabled": true,
+        "desc": "步骤 1: 冷启动加载——先净化同目录过期孤儿临时碎片",
+        "contextSnippet": {
+          "current": "this.pruneOrphanTmpFiles(targetDir, baseName);",
+          "scopeAnchor": "load",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 87,
+        "enabled": true,
+        "desc": "步骤 2: 主文件健康度探测（缺失/损坏/冲突标记三相分流）",
+        "contextSnippet": {
+          "current": "const probeResult = this.probeMainFile(filePath, options);",
+          "next": "if (probeResult) {",
+          "scopeAnchor": "load",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 112,
+        "enabled": true,
+        "desc": "步骤 3: 读取主文件原文，观察 Git 冲突标记与 0 字节判定",
+        "contextSnippet": {
+          "current": "const content = fs.readFileSync(filePath, \"utf-8\");",
+          "prev": "try {",
+          "next": "if (!content || !content.trim()) {",
+          "scopeAnchor": "probeMainFile",
+          "indent": 6
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 93,
+        "enabled": true,
+        "desc": "步骤 4: 灾难仲裁自愈——从遗留 tmp 副本抢救配置",
+        "contextSnippet": {
+          "current": "const healedResult = this.attemptRecoveryFromTmp(targetDir, baseName, filePath, options);",
+          "next": "if (healedResult) {",
+          "scopeAnchor": "load",
+          "indent": 4
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 161,
+        "enabled": true,
+        "desc": "步骤 5: 抢救成功——原子覆盖修复主配置文件并触发 onHealed",
+        "contextSnippet": {
+          "current": "fs.copyFileSync(cand.path, targetFilePath);",
+          "next": "const msg = `Disaster recovery successful: restored configuration from [${path.basename(cand.path)}]`;",
+          "scopeAnchor": "probeMainFile",
+          "indent": 10
+        }
+      },
+      {
+        "type": "line",
+        "file": "src/infra/storage/atomicFileJsonStore.ts",
+        "line": 100,
+        "enabled": true,
+        "desc": "步骤 6: 无药可救——安全回退 fallback 默认数据并附诊断信息",
+        "contextSnippet": {
+          "current": "status: \"fallback\",",
+          "prev": "return {",
+          "next": "data: options.fallback(),",
+          "scopeAnchor": "load",
+          "indent": 6
         }
       }
     ]
   },
   "activeScenes": [
-    "test",
-    "arch:activation-flow"
+    "feat:apply-and-heal-flow"
   ],
   "bindings": {
     "Launch Extension": [
-      "arch:activation-flow"
+      "core:plugin-lifecycle"
     ]
   }
 }

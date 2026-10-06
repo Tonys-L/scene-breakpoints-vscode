@@ -109,7 +109,7 @@ src/
 | **INV-010** | **单向回写时序与串行化保证**：写盘标记 $\rightarrow$ 磁盘落盘 $\rightarrow$ DAP 装配 $\rightarrow$ 刷新内存投影；应用层受 `SerialQueue` 与 `mutateCatalog` 事务管道串行保护。 | `src/application/mutateCatalog.ts` 与 `src/application/serialQueue.ts` |
 | **INV-011** | **多场景合并先到先得**：首个声明的断点生效；`enabled: false` 显式参与去重，后出现的同位置断点直接忽略。 | `src/domain/models/scene.ts` (`Scene.merge`) 与 `src/domain/models/sceneCatalog.ts` |
 | **INV-012** | **调试会话保护与拓扑 Diff 防线**：调试进行中外部改动断点挂起调度；核心哈希未变时阻断 DAP 重刷，会话结束补发。 | `src/application/agentSyncService.ts` |
-| **INV-013** | **Skill 正文指纹唯一性**：基于剥离 Frontmatter 后的纯净正文 SHA-256 判定版本；覆写前自动生成 `.bak` 备份。 | `src/domain/models/agentRuleAsset.ts` |
+| **INV-013** | **Skill 正文指纹唯一性**：基于剥离 Frontmatter 后纯净正文的标准 SHA-256 (FIPS 180-4) 判定版本（纯 TS 实现 `pureSha256` 已对齐上游 geraintluff/sha256 素数筛上限 313，可与 node:crypto 交叉验证，见 ADR-006）；指纹必须经 `AgentRuleAsset.computeFingerprint()` 领域管线生成，严禁绕过归一化语义直算；覆写前自动生成 `.bak` 备份。 | `src/domain/models/agentRuleAsset.ts` |
 | **INV-027** | **冷启动自愈与崩溃隔离守卫 (Disaster Self-Healing Guard)**：物理持久化写入采用动态并发临时文件 (`tmp.${pid}.${ts}.${rand}`) + 原子覆盖 (`renameSync`)；主文件 0 字节或损坏时，优先从合法临时候选副本自愈恢复，严禁中断扩展生命周期。 | `src/infra/storage/atomicFileJsonStore.ts` |
 | **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停与恢复统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` |
 | **INV-030** | **场景引用解析不变量 (Scene Reference Resolution)**：① 含引用场景激活必先经 `sceneResolver` 展开为纯断点流，方可进入合并/自愈/DAP 管道（`getSteps(): SceneStep[]` 与 `Breakpoint[]` 类型隔离在编译期强制，禁止绕过收窄点）；② 展开严格保持声明时序（深度优先、按序穿插）；③ 成环必须在任何写盘/DAP 下发前抛 `CircularReferenceError`（携带完整环路径），状态机零中间态、磁盘零污染；④ 悬空引用降级为警告并跳过，不中断其余断点激活；⑤ `enabled: false` 引用整棵子树跳过；⑥ 自愈回写按 `ownerScene`（断点定义场景）路由，同源多引用至多回写一次，引用节点自身永不接收回写；⑦ 引用条目在 codec 清洗往返中保真，非法引用（空 name）清洗阶段丢弃。 | `src/domain/services/sceneResolver.ts` 与 `src/application/sceneActivationPipeline.ts` |
@@ -166,5 +166,6 @@ src/
 | 日期 | 变更内容 | 变更人 | 关联变更 |
 |------|----------|--------|----------|
 | 2026-10-06 | 新增 INV-030 场景引用解析不变量；GR-006/GR-007 适配场景引用条目形态 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 boundaries.md / flows.md / glossary.md / adr/005 / e2e-scenarios.md |
+| 2026-10-07 | INV-013 语义精确化为"标准 SHA-256 (FIPS 180-4)"并固化领域管线铁律（pureSha256 转写偏差修复，史表全量重生成） | GLM-5.3-Flash | 同批次 ADR-006 / lessons §6.1 / CHANGELOG 双语 |
 
 

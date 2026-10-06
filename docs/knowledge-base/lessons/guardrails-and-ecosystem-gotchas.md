@@ -280,11 +280,15 @@ E2E 测试 TC-SKILL-01（模拟上游发版的平滑升级）红灯：本地写�
 
 **解决方案**:
 1. 铁律：史表指纹与一切版本判定输入必须统一经由领域实体管线 `AgentRuleAsset.computeFingerprint()` 生成，严禁 `node:crypto` 直算（警示已固化于 `agentRuleAsset.ts` 史表注释）；
-2. pureSha256 保持项目内自洽（历史条目同管线生成，互为一致即安全）；修正为标准 SHA-256 属独立 ADR 级变更（需重新生成全部史表条目并考虑存量用户指纹迁移），不得顺手修改；
-3. 排查指纹类问题时用"真实生产模块 + 最小向量"实证对比（如 `pureSha256("abc")` vs 标准 SHA-256），勿靠肉眼审读素数筛代码臆断。
+2. **转写偏差已修复（2026-10-07，见 ADR-006）**：素数筛上限对齐上游 300→313，pureSha256 还原为逐字节标准 SHA-256 (FIPS 180-4)；史表三键经领域管线全量重生成——1.0.3 键 `f026e09…` 系 pre-DDD 时代 node:crypto 标准实现登记，修复后指纹不变原样保留；1.0.8 键（旧 `36c8a30…` 系 buggy 算法产物，修复前对 1.0.8 blob 精确命中证明其身份）重登记为 `be86d3a3…`；1.1.0 键重登记为 `3d042597…`（发布定稿前 SKILL.md 增补 Platform Write Guard 护栏节后随正文最终态重算）。测试强化：FIPS 公开标准向量 4 条 + node:crypto 动态交叉验证写入 `agent_rule_asset.test.mjs` §9。存量用户断点伴随指纹为纯文本上下文不经 pureSha256，零迁移；
+3. 排查指纹类问题时用"真实生产模块 + 最小向量"实证对比（如 `pureSha256("abc")` vs 标准 SHA-256），勿靠肉眼审读素数筛代码臆断；
+4. 计算工具化铁律：一切数值/事实计算必须经工具执行，禁止临时 node -e 或人工心算作为决策依据；无现成第三方工具时固化为项目内可复跑脚本——指纹计算已固化至 `scripts/gen-skill-fingerprint.mjs`（经领域管线生成，发版仪式配套），并由守卫测试（gen_skill_fingerprint.test.mjs）锚定"当前正文指纹必须已登记史表最新版"。
 
-**影响文件**: `src/domain/models/agentRuleAsset.ts`
-**日期**: 2026-10-06
+**上游出处（2026-10-07 补充考证，经抓取上游源码核实）**:
+pureSha256 逐行同构改编自 GitHub 公版纯 JS 实现 [geraintluff/sha256](https://github.com/geraintluff/sha256)（被广泛转抄的零依赖实现）。**上游素数筛上限为 `i < 313`**（313 ≥ 312，可正确标记 301/303/305/309 等全部 ≤311 的复合数），本项目转写时误写为 300——即本缺陷的真正根因是**转写偏差**而非算法设计错误。已按对齐上游 313 路径完成修复（ADR-006），备选的 Hasher 端口注入 node:crypto / @noble/hashes 方案因架构约束与零依赖原则落选。
+
+**影响文件**: `src/domain/models/agentRuleAsset.ts`、`scripts/gen-skill-fingerprint.mjs`、`test/unit/domain/models/agent_rule_asset.test.mjs`
+**日期**: 2026-10-06（修复落地 2026-10-07）
 
 ---
 

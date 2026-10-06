@@ -129,6 +129,16 @@ AI Agent 在协助用户阅读代码、排查 Bug 或开发新功能时，应当
 4. **激活场景**：将根级 `"activeScenes": ["auth-login-flow"]` 设置为目标场景名并保存文件。
 5. **引导调试**：告知用户断点已就绪，提示用户按 **F5** 启动调试直接命中现场。
 
+## 平台护栏：写入被拒时的兜底 (Platform Write Guard)
+
+部分 AI IDE（如 Trae）的 Agent 工具层会默认保护 `.vscode/` 目录下的配置文件，直接写入可能被拒绝（`Access denied ... restricted to user edits`）——**这是平台权限限制，与插件无关**。遇到时按以下顺序兜底：
+
+1. **改写临时文件**：将完整场景 JSON 输出到工程外的临时文件（如系统 Temp 目录），提示用户手动复制覆盖 `.vscode/debug-scenes.json`；
+2. **提示用户解除保护**：引导用户在 IDE 设置（如 Trae → Permission & Approval → Custom Configuration）中将该文件加入 AI 可编辑白名单；
+3. **降级为指令输出**：将待写入的场景 JSON 完整输出在回复正文中，由用户复制粘贴。
+
+⚠️ 无论何种兜底，严禁因此跳过【断点物理行选定铁律】与【严禁手动填写指纹】约束。
+
 ## 场景激活的三种途径（AI 协同策略）
 
 生成断点场景后，AI 可根据工作区环境选择以下三种途径让断点生效：
@@ -190,11 +200,23 @@ AI 静态分析代码后写入 `.vscode/debug-scenes.json`：
         "desc": "观察重试超限分支"
       },
       {
+        "type": "hitCount",
+        "file": "src/auth.ts",
+        "line": 58,
+        "hitCondition": ">3",
+        "desc": "仅在第 4 次及以后的重试才暂停"
+      },
+      {
         "type": "logpoint",
         "file": "src/token.ts",
         "line": 88,
         "logMessage": "Token 生成成功, payload: {payload.sub}",
         "desc": "观测生成 Token 载荷"
+      },
+      {
+        "type": "function",
+        "functionName": "verifyPassword",
+        "desc": "拦截密码校验函数入口，观察明文与哈希比对过程"
       }
     ]
   }

@@ -1,4 +1,5 @@
 import assert from "node:assert";
+import crypto from "node:crypto";
 import {
 	LATEST_SKILL_VERSION,
 	LATEST_RULE_VERSION,
@@ -192,19 +193,26 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 		assert.strictEqual(resWithFn.localHash, "hash-from-second-param-fn");
 	}
 
-	// 9. pureSha256 边界与非 ASCII 中文字符编码校验
+	// 9. pureSha256 FIPS 180-4 标准向量与非 ASCII 编码校验（转写偏差修复守卫）
 	{
-		const sampleAscii = "hello world";
-		const hashAscii = pureSha256(sampleAscii);
-		assert.strictEqual(hashAscii, "f1a2213a86132e13a52e52d7da7dabfa468f2b626d1970f99088f7ace2efcde9");
+		// 9.1 FIPS 180-4 公开标准向量：素数筛上限 313 修复后必须与标准 SHA-256 逐字节一致
+		assert.strictEqual(pureSha256(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+		assert.strictEqual(pureSha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+		assert.strictEqual(pureSha256("hello world"), "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+		assert.strictEqual(
+			pureSha256("The quick brown fox jumps over the lazy dog"),
+			"d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",
+		);
 
-		// 中文 Unicode 字符通过 computeFingerprint 计算
-		const chineseAsset = new AgentRuleAsset("zh.md", "这是一段中文规则说明文本");
-		const zhHash = chineseAsset.computeFingerprint();
-		assert.strictEqual(typeof zhHash, "string");
-		assert.strictEqual(zhHash.length, 64);
+		// 9.2 与 node:crypto 动态交叉验证：覆盖中文 UTF-8 经 computeFingerprint 的 latin1 字节流编码路径
+		const zhAsset = new AgentRuleAsset("zh.md", "中文断点场景");
+		assert.strictEqual(
+			zhAsset.computeFingerprint(),
+			crypto.createHash("sha256").update("中文断点场景", "utf8").digest("hex"),
+			"computeFingerprint 中文 UTF-8 路径必须与 node:crypto 标准 SHA-256 一致",
+		);
 
-		// pureSha256 包含非 ASCII 码点时安全返回空字符串
+		// 9.3 pureSha256 包含非 ASCII 码点时安全返回空字符串（契约不变）
 		const nonAsciiDirect = pureSha256("中文\u{1F600}");
 		assert.strictEqual(nonAsciiDirect, "", "pureSha256 直接遇到大于 255 的字符时必须安全返回空字符串");
 	}

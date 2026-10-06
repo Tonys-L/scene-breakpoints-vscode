@@ -61,13 +61,14 @@ import { runAgentRuleManagerTests } from "./unit/ui/utils/agent_rule_manager.tes
 // Script & Verification Tests
 import { runExtractChangelogTests } from "./unit/scripts/extract_changelog.test.mjs";
 import { runGuardrailsVerificationTests } from "./unit/scripts/guardrails_verification.test.mjs";
+import { runGenSkillFingerprintTests } from "./unit/scripts/gen_skill_fingerprint.test.mjs";
 
 // Integration & Fidelity Tests
 import { runRoundtripAndEdgeTests } from "./integration/roundtrip_and_edge.test.mjs";
 import { runI18nTests } from "./integration/i18n.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 51 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
+console.log("🚀 开始执行 Scene Breakpoints 全量 52 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -187,6 +188,8 @@ try {
 	console.log("");
 	runGuardrailsVerificationTests();
 	console.log("");
+	runGenSkillFingerprintTests();
+	console.log("");
 
 	// 7. 端到端链路与集成保真度套件
 	await runRoundtripAndEdgeTests();
@@ -195,7 +198,7 @@ try {
 
 	const duration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 51 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
+	console.log(`🎉 全部 52 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
 	console.log("=======================================================\n");
 } catch (error) {
 	console.error("\n❌ 测试套件执行失败：\n", error);

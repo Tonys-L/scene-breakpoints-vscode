@@ -18,5 +18,7 @@ AGENTS.md
 .c8rc.json
 coverage/**
 .c8_output/**
+.stryker-tmp/**
+reports/**
 *.map
 *.vsix
