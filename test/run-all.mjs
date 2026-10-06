@@ -48,6 +48,7 @@ import { runTreeViewTests } from "./unit/ui/views/scene_tree_provider.test.mjs";
 import { runTemplateProviderTests } from "./unit/ui/views/template_content_provider.test.mjs";
 import { runCommandsRegistryTests } from "./unit/ui/commands/commands_registry.test.mjs";
 import { runCommandsExecutionTests } from "./unit/ui/commands/commands_execution.test.mjs";
+import { runAddBreakpointCommandTests } from "./unit/ui/commands/add_breakpoint_command.test.mjs";
 import { runSkillCommandsTests } from "./unit/ui/commands/skill_commands.test.mjs";
 import { runSceneCommandsTests } from "./unit/ui/commands/scene_commands.test.mjs";
 import { runTreeCommandsTests } from "./unit/ui/commands/tree_commands.test.mjs";
@@ -64,7 +65,7 @@ import { runRoundtripAndEdgeTests } from "./integration/roundtrip_and_edge.test.
 import { runI18nTests } from "./integration/i18n.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 49 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
+console.log("🚀 开始执行 Scene Breakpoints 全量 50 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -166,6 +167,8 @@ try {
 	console.log("");
 	await runCommandsExecutionTests();
 	console.log("");
+	await runAddBreakpointCommandTests();
+	console.log("");
 	await runSkillCommandsTests();
 	console.log("");
 	await runSceneCommandsTests();
@@ -186,7 +189,7 @@ try {
 
 	const duration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 49 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
+	console.log(`🎉 全部 50 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
 	console.log("=======================================================\n");
 } catch (error) {
 	console.error("\n❌ 测试套件执行失败：\n", error);
