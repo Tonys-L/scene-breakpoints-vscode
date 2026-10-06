@@ -252,6 +252,15 @@
 **影响文件**: `src/ui/views/sceneInlayHintsProvider.ts`, `src/application/activeBreakpointIndex.ts`, `src/application/sceneStateManager.ts`
 **日期**: 2026-10-05
 
+### 1.26 showInformationMessage 用户关闭提示返回 undefined 与哨兵动作相等比较导致误触发更新分支 (Dismissed Prompt Returns undefined Misfiring Action Branch)
+
+**问题**: Skill 更新提示弹窗中，用户不点击任何按钮直接关闭提示（Esc / 点击弹窗外区域）时，流程仍走入"立即更新"分支：显示"Successfully updated 0 Skill(s)"的成功提示；当单个目标 Skill 存在自定义修改时，还可能误触发 View Diff 视图。
+**原因**: `vscode.window.showInformationMessage` 在用户直接关闭提示时返回 `undefined`（而非拒绝 Promise）。修复前的分支判定采用 `const selected = await showInformationMessage(...); if (selected === updateAction) {...}`，而 `updateAction` 作为 `MessageItem` 哨兵值恰为 `undefined` 时，`undefined === undefined` 判定为 `true`，用户"什么都不选"被语义污染为"选择了更新动作"。
+**解决方案**: 在比较前增加显式 `undefined` 守卫——用户关闭提示时立即安全返回，严禁让"无选择"落入任何动作分支的相等比较；推广规则：所有基于 `showInformationMessage`/`showWarningMessage` 返回值驱动的分支，必须先处理 `selected === undefined`（用户关闭）路径，再进行动作匹配，且动作哨兵值禁止为 `undefined`。
+**影响文件**: `src/ui/commands/skillCommands.ts`, `test/unit/ui/commands/skill_commands.test.mjs`
+**关联变更**: #91d125b（新增 skill_commands 测试套件 9 场景，CRAP 极端函数 13 -> 12）
+**日期**: 2026-10-06
+
 
 
 
