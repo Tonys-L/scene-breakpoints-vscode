@@ -68,6 +68,26 @@ export class Range {
 	}
 }
 
+export class Selection {
+	constructor(anchor, active) {
+		this.anchor = anchor;
+		this.active = active;
+	}
+	get start() {
+		return this.anchor.line <= this.active.line ? this.anchor : this.active;
+	}
+	get end() {
+		return this.anchor.line <= this.active.line ? this.active : this.anchor;
+	}
+}
+
+export const TextEditorRevealType = {
+	First: 1,
+	InCenter: 2,
+	InCenterIfOutsideViewport: 3,
+	Last: 4,
+};
+
 export class Uri {
 	constructor(fsPath, pathStr) {
 		this.fsPath = fsPath;

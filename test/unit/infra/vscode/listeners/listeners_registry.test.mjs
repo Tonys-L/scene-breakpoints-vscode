@@ -13,6 +13,8 @@ import {
 	registerSessionLifecycleService,
 } from "#src/infra/vscode/listeners/index";
 import { sceneStateManager } from "#src/application/sceneStateManager";
+import { appEventBus } from "#src/application/eventBus";
+import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
 import { dapEchoGuard } from "#src/infra/vscode/dapEchoGuard";
 import { SceneTreeDataProvider, SceneNode, registerTreeInteractionService } from "#src/ui/views/sceneTreeProvider";
 
@@ -21,6 +23,25 @@ export async function runListenersRegistryTests() {
 
 	__resetMockVscodeState();
 	dapEchoGuard.reset();
+
+	// 自配置应用层端口依赖（与 commands_execution 先例一致），使本套件可独立运行
+	{
+		const { configureDependencies } = await import("#src/application/index");
+		const { jsonFileSceneRepository, vscodeBreakpointBridge, echoLoopGuard } = await import("#src/infra/index");
+		configureDependencies({
+			sceneRepository: jsonFileSceneRepository,
+			breakpointBridge: vscodeBreakpointBridge,
+			loopGuard: echoLoopGuard,
+			fileLinesReader: async (filePath) => {
+				try {
+					const content = fs.readFileSync(filePath, "utf-8");
+					return content.split(/\r?\n/);
+				} catch {
+					return undefined;
+				}
+			},
+		});
+	}
 	const mockTreeDataProvider = new SceneTreeDataProvider();
 
 	// 1. registerBreakpointSyncService 生命周期、断点清空与反向同步分支
@@ -290,6 +311,112 @@ export async function runListenersRegistryTests() {
 		);
 
 		pauseDisposable.dispose();
+	}
+
+	// 8. registerDebugPauseService 编辑器命中检查 (checkEditor) 全分支
+	{
+		__resetMockVscodeState();
+
+		// 捕获编辑器事件回调（mock 默认不捕获，需测试内 monkey-patch，结束后还原）
+		let activeEditorCb = null;
+		let selectionCb = null;
+		const origActiveEditorEvt = vscode.window.onDidChangeActiveTextEditor;
+		const origSelectionEvt = vscode.window.onDidChangeTextEditorSelection;
+		vscode.window.onDidChangeActiveTextEditor = (cb) => {
+			activeEditorCb = cb;
+			return { dispose() {} };
+		};
+		vscode.window.onDidChangeTextEditorSelection = (cb) => {
+			selectionCb = cb;
+			return { dispose() {} };
+		};
+
+		const tmpWs4 = fs.mkdtempSync(path.join(os.tmpdir(), "sb-checkeditor-"));
+		const hitFile = path.join(tmpWs4, "src", "hit.ts");
+		fs.mkdirSync(path.dirname(hitFile), { recursive: true });
+		fs.writeFileSync(hitFile, "const a = 1;\nconst b = 2;\nconst c = 3;\n", "utf-8");
+
+		const pauseDisposable = registerDebugPauseService();
+		assert.ok(typeof activeEditorCb === "function" && typeof selectionCb === "function",
+			"注册暂停服务时必须订阅编辑器激活与选区变更事件");
+
+		const pausedEvents = [];
+		const pauseSub = appEventBus.on("debug:paused", (e) => pausedEvents.push(e));
+
+		const makeEditor = (fsPath, line, scheme) => ({
+			document: { uri: { fsPath, scheme: scheme || "file" } },
+			selection: { active: { line } },
+		});
+
+		try {
+			// 场景基础态：工作区 + 激活场景 + 内存索引（断点位于 hit.ts 第 5 行）
+			vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpWs4 } }];
+			sceneStateManager.setActiveScenes(["editor-scene"], 1);
+			activeBreakpointIndex.sync(
+				tmpWs4,
+				{ "editor-scene": [{ file: "src/hit.ts", line: 5, type: "line", enabled: true }] },
+				["editor-scene"],
+			);
+
+			// A. 无活动调试会话 -> 直接返回，不触发高亮
+			vscode.debug.activeDebugSession = undefined;
+			activeEditorCb(makeEditor(hitFile, 4));
+			assert.strictEqual(pausedEvents.length, 0, "无调试会话时编辑器检查必须直接返回");
+
+			// B. editor 为 undefined -> 直接返回
+			vscode.debug.activeDebugSession = { name: "mock", type: "node" };
+			activeEditorCb(undefined);
+			assert.strictEqual(pausedEvents.length, 0, "无编辑器实例时必须直接返回");
+
+			// C. 文档 scheme 非 file (如 untitled) -> 直接返回
+			activeEditorCb(makeEditor(hitFile, 4, "untitled"));
+			assert.strictEqual(pausedEvents.length, 0, "非 file scheme 文档必须直接返回");
+
+			// D. 无工作区根目录 -> 直接返回
+			vscode.workspace.workspaceFolders = [];
+			activeEditorCb(makeEditor(hitFile, 4));
+			assert.strictEqual(pausedEvents.length, 0, "无工作区根目录时必须直接返回");
+			vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpWs4 } }];
+
+			// E. 无激活场景 -> 直接返回（注意：清空激活场景会联动清空内存索引）
+			sceneStateManager.setActiveScenes([]);
+			activeBreakpointIndex.clear();
+			activeEditorCb(makeEditor(hitFile, 4));
+			assert.strictEqual(pausedEvents.length, 0, "无激活场景时必须直接返回");
+			sceneStateManager.setActiveScenes(["editor-scene"], 1);
+			activeBreakpointIndex.sync(
+				tmpWs4,
+				{ "editor-scene": [{ file: "src/hit.ts", line: 5, type: "line", enabled: true }] },
+				["editor-scene"],
+			);
+
+			// F. 光标行命中激活场景断点 (第 4 行 0-based -> 1-based 第 5 行) -> 广播 debug:paused
+			activeEditorCb(makeEditor(hitFile, 4));
+			assert.strictEqual(pausedEvents.length, 1, "命中激活场景断点必须广播 debug:paused");
+			assert.deepStrictEqual(
+				pausedEvents[0],
+				{ file: hitFile, line: 5 },
+				"debug:paused 事件必须携带命中的绝对文件路径与 1-based 行号",
+			);
+
+			// G. 光标行未命中任何断点 -> 不广播
+			activeEditorCb(makeEditor(hitFile, 9));
+			assert.strictEqual(pausedEvents.length, 1, "未命中断点时绝不可广播 debug:paused");
+
+			// H. 选区变更入口 (onDidChangeTextEditorSelection) 同样触发检查
+			selectionCb({ textEditor: makeEditor(hitFile, 4) });
+			assert.strictEqual(pausedEvents.length, 2, "选区变更事件必须同样触发编辑器命中检查");
+			assert.deepStrictEqual(pausedEvents[1], { file: hitFile, line: 5 });
+		} finally {
+			pauseSub.dispose();
+			pauseDisposable.dispose();
+			vscode.window.onDidChangeActiveTextEditor = origActiveEditorEvt;
+			vscode.window.onDidChangeTextEditorSelection = origSelectionEvt;
+			vscode.debug.activeDebugSession = undefined;
+			sceneStateManager.setActiveScenes([]);
+			activeBreakpointIndex.clear();
+			fs.rmSync(tmpWs4, { recursive: true, force: true });
+		}
 	}
 
 	console.log("  ✅ [Listeners Registry] 5 大核心事件监听与生命周期单元测试全部通过！");
