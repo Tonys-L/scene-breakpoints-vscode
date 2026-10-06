@@ -1,7 +1,6 @@
 import type { IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
-import type { Breakpoint } from "#src/domain/models/breakpoint";
-import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
+import { expandScenes } from "#src/domain/services/sceneResolver";
 import { computeTopologyHash, resolveActiveScenesDiff } from "#src/domain/services/activeScenesDiffResolver";
 import { sceneStateManager } from "./sceneStateManager";
 import { sceneManager } from "./sceneManager";
@@ -135,14 +134,10 @@ export class AgentSyncService {
 			onPendingMessage?: () => void;
 		},
 	): Promise<HandleExternalChangeResult> {
-		const activeScenes = currentActives
-			.map((name) => catalog.getScene(name))
-			.filter((s): s is Scene => !!s);
-		// 视图场景恒为纯断点（merge 仅吸收具象断点）；引用展开流接入见批次 3（expandScenes）
-		const merged = Scene.merge(activeScenes)
-			.getSteps()
-			.filter((s): s is Breakpoint => s.kind === "breakpoint")
-			.map((bp) => bp.raw);
+		// 拓扑哈希输入为展开流 DTO（§2.7/§5.4）：与激活管道同源 expandScenes，保证哈希一致性；
+		// 成环时抛出 CircularReferenceError 沿 async 栈上抛，由调用方（watcher）显式上报
+		const { steps } = expandScenes(catalog, currentActives);
+		const merged = steps.map((s) => s.breakpoint.raw);
 		const newTopologyHash = computeTopologyHash(merged);
 
 		if (newTopologyHash === sceneStateManager.getLastAppliedTopologyHash()) {

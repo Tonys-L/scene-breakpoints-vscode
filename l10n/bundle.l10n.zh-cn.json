@@ -1,5 +1,6 @@
 {
   "Failed to read debug-scenes.json: {0}": "读取 debug-scenes.json 失败: {0}",
+  "Circular scene reference: {0}": "场景引用成环: {0}",
   "No active editor file detected": "未检测到活动的编辑器文件",
   "Select a scene to add the current line breakpoint to": "请选择要将当前行断点归属到的场景",
   "$(add) [New Scene...]": "$(add) [新建场景...]",

@@ -7,6 +7,7 @@ import { flushVisibleEditors } from "#src/ui/views/sceneInlayHintsProvider";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
 import { detectSceneFromActiveEditor } from "#src/ui/locators/sceneJsonLocator";
 import { promptSceneName, promptSelectScenes, promptSceneCollision } from "#src/ui/utils/promptHelpers";
+import { CircularReferenceError } from "#src/domain/services/sceneResolver";
 import { uniqueStrings } from "#src/shared/utils/arrayUtils";
 
 let extensionGlobalState: vscode.Memento | undefined;
@@ -188,7 +189,19 @@ export async function applySceneCommand(sceneParam?: unknown): Promise<void> {
 		const proceed = await handleDirtyCheckBeforeSwitch(workspaceRoot);
 		if (!proceed) return;
 
-		const result = await sceneManager.activateScene(workspaceRoot, targetScenes);
+		let result;
+		try {
+			result = await sceneManager.activateScene(workspaceRoot, targetScenes);
+		} catch (err) {
+			// 成环失败路径 (§5.3)：早于任何状态机写入/落盘，仅向用户显式上报环路径
+			if (err instanceof CircularReferenceError) {
+				void vscode.window.showErrorMessage(
+					vscode.l10n.t("Circular scene reference: {0}", err.cyclePath.join(" → ")),
+				);
+				return;
+			}
+			throw err;
+		}
 		if (!result.success) {
 			void vscode.window.showErrorMessage(
 				vscode.l10n.t("Scene(s) [{0}] not found in debug-scenes.json", result.missingScenes.join(", ")),

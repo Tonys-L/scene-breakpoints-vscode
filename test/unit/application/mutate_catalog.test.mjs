@@ -223,5 +223,57 @@ export async function runMutateCatalogTests() {
 		sceneStateManager.clearLastAppliedTopologyHash();
 	}
 
+	// 9. 含引用场景拓扑哈希一致性：与激活管道同源展开流，被引用场景变更必须触发重刷 (§2.7/§5.4)
+	{
+		const { SceneCatalog } = await import("#src/domain/models/sceneCatalog");
+		const { expandScenes } = await import("#src/domain/services/sceneResolver");
+		const { computeTopologyHash } = await import("#src/domain/services/activeScenesDiffResolver");
+		sceneStateManager.resetState();
+		const repo = createMockRepo({
+			scenes: {
+				pay: [
+					{ type: "scene", name: "core" },
+					{ file: "src/pay.ts", line: 40, type: "line", enabled: true, contextSnippet: { current: "const pay = 40;" } },
+				],
+				core: [{ file: "src/core.ts", line: 3, type: "line", enabled: true, contextSnippet: { current: "const core = 3;" } }],
+			},
+		});
+		// 基线：以激活管道同源的展开流计算拓扑哈希（pay = core 断点 + 自有断点）
+		const catalog0 = new SceneCatalog(repo.getConfig());
+		const { steps } = expandScenes(catalog0, ["pay"]);
+		sceneStateManager.setActiveScenes(["pay"], 2);
+		sceneStateManager.setLastAppliedTopologyHash(computeTopologyHash(steps.map((s) => s.breakpoint.raw)));
+
+		const bridgeCalls = [];
+		const mockBridge = {
+			applySceneBreakpoints: async (root, label, bps) => {
+				bridgeCalls.push({ root, label, bps });
+				return { loadedCount: bps.length, healedCount: 0 };
+			},
+			clearAllBreakpoints: async () => {},
+		};
+
+		// 向被引用（非激活）场景 core 追加断点 → 展开流变化 → 哈希失配必须重刷
+		const result = await mutateCatalog(
+			"/mock/workspace",
+			(catalog) => {
+				return catalog.getScene("core").upsertStep(new Breakpoint({ file: "src/extra.ts", line: 1, enabled: true }));
+			},
+			{ sceneRepository: repo, breakpointBridge: mockBridge },
+		);
+
+		assert.strictEqual(result, true);
+		assert.strictEqual(bridgeCalls.length, 1, "被引用场景断点变更必须触发 DAP 重刷");
+		assert.strictEqual(bridgeCalls[0].label, "pay");
+		const files = bridgeCalls[0].bps.map((b) => b.file);
+		assert.ok(files.includes("src/core.ts"), "重刷下发流必须包含被引用场景既有断点（展开流）");
+		assert.ok(files.includes("src/extra.ts"), "重刷下发流必须包含被引用场景新增断点（展开流）");
+		assert.ok(files.includes("src/pay.ts"), "重刷下发流必须包含活跃场景自有断点");
+
+		// 复位全局状态机
+		sceneStateManager.setActiveScenes([]);
+		sceneStateManager.clearLastAppliedTopologyHash();
+	}
+
 	console.log("    ✔ mutateCatalog 统一原子写事务管道测试全量通过！");
 }

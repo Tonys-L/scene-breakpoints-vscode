@@ -69,7 +69,12 @@ export function registerConfigFileWatcherService(): vscode.Disposable {
 			// 调度处理外部文件变更
 			const workspaceRoot = getWorkspaceRoot();
 			if (workspaceRoot) {
-				await handleExternalScenesFileChange(workspaceRoot);
+				try {
+					await handleExternalScenesFileChange(workspaceRoot);
+				} catch (err) {
+					// 显式上报（含场景引用成环等配置解析失败），避免 setTimeout 异步回调产生未处理拒绝
+					void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
+				}
 				appEventBus.emit("scenes:changed", { workspaceRoot, reason: "external_file_change" });
 			}
 		}, 100);

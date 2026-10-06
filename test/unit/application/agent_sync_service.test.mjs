@@ -219,6 +219,94 @@ export async function runAgentSyncServiceTests() {
 				console.warn = origWarn;
 			}
 		}
+
+		// ----------------------------------------------------
+		// G. 含引用场景拓扑哈希一致性：展开流哈希匹配时 noop，严禁伪漂移重刷 (§2.7/§5.4)
+		// ----------------------------------------------------
+		{
+			sceneStateManager.resetState();
+			const { SceneCatalog } = await import("#src/domain/models/sceneCatalog");
+			const { expandScenes } = await import("#src/domain/services/sceneResolver");
+			const { computeTopologyHash } = await import("#src/domain/services/activeScenesDiffResolver");
+			const repo = new MockSceneRepository({
+				scenes: {
+					pay: [
+						{ type: "scene", name: "core" },
+						{ file: "src/pay.ts", line: 40, type: "line", enabled: true, contextSnippet: { current: "const pay = 40;" } },
+					],
+					core: [{ file: "src/core.ts", line: 3, type: "line", enabled: true, contextSnippet: { current: "const core = 3;" } }],
+				},
+				activeScenes: ["pay"],
+			});
+			// 基线：以激活管道同源的展开流计算拓扑哈希
+			const catalog = new SceneCatalog(repo.config);
+			const { steps } = expandScenes(catalog, ["pay"]);
+			sceneStateManager.setActiveScenes(["pay"], 2);
+			sceneStateManager.setLastAppliedTopologyHash(computeTopologyHash(steps.map((s) => s.breakpoint.raw)));
+
+			const bridgeCalls = [];
+			const result = await agentSyncService.handleExternalChange(workspaceRoot, {
+				sceneRepository: repo,
+				breakpointBridge: {
+					applySceneBreakpoints: async (_ws, label, bps) => {
+						bridgeCalls.push({ label, bps });
+						return { loadedCount: bps.length, healedCount: 0 };
+					},
+				},
+				lineReader: makeLineReader({}, []),
+				isDebuggingActive: false,
+			});
+
+			assert.strictEqual(result.action, "noop", "展开流哈希一致时必须判定为 noop");
+			assert.strictEqual(bridgeCalls.length, 0, "哈希一致时严禁伪漂移重刷");
+		}
+
+		// ----------------------------------------------------
+		// H. 被引用场景断点变更：哈希失配触发重刷，且下发流必须为展开流 (§2.7/§5.4)
+		// ----------------------------------------------------
+		{
+			sceneStateManager.resetState();
+			const { SceneCatalog } = await import("#src/domain/models/sceneCatalog");
+			const { expandScenes } = await import("#src/domain/services/sceneResolver");
+			const { computeTopologyHash } = await import("#src/domain/services/activeScenesDiffResolver");
+			const repo = new MockSceneRepository({
+				scenes: {
+					pay: [
+						{ type: "scene", name: "core" },
+						{ file: "src/pay.ts", line: 40, type: "line", enabled: true, contextSnippet: { current: "const pay = 40;" } },
+					],
+					core: [{ file: "src/core.ts", line: 3, type: "line", enabled: true, contextSnippet: { current: "const core = 3;" } }],
+				},
+				activeScenes: ["pay"],
+			});
+			const catalog = new SceneCatalog(repo.config);
+			const { steps } = expandScenes(catalog, ["pay"]);
+			sceneStateManager.setActiveScenes(["pay"], 2);
+			sceneStateManager.setLastAppliedTopologyHash(computeTopologyHash(steps.map((s) => s.breakpoint.raw)));
+
+			// 模拟外部修改被引用（非激活）场景 core 的断点行号
+			repo.config.scenes.core[0].line = 9;
+
+			const bridgeCalls = [];
+			const result = await agentSyncService.handleExternalChange(workspaceRoot, {
+				sceneRepository: repo,
+				breakpointBridge: {
+					applySceneBreakpoints: async (_ws, label, bps) => {
+						bridgeCalls.push({ label, bps });
+						return { loadedCount: bps.length, healedCount: 0 };
+					},
+				},
+				lineReader: makeLineReader({}, []),
+				isDebuggingActive: false,
+			});
+
+			assert.strictEqual(result.action, "applied", "被引用场景断点漂移必须触发重刷");
+			assert.strictEqual(bridgeCalls.length, 1);
+			assert.strictEqual(bridgeCalls[0].label, "pay");
+			const files = bridgeCalls[0].bps.map((b) => b.file);
+			assert.ok(files.includes("src/core.ts"), "重刷下发流必须包含被引用场景断点（展开流而非 merge 窄流）");
+			assert.ok(files.includes("src/pay.ts"), "重刷下发流必须包含活跃场景自有断点");
+		}
 	} finally {
 		sceneStateManager.resetState();
 		resetDependencies();

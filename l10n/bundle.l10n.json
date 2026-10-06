@@ -1,5 +1,6 @@
 {
   "Failed to read debug-scenes.json: {0}": "Failed to read debug-scenes.json: {0}",
+  "Circular scene reference: {0}": "Circular scene reference: {0}",
   "No active editor file detected": "No active editor file detected",
   "Select a scene to add the current line breakpoint to": "Select a scene to add the current line breakpoint to",
   "$(add) [New Scene...]": "$(add) [New Scene...]",

@@ -245,6 +245,49 @@ export async function runSceneCommandsTests() {
 			!savedScene.some((bp) => bp.line === 4 && bp.file.includes("target.ts")),
 			"overwrite 模式必须覆盖场景原有断点而非追加",
 		);
+		// ----------------------------------------------------
+		// 3. 成环失败路径：CircularReferenceError 显式上报环路径，配置零污染 (§5.3 / E55)
+		// ----------------------------------------------------
+		{
+			sceneStateManager.resetState();
+			const cyclicConfig = {
+				scenes: {
+					A: [{ file: "src/target.ts", line: 2, type: "line" }, { type: "scene", name: "B" }],
+					B: [{ type: "scene", name: "A" }],
+				},
+			};
+			saveScenesConfig(tmpRoot, cyclicConfig);
+			const cfgPath = path.join(tmpRoot, ".vscode", "debug-scenes.json");
+			const rawBefore = fs.readFileSync(cfgPath, "utf-8");
+
+			const errorCalls = [];
+			const prevShowError = vscode.window.showErrorMessage;
+			vscode.window.messages.length = 0; // 清空前序场景遗留消息，聚焦本断言
+			vscode.window.showErrorMessage = (message, ...rest) => {
+				errorCalls.push({ message, rest });
+				return Promise.resolve(undefined);
+			};
+			try {
+				await applySceneCommand("A");
+
+				assert.strictEqual(errorCalls.length, 1, "成环激活必须显式上报错误通知");
+				assert.ok(
+					errorCalls[0].message.includes("A → B → A"),
+					`错误通知必须包含完整环路径，实际: ${errorCalls[0].message}`,
+				);
+				assert.strictEqual(
+					fs.readFileSync(cfgPath, "utf-8"),
+					rawBefore,
+					"成环失败路径配置文件必须字节级零污染",
+				);
+				assert.ok(
+					!vscode.window.messages.some((m) => m.level === "info" && m.message.includes("activated")),
+					"成环失败时绝不可出现激活成功提示",
+				);
+			} finally {
+				vscode.window.showErrorMessage = prevShowError;
+			}
+		}
 	} finally {
 		__resetMockVscodeState();
 		sceneStateManager.resetState();

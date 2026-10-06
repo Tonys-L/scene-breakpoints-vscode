@@ -3,9 +3,12 @@
  * 职责：提供解耦的领域/应用状态变更广播通道，消除命令层与 UI 视图刷新之间的直接强耦合。
  */
 
+import type { ResolveWarning } from "#src/domain/services/sceneResolver";
+
 export type ApplicationEventType =
 	| "scenes:changed"
 	| "scene:activated"
+	| "scene:resolve-warnings"
 	| "breakpoints:changed"
 	| "debug:paused"
 	| "debug:resumed";
@@ -13,6 +16,7 @@ export type ApplicationEventType =
 export interface ApplicationEventPayloads {
 	"scenes:changed": { workspaceRoot: string; reason?: string };
 	"scene:activated": { workspaceRoot: string; activeScenes: string[] };
+	"scene:resolve-warnings": { workspaceRoot: string; warnings: ResolveWarning[] };
 	"breakpoints:changed": { workspaceRoot: string; sceneName?: string };
 	"debug:paused": { file: string; line: number };
 	"debug:resumed": { reason?: string } | undefined;

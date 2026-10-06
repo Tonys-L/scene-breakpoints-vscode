@@ -1,8 +1,8 @@
 import type { ApplySceneResult, IBreakpointBridge, ILineReader, ISceneRepository } from "#src/domain/ports";
 import { Breakpoint } from "#src/domain/models/breakpoint";
-import { Scene } from "#src/domain/models/scene";
 import { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import { HealingEngine } from "#src/domain/services/healingEngine";
+import { expandScenes, type ResolvedStep } from "#src/domain/services/sceneResolver";
 import { computeTopologyHash } from "#src/domain/services/activeScenesDiffResolver";
 import { sceneStateManager } from "./sceneStateManager";
 import { activeBreakpointIndex } from "./activeBreakpointIndex";
@@ -53,23 +53,26 @@ export function syncDiskActiveScenesIfNeeded(
 }
 
 /**
- * 将自愈和富化后的最新行号与指纹回写持久化至各个所属场景 (INV-004, INV-010)
+ * 将自愈和富化后的最新行号与指纹回写持久化至各个定义场景 (INV-004, INV-010, INV-030.6)
+ * 溯源路由：输入为带溯源的展开流，回写目标为 ownerScenes 唯一集 —— 含未被激活的被引用场景
  */
 export function persistHealedBackfill(
 	workspaceRoot: string,
 	catalog: SceneCatalog,
-	validTargetScenes: string[],
+	_validTargetScenes: string[], // 保留参数（事件/日志用），回写路由不依赖
 	applyResult: ApplySceneResult,
-	mergedBreakpoints: Breakpoint[],
+	resolved: ResolvedStep[],
 	sceneRepository: ISceneRepository,
 ): void {
 	const candidateInstances = applyResult.healedBreakpoints?.length
 		? applyResult.healedBreakpoints.map((b: SceneBreakpoint | Breakpoint) =>
 			b instanceof Breakpoint ? b : new Breakpoint(b),
 		)
-		: mergedBreakpoints;
-	for (const sName of validTargetScenes) {
-		catalog.getScene(sName)?.backfillHealed(candidateInstances);
+		: resolved.map((s) => s.breakpoint); // 无 DAP healed 时回退到展开流实体（原地变更等价物）
+	// 同源多引用经 INV-011 去重后 ownerScenes 天然唯一 → 单次回写
+	const ownerScenes = [...new Set(resolved.map((s) => s.ownerScene))];
+	for (const owner of ownerScenes) {
+		catalog.getScene(owner)?.backfillHealed(candidateInstances);
 	}
 	sceneRepository.saveScenesConfig(workspaceRoot, catalog.toJSON());
 }
@@ -142,12 +145,11 @@ export async function executeSceneActivation(
 	const validTargetScenes = actResult.validTargetScenes;
 	const missingScenes = actResult.missingScenes;
 
-	// 2. 聚合多场景断点并去重 (先到先得策略 INV-001, INV-011)
-	// 视图场景恒为纯断点（merge 仅吸收具象断点）；引用展开流接入见批次 3（expandScenes）
-	const activeScenes = validTargetScenes.map((name) => catalog.getScene(name)).filter((s): s is Scene => !!s);
-	const mergedBreakpoints = Scene.merge(activeScenes)
-		.getSteps()
-		.filter((s): s is Breakpoint => s.kind === "breakpoint");
+	// 2. 场景组合解析：展开引用为纯断点流 (INV-030.1/30.2)
+	//    成环在此抛出 CircularReferenceError —— 早于任何状态机写入 / DAP 下发 / 磁盘落盘 (§5.3)
+	//    悬空/禁用降级为 warnings，不阻断激活 (INV-030.4/30.5)
+	const { steps: resolvedSteps, warnings: resolveWarnings } = expandScenes(catalog, validTargetScenes);
+	const mergedBreakpoints = resolvedSteps.map((s) => s.breakpoint);
 
 	// 2.1 应用层前置自愈与指纹富化管道 (Healing & Fingerprint Enrich Pipeline)
 	const {
@@ -187,12 +189,17 @@ export async function executeSceneActivation(
 	activeBreakpointIndex.sync(workspaceRoot, catalog.toJSON().scenes, validTargetScenes);
 	sceneStateManager.setActiveScenes(validTargetScenes, loadedCount);
 
-	// 6. 自愈与指纹补齐持久化闭环
+	// 6. 自愈与指纹补齐持久化闭环：按 ownerScene 溯源路由回写
 	if (healedCount > 0 || enrichedCount > 0) {
-		persistHealedBackfill(workspaceRoot, catalog, validTargetScenes, applyResult, mergedBreakpoints, sceneRepository);
+		persistHealedBackfill(workspaceRoot, catalog, validTargetScenes, applyResult, resolvedSteps, sceneRepository);
 	}
 
 	appEventBus.emit("scene:activated", { workspaceRoot, activeScenes: validTargetScenes });
+
+	// 解析警告事件（悬空/禁用）：UI 订阅后以 Warning 级通知展示，不阻断激活 (INV-030.4/30.5)
+	if (resolveWarnings.length > 0) {
+		appEventBus.emit("scene:resolve-warnings", { workspaceRoot, warnings: resolveWarnings });
+	}
 
 	return {
 		success: true,
