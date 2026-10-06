@@ -19,13 +19,16 @@ export async function runCommandsExecutionTests() {
 		sceneRepository: jsonFileSceneRepository,
 		breakpointBridge: vscodeBreakpointBridge,
 		loopGuard: echoLoopGuard,
-		fileLinesReader: async (filePath) => {
-			try {
-				const content = fs.readFileSync(filePath, "utf-8");
-				return content.split(/\r?\n/);
-			} catch {
-				return undefined;
-			}
+		lineReader: {
+			readLines: async (filePath) => {
+				try {
+					const content = fs.readFileSync(filePath, "utf-8");
+					return content.split(/\r?\n/);
+				} catch {
+					return undefined;
+				}
+			},
+			clearCache: () => {},
 		},
 	});
 
