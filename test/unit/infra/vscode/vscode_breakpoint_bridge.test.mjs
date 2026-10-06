@@ -8,6 +8,7 @@ import {
 	applySceneBreakpoints,
 	applySingleBreakpointToEditor,
 	collectCurrentBreakpoints,
+	computeDapDiff,
 	syncBreakpointEnabledToEditor,
 } from "#src/infra/vscode/vscodeBreakpointBridge";
 import { sceneManager } from "#src/application";
@@ -419,6 +420,99 @@ export async function runBreakpointBridgeTests() {
 			savedConfig.scenes["ai-scene"][0].contextSnippet.current,
 			"console.log('print entry');",
 		);
+	}
+
+	// 9. 增量 Diff 底层同源判定 isSameDapBreakpoint 全分支覆盖（直连 computeDapDiff 生产源码）
+	{
+		const mkSource = (file, line, opts = {}) =>
+			new vscode.SourceBreakpoint(
+				new vscode.Location(
+					vscode.Uri.file(`X:/mock-workspace/project/${file}`),
+					new vscode.Position(line, 0),
+				),
+				opts.enabled !== false,
+				opts.condition,
+				opts.hitCondition,
+				opts.logMessage,
+			);
+
+		// (1) 完全同源 SourceBreakpoint（含 condition / hitCondition / logMessage 全属性）→ 0 闪烁原地保留
+		{
+			const a = mkSource("src/a.ts", 9, {
+				condition: "x === 1",
+				hitCondition: "> 5",
+				logMessage: "hit {i}",
+			});
+			const b = mkSource("src/a.ts", 9, {
+				condition: "x === 1",
+				hitCondition: "> 5",
+				logMessage: "hit {i}",
+			});
+			const diff = computeDapDiff([a], [b]);
+			assert.strictEqual(diff.toRemove.length, 0, "完全同源断点绝不可被移除");
+			assert.strictEqual(diff.toAdd.length, 0, "完全同源断点绝不可被重复新增");
+		}
+
+		// (2) 行号漂移 → 不得误判同源，必须精确换血
+		{
+			const a = mkSource("src/a.ts", 9);
+			const b = mkSource("src/a.ts", 19);
+			const diff = computeDapDiff([a], [b]);
+			assert.strictEqual(diff.toRemove.length, 1, "行号漂移断点必须被移除");
+			assert.strictEqual(diff.toAdd.length, 1, "行号漂移断点必须被重新新增");
+		}
+
+		// (3) logMessage 差异（日志断点文案变更）→ 旧实例移除
+		{
+			const a = mkSource("src/a.ts", 9, { logMessage: "old token" });
+			const b = mkSource("src/a.ts", 9, { logMessage: "new token" });
+			const diff = computeDapDiff([a], [b]);
+			assert.strictEqual(diff.toRemove.length, 1, "logMessage 差异必须判定为不同源");
+		}
+
+		// (4) 路径斜杠与大小写差异经 isSameFsPath 归一 → 仍判同源
+		{
+			const a = mkSource("src/Auth.ts", 9);
+			const bWinSlash = new vscode.SourceBreakpoint(
+				new vscode.Location(
+					vscode.Uri.file("X:\\mock-workspace\\project\\src\\Auth.ts"),
+					new vscode.Position(9, 0),
+				),
+				true,
+			);
+			const diff = computeDapDiff([a], [bWinSlash]);
+			assert.strictEqual(diff.toRemove.length, 0, "斜杠与大小写差异必须归一为同一路径");
+			assert.strictEqual(diff.toAdd.length, 0);
+		}
+
+		// (5) 完全同源 FunctionBreakpoint（含 condition 与 hitCondition）→ 原地保留
+		{
+			const fa = new vscode.FunctionBreakpoint("handleAuth", true, "ctx !== null", "> 3");
+			const fb = new vscode.FunctionBreakpoint("handleAuth", true, "ctx !== null", "> 3");
+			const diff = computeDapDiff([fa], [fb]);
+			assert.strictEqual(diff.toRemove.length, 0, "完全同源函数断点绝不可被移除");
+			assert.strictEqual(diff.toAdd.length, 0);
+		}
+
+		// (6) FunctionBreakpoint hitCondition 差异 → 旧移除新增
+		{
+			const fa = new vscode.FunctionBreakpoint("handleAuth", true, undefined, "> 3");
+			const fb = new vscode.FunctionBreakpoint("handleAuth", true, undefined, "> 10");
+			const diff = computeDapDiff([fa], [fb]);
+			assert.strictEqual(diff.toRemove.length, 1, "hitCondition 差异必须判定为不同源");
+			assert.strictEqual(diff.toAdd.length, 1);
+		}
+
+		// (7) SourceBreakpoint 与 FunctionBreakpoint 跨类型 → 永不同源
+		{
+			const s = mkSource("src/a.ts", 9);
+			const f = new vscode.FunctionBreakpoint("handleAuth", true);
+			const diffSourceToFunc = computeDapDiff([s], [f]);
+			assert.strictEqual(diffSourceToFunc.toRemove.length, 1, "跨类型断点必须判定为不同源");
+			assert.strictEqual(diffSourceToFunc.toAdd.length, 1);
+			const diffFuncToSource = computeDapDiff([f], [s]);
+			assert.strictEqual(diffFuncToSource.toAdd.length, 1, "反向跨类型同样必须判定为不同源");
+		}
 	}
 
 	console.log("  ✅ [Breakpoint Bridge] 宿主断点桥接器测试全部通过！");

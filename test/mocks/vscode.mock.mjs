@@ -176,9 +176,20 @@ export const debug = {
 
 // ---------- 窗口与消息 ----------
 
+export const DecorationRangeBehavior = {
+	OpenOpen: 1,
+	ClosedClosed: 2,
+	OpenClosed: 3,
+	ClosedOpen: 4,
+};
+
 export const window = {
 	/** 记录所有 show* 消息，供测试断言错误提示路径 */
 	messages: [],
+	/** 当前可见文本编辑器列表（测试可注入模拟编辑器） */
+	visibleTextEditors: [],
+	/** 装饰类型构造桩：返回可 dispose 的空装饰类型 */
+	createTextEditorDecorationType: (_options) => ({ dispose() {} }),
 	showErrorMessage: (message) => {
 		window.messages.push({ level: "error", message });
 		return Promise.resolve(undefined);
@@ -491,6 +502,7 @@ export function __resetMockVscodeState() {
 	window.showQuickPick = async () => undefined;
 	window.showInputBox = async () => undefined;
 	window.activeTextEditor = undefined;
+	window.visibleTextEditors.length = 0;
 	debug.activeDebugSession = undefined;
 	debug._trackerFactories.length = 0;
 	debug._configProviders.length = 0;

@@ -250,4 +250,20 @@ VS Code 插件容易在 `package.json` 配置了 `contributes.commands`，但在
 
 ---
 
+### 5.3 ESM CLI 入口路径比较在类 Unix 平台静默假绿 (KDD-VERIFY-ENTRY-FALSE-GREEN-001)
+
+**问题**:
+GitHub Actions 矩阵 (ubuntu-latest / windows-latest) 双平台运行同一 `npm run verify`，Windows 真实阻断 CRAP 净增，而 Ubuntu 始终秒过全绿，且日志中完全没有门禁横幅输出。
+
+**原因**:
+CLI 入口判断采用手工字符串拼接：``import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}```。Windows 下 `D:\path` 经反斜杠归一后恰与 `file:///D:/path` 匹配；但类 Unix 下 `/home/runner/...` 本就无反斜杠，拼接结果为 `file:////home/...`（四个斜杠），与真实的 `file:///home/...`（三个斜杠）永不相等 → 整个门禁脚本静默跳过全部检查并以 exit 0 结束，所有硬门禁在 Linux/macOS 上从未真实执行过（假绿）。
+
+**解决方案**:
+统一使用 Node 官方 API 进行模块 URL 比较：`import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href`（`node:url` 的 `pathToFileURL` 自动处理平台斜杠、盘符与编码差异）。项目内 `scripts/compute-crap.mjs` 早已是该正确写法，可直接对齐。
+
+**影响文件**: `scripts/verify-guardrails.mjs`
+**日期**: 2026-10-06
+
+---
+
 

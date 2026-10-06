@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { evaluateCrapMetrics } from "./compute-crap.mjs";
 
 
@@ -532,7 +533,7 @@ export function verifyAllGuardrails(workspaceRoot = process.cwd()) {
 }
 
 // CLI 执行入口
-if (import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
 	console.log("\n=======================================================");
 	console.log("🛡️  开始执行 Scene Breakpoints 约束自动化代码级硬门禁验证");
 	console.log("=======================================================\n");

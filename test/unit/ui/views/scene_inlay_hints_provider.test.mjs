@@ -321,5 +321,49 @@ export async function runInlayHintsProviderTests() {
 		provider.dispose();
 	}
 
+	// 13. 微触唤醒 updateDecorations：空编辑器短路、默认派发、显式参数派发与失焦异常容错
+	{
+		__resetMockVscodeState();
+		const provider = new SceneInlayHintsProvider(
+			configProvider,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+
+		// (a) 显式传入空编辑器数组 → 短路返回，不触碰任何装饰
+		provider.updateDecorations([]);
+
+		// (b) 默认读取 window.visibleTextEditors（当前为空）→ 短路返回
+		provider.updateDecorations();
+
+		// (c) 正常微触唤醒：对全部可见编辑器派发清除装饰
+		const setCalls = [];
+		const normalEditor = {
+			setDecorations: (deco, ranges) => setCalls.push({ deco, ranges }),
+		};
+		const detachedEditor = {
+			setDecorations: () => {
+				throw new Error("Editor is detached");
+			},
+		};
+		vscode.window.visibleTextEditors.push(normalEditor, detachedEditor);
+		provider.updateDecorations();
+
+		assert.strictEqual(setCalls.length, 1, "正常编辑器必须被精确派发一次清除装饰");
+		assert.ok(setCalls[0].deco, "必须传入真实装饰类型实例");
+		assert.deepStrictEqual(setCalls[0].ranges, [], "微触唤醒必须下发空装饰集合（仅唤醒重绘）");
+		// 抛出异常的失焦编辑器被容错吞掉，绝不中断其余编辑器派发
+
+		// (d) 显式传入 editors 参数覆盖默认可见列表
+		const setCalls2 = [];
+		const explicitEditor = {
+			setDecorations: (deco, ranges) => setCalls2.push({ deco, ranges }),
+		};
+		provider.updateDecorations([explicitEditor]);
+		assert.strictEqual(setCalls2.length, 1, "显式编辑器参数必须被精确派发");
+
+		provider.dispose();
+	}
+
 	console.log("  ✅ [Inlay Hints Provider] SceneInlayHintsProvider 单元测试全部通过！");
 }
