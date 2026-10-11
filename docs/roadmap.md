@@ -143,7 +143,7 @@ timeline
 | :--- | :--- | :--- | :--- |
 | **v1.1.0**<br>*(已交付)* | **① 场景组合与内联引用 (`type: "scene"`)**<br>**② AI 模块地图规则升级** | 消除断点冗余、时序因果 100% 保真、大幅节约 AI 生成/推理 Token | `src/domain/sceneResolver.ts`<br>`src/infra/storage/`<br>`src/infra/vscode/`<br>`skills/` |
 | **v1.2.0**<br>*(已交付 2026-10-07)* | **③ 个人私有配置隔离 (`*.local.json`)**<br>**④ 事故调用栈一键生成场景 (Capture Call Stack)** | 杜绝临时断点污染 Git 仓库、瞬态 Bug 现场一键固化沉淀 | `src/infra/storage/`<br>DAP 适配器 |
-| **v1.3.0**<br>*(下一站)* | **⑤ 场景断点可视化 (Visual Graph & Map)** | 建立时空全景感知、点击节点直接跳转源码、运行期状态脉冲追踪 | VS Code Webview Provider<br>状态机与监听器 |
+| **v1.3.0**<br>*(已交付 2026-10-07)* | **⑤ 场景断点可视化 (Visual Graph & Map)** | 建立时空全景感知、点击节点直接跳转源码、运行期状态脉冲追踪 | VS Code Webview Provider<br>状态机与监听器 |
 | **远期演进**<br>*(对齐官方标准)* | **⑥ 多根工作区全链路场景编排** | 遵照 VS Code 原生 `*.code-workspace` 与 `${workspaceFolder:name}` 规范，实现跨工程无痛编排 | VS Code Configuration API<br>多根扫描引擎 |
 
 ---

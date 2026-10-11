@@ -52,6 +52,7 @@ function projectSteps(
 					enabled: item.enabled !== false,
 					childCount: Array.isArray(sourceSteps) ? sourceSteps.length : 0,
 					isDangling: !Array.isArray(sourceSteps),
+					extensionPath: ctx.extensionPath,
 				},
 			);
 		}

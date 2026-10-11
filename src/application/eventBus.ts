@@ -10,16 +10,20 @@ export type ApplicationEventType =
 	| "scene:activated"
 	| "scene:resolve-warnings"
 	| "breakpoints:changed"
+	| "debug:started"
 	| "debug:paused"
-	| "debug:resumed";
+	| "debug:resumed"
+	| "debug:terminated";
 
 export interface ApplicationEventPayloads {
 	"scenes:changed": { workspaceRoot: string; reason?: string };
 	"scene:activated": { workspaceRoot: string; activeScenes: string[] };
 	"scene:resolve-warnings": { workspaceRoot: string; warnings: ResolveWarning[] };
 	"breakpoints:changed": { workspaceRoot: string; sceneName?: string };
+	"debug:started": undefined;
 	"debug:paused": { file: string; line: number };
 	"debug:resumed": { reason?: string } | undefined;
+	"debug:terminated": undefined;
 }
 
 export type ApplicationEventListener<T extends ApplicationEventType> = (

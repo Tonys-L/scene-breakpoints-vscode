@@ -206,6 +206,10 @@ export const DecorationRangeBehavior = {
 export const window = {
 	/** 记录所有 show* 消息，供测试断言错误提示路径 */
 	messages: [],
+	/** 已创建的 WebviewPanel 列表（测试断言用） */
+	_webviewPanels: [],
+	_lastWebviewPanel: undefined,
+	_lastTextEditor: undefined,
 	/** 当前可见文本编辑器列表（测试可注入模拟编辑器） */
 	visibleTextEditors: [],
 	/** 装饰类型构造桩：返回可 dispose 的空装饰类型 */
@@ -277,7 +281,91 @@ export const window = {
 		window._lastQuickPick = qp;
 		return qp;
 	},
-	showTextDocument: async () => ({}),
+	showTextDocument: async (uri, _options) => {
+		const editor = {
+			document: { uri, fileName: uri?.fsPath ?? String(uri) },
+			_revealCalls: [],
+			_decorationCalls: [],
+			revealRange(range, revealType) {
+				this._revealCalls.push({ range, revealType });
+			},
+			setDecorations(decorationType, ranges) {
+				this._decorationCalls.push({ decorationType, ranges });
+			},
+		};
+		window._lastTextEditor = editor;
+		return editor;
+	},
+	createWebviewPanel: (viewType, title, _showOptions, options) => {
+		const disposables = [];
+		const panel = {
+			viewType,
+			title,
+			options: options || {},
+			webview: {
+				cspSource: "https://*.vscode-cdn.net",
+				html: "",
+				_postedMessages: [],
+				_receiveCbs: [],
+				asWebviewUri: (uri) => uri,
+				postMessage: async (message) => {
+					panel.webview._postedMessages.push(message);
+					return true;
+				},
+				onDidReceiveMessage: (cb) => {
+					panel.webview._receiveCbs.push(cb);
+					const d = new Disposable(() => {
+						const i = panel.webview._receiveCbs.indexOf(cb);
+						if (i >= 0) panel.webview._receiveCbs.splice(i, 1);
+					});
+					disposables.push(d);
+					return d;
+				},
+			},
+			visible: true,
+			active: true,
+			_disposeCbs: [],
+			_viewStateCbs: [],
+			onDidChangeViewState: (cb) => {
+				panel._viewStateCbs.push(cb);
+				const d = new Disposable(() => {
+					const i = panel._viewStateCbs.indexOf(cb);
+					if (i >= 0) panel._viewStateCbs.splice(i, 1);
+				});
+				disposables.push(d);
+				return d;
+			},
+			onDidDispose: (cb) => {
+				panel._disposeCbs.push(cb);
+				const d = new Disposable(() => {
+					const i = panel._disposeCbs.indexOf(cb);
+					if (i >= 0) panel._disposeCbs.splice(i, 1);
+				});
+				disposables.push(d);
+				return d;
+			},
+			reveal() {
+				panel.visible = true;
+			},
+			dispose() {
+				panel.visible = false;
+				for (const cb of [...panel._disposeCbs]) cb();
+				for (const d of disposables) d.dispose();
+			},
+			/** 测试辅助：模拟 webview 向宿主发消息 */
+			_fireMessage: (message) => {
+				for (const cb of [...panel.webview._receiveCbs]) cb(message);
+			},
+			/** 测试辅助：模拟面板可见性切换 */
+			_fireViewState: (visible) => {
+				panel.visible = visible;
+				for (const cb of [...panel._viewStateCbs]) cb({ webviewPanel: panel, visible });
+			},
+		};
+		window._webviewPanels.push(panel);
+		window._lastWebviewPanel = panel;
+		return panel;
+	},
 	withProgress: async (_options, task) => task({ report() {} }),
 	createOutputChannel: () => ({
 		appendLine() {},
@@ -313,7 +401,14 @@ export const workspace = {
 			getText: () => content,
 		};
 	},
-	onDidChangeTextDocument: () => new Disposable(() => {}),
+	_docChangeCbs: [],
+	onDidChangeTextDocument: (cb) => {
+		if (typeof cb === "function") workspace._docChangeCbs.push(cb);
+		return new Disposable(() => {
+			const idx = workspace._docChangeCbs.indexOf(cb);
+			if (idx >= 0) workspace._docChangeCbs.splice(idx, 1);
+		});
+	},
 	onDidSaveTextDocument: () => new Disposable(() => {}),
 	onDidChangeWorkspaceFolders: () => new Disposable(() => {}),
 	getConfiguration: () => ({
@@ -394,6 +489,7 @@ export const l10n = {
 };
 
 export const StatusBarAlignment = { Left: 1, Right: 2 };
+export const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 };
 export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 };
 export const TreeItemCheckboxState = { Unchecked: 0, Checked: 1 };
 export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
@@ -523,11 +619,15 @@ export function __resetMockVscodeState() {
 	window.showInputBox = async () => undefined;
 	window.activeTextEditor = undefined;
 	window.visibleTextEditors.length = 0;
+	window._webviewPanels.length = 0;
+	window._lastWebviewPanel = undefined;
+	window._lastTextEditor = undefined;
 	debug.activeDebugSession = undefined;
 	debug._trackerFactories.length = 0;
 	debug._configProviders.length = 0;
 	workspace.workspaceFolders.length = 0;
 	workspace._lastWatcher = undefined;
+	workspace._docChangeCbs.length = 0;
 	_clipboardText = "";
 	_registeredCommands.clear();
 }

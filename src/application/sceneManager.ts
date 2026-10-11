@@ -6,6 +6,7 @@ import { applicationSerialQueue, type SerialQueue } from "./serialQueue";
 import { getDependencies } from "./dependencies";
 import { appEventBus } from "./eventBus";
 import type { SceneItem, ScenesConfig } from "#src/domain/types";
+import type { SceneLayerOrigin } from "#src/domain/ports/sceneRepository";
 import { mutateCatalog } from "./mutateCatalog";
 import {
 	type ActivateSceneResult,
@@ -57,6 +58,22 @@ export class SceneManager {
 	 */
 	public loadCatalog(workspaceRoot: string, options?: SceneOpOptions): SceneCatalog {
 		return new SceneCatalog(this.loadScenesConfig(workspaceRoot, options));
+	}
+
+	/**
+	 * 分层合并只读查询门面 (v1.3.0 画布投影用)：返回目录聚合根 + 场景级来源溯源表。
+	 * 仓储未实现分层方法（测试内存替身）时回退单文件语义，originByScene 为空表。
+	 */
+	public loadMergedCatalog(
+		workspaceRoot: string,
+		options?: SceneOpOptions,
+	): { catalog: SceneCatalog; originByScene: Record<string, SceneLayerOrigin> } {
+		const { sceneRepository } = this.resolveDeps(options);
+		const merged = sceneRepository?.loadMergedScenesConfig?.(workspaceRoot);
+		if (merged) {
+			return { catalog: new SceneCatalog(merged.config), originByScene: merged.originByScene };
+		}
+		return { catalog: this.loadCatalog(workspaceRoot, options), originByScene: {} };
 	}
 
 	/**
@@ -172,7 +189,11 @@ export class SceneManager {
 		return mutateCatalog(
 			workspaceRoot,
 			(cat) => cat.renameScene(oldName, newName),
-			{ ...options, queue: this.queue },
+			{
+				...options,
+				renameOrigin: { from: oldName, to: newName },
+				queue: this.queue,
+			},
 		);
 	}
 

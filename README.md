@@ -55,6 +55,23 @@ Every developer debugging in VS Code runs into these frustrations:
 - ⚡ **Auto-Load on F5**
   Link your launch profiles to a scene. Pressing F5 automatically prepares the right breakpoints before the debugger starts.
 
+- 📊 **Visual Graph Canvas for Living Architecture (v1.3.0)**
+  Click the graph canvas button on the sidebar title bar (or run `Scene Breakpoints: Show Graph Canvas` from the Command Palette) to open an interactive read-only DAG canvas. View lane layering, nested scene references, and breakpoint cards at a glance; observe live pulses and execution trace steps during debugging, and export ready-to-render Mermaid diagrams to markdown documents or PRs with one click.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-canvas.png" alt="Scene Breakpoints Visual Graph Canvas" width="85%" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-hit-trace.png" alt="Live DAP Breakpoint Hit Trace & Pulse Timeline" width="85%" />
+</p>
+
+- 🔒 **Team & Personal Config Isolation (v1.2.0)**
+  Store shared team scenes in `.vscode/debug-scenes.json` under Git, while personal temporary breakpoints live in `.vscode/debug-scenes.local.json` which is **automatically added to `.gitignore`**. Experiment freely without dirtying git diffs.
+
+- 📸 **Incident-to-Scene: Capture Call Stack (v1.2.0)**
+  When paused at a breakpoint or exception, right-click to capture all in-workspace stack frames into a new scene with 3-line context fingerprints. Preserve the exact incident scene for yourself, teammates, or AI collaboration.
+
 - 🤖 **AI-Generated Breakpoint Scenes, Ready in Seconds**
   When asking an AI agent to analyze a bug or trace an execution path, it can directly generate a complete breakpoint scene with step-by-step notes and activate it immediately—no more manual file jumping or clicking line numbers.
 
@@ -97,7 +114,31 @@ Every developer debugging in VS Code runs into these frustrations:
 
 ---
 
-## 📝 Configuration Example (`.vscode/debug-scenes.json`)
+## 🎨 Advanced Features
+
+### 1. Visual Graph Canvas (v1.3.0)
+
+Click the graph canvas button on the "Scene Breakpoints" sidebar title bar (or run `Scene Breakpoints: Show Graph Canvas` from the Command Palette) to open an interactive living architecture canvas:
+- **Execution-Flow DAG View**: Renders complete execution flows with lane layering (Team vs. Local), nested scene reference groups, and typed breakpoint cards;
+- **Click-through Source Navigation**: Clicking any node or trace step splits and focuses the target source file with smooth viewport centering and an 800ms highlight;
+- **Live DAP Pulse & Hit Trace Timeline**: Observes live breakpoint pulses as your code runs, with an inline trace timeline tracking execution steps, loops, and unvisited points;
+- **Scope Selector**: Multi-select any combination of scenes (active or inactive) with instant "what you see is what you inspect" canvas updates;
+- **One-click Mermaid Export**: Click the export button in the top bar to copy clean `flowchart TD` code directly to your clipboard, ready for Markdown docs or PR reviews.
+
+### 2. Team & Personal Config Isolation (v1.2.0)
+
+Avoid cluttering team repositories with temporary experimental breakpoints:
+- **Team Layer**: `.vscode/debug-scenes.json` (tracked in Git, shared across the engineering team);
+- **Personal Private Layer**: `.vscode/debug-scenes.local.json` (**automatically appended to `.gitignore`** upon extension activation);
+- **Merged View & Overrides**: Local scenes seamlessly override same-named team scenes and appear with a distinct `[local]` badge in the sidebar.
+
+### 3. Incident-to-Scene: Capture Call Stack (v1.2.0)
+
+When paused at an unexpected exception or critical breakpoint:
+- Right-click in the editor and choose `Scene Breakpoints: Capture Call Stack to Scene` (or invoke via Command Palette);
+- Automatically extracts in-workspace frames, dedupes lines, and computes 3-line code fingerprints into a new debug scene in seconds.
+
+---
 
 Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with built-in CodeLens buttons and schema validation:
 

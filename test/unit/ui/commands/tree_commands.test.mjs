@@ -7,7 +7,7 @@ import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 import { saveScenesConfig, loadScenesConfig } from "#src/infra/storage/jsonFileSceneRepository";
 import { registerTreeCommands } from "#src/ui/commands/treeCommands";
 import { SceneRefTreeItem, SceneTreeDataProvider } from "#src/ui/views/sceneTreeProvider";
-import { BreakpointNode } from "#src/ui/views/treeNodes";
+import { BreakpointNode, SceneNode } from "#src/ui/views/treeNodes";
 
 /**
  * treeCommands 1:1 镜像单测
@@ -304,6 +304,40 @@ export async function runTreeCommandsTests() {
 			} finally {
 				failOnSecondReveal = false;
 			}
+		}
+
+		// ----------------------------------------------------
+		// J. toggleSceneRef：引用启停实体命令（checkbox 退役后的落盘入口）
+		// ----------------------------------------------------
+		{
+			resetScene();
+			saveScenesConfig(tmpRoot, {
+				scenes: {
+					owner: [{ type: "scene", name: "ref-target" }],
+					"ref-target": [{ file: "src/target.ts", line: 5, type: "line", enabled: true }],
+				},
+			});
+			const rootNodes = await treeDataProvider.getChildren();
+			const ownerNode = rootNodes.find((n) => n instanceof SceneNode && n.sceneName === "owner");
+			const stepNodes = await treeDataProvider.getChildren(ownerNode);
+			const refNode = stepNodes.find((n) => n instanceof SceneRefTreeItem);
+			assert.ok(refNode, "引用步骤必须投影为 SceneRefTreeItem");
+			assert.strictEqual(refNode.isEnabled, true, "缺省启用的引用节点必须携带 isEnabled:true 基准");
+
+			await vscode.commands.executeCommand("sceneBreakpoints.toggleSceneRef", refNode);
+			assert.strictEqual(
+				loadScenesConfig(tmpRoot).scenes.owner[0].enabled,
+				false,
+				"toggleSceneRef 必须落盘引用 enabled:false",
+			);
+
+			// 无入参（命令面板误触发）必须安全空转
+			await vscode.commands.executeCommand("sceneBreakpoints.toggleSceneRef", undefined);
+			assert.strictEqual(
+				loadScenesConfig(tmpRoot).scenes.owner[0].enabled,
+				false,
+				"无入参调用不得漂移配置",
+			);
 		}
 	} finally {
 		__resetMockVscodeState();

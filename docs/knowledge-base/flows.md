@@ -153,6 +153,59 @@ flowchart TD
 
 ---
 
+### 5. 可视化画布事件驱动刷新流程 (Visual Graph Canvas, v1.3.0)
+
+**触发条件**：用户执行 `sceneBreakpoints.showGraph`（命令面板 / 状态栏菜单 / 树视图场景节点右键）打开画布；此后由 `ApplicationEventBus` 调试事件与场景状态事件驱动响应式刷新（INV-028）。
+
+```mermaid
+flowchart TD
+    Open([用户执行 showGraph]) --> Create[graphCanvasController 创建 WebviewPanel]
+    Create --> Ready["webview 就绪 (ready)"]
+    Ready --> Render["buildGraphSnapshot 只读投影 → render 全量渲染<br>含 getRecords() 轨迹全量回放"]
+    PausedEvt([appEventBus debug:paused]) --> Dual{面板已打开?}
+    Dual -->|是| Pulse["live-pulse + trace-append 同事件双消费<br>nodeId 经 createNodeIdResolver 匹配 (未匹配记 null)"]
+    Dual -->|否| BufOnly[debugTraceBuffer 后台独立累积]
+    ResumedEvt([debug:resumed]) --> ClearLive[live-clear 熄灭脉冲, 轨迹保留]
+    TermEvt([debug:terminated]) --> TraceClear["trace-clear 全量清空 (buffer.clear())"]
+    SceneEvt([scenes:changed / scene:activated]) --> Rebuild{面板已打开?}
+    Rebuild -->|是| ReRender[重建快照 → render, 轨迹保留]
+    Rebuild -->|否| Noop[零开销: 无面板即无渲染]
+    Click([用户点击节点 / 轨迹标记]) --> OpenSrc["open-source → findNodeById 命中 {file, line}<br>revealRange(Center) + 一次性装饰高亮"]
+    Close([用户关闭面板]) --> Dispose[dispose 成对退订事件, 置空面板引用]
+    BufOnly --> EndX([轨迹由 debugTraceBuffer 独立持有])
+    Pulse --> EndX
+    ClearLive --> EndX
+    TraceClear --> EndX
+    ReRender --> EndX
+    OpenSrc --> EndX
+    Dispose --> EndX
+```
+
+**关键约束**：
+- 快照与轨迹缓存均为只读投影，不构成业务主状态（INV-028）；画布零实体回写、零新增持久化路径；
+- `debugTraceBuffer` 订阅/退订随 `init()`/`dispose()` 成对（控制器打开面板时 init、扩展卸载时 dispose），轨迹会话级易失；
+- nodeId 匹配经 `createNodeIdResolver` 单点权威，快照 id（`{ownerScene}#{index}`）稳定性保证场景变更后轨迹重映射不漂移；
+- 场景合并读取经 `sceneManager.loadMergedCatalog` 分层门面（UI → application 合规，规避 UI→infra 违规）。
+
+- **节点交互模型（防焦点夺取）**：节点由原单击直接跳转重构为渐进披露交互：单击高亮选中节点上下文（`selectedNodeId`），双击或点击卡片右上角直达按钮（`[↗]`）触发 `open-source` 跳转源码，杜绝宏观浏览时的焦点夺取；
+- **原生矢量图标**：全量采用 VS Code 设计系统原生高精矢量 SVG 图标（Line/Cond/Log/Hit/Func/Ref/Warning/OpenExternal/Zap），彻底消除 Emoji 视觉噪音与平台不一致性；
+- **伴随分屏模式与跨分屏跳转（消灭视图割裂）**：
+  - 画布创建（`resolveCanvasColumn`）：若当前存在活动代码编辑器，优先在右侧分屏（`ViewColumn.Beside`）打开，天然形成左侧代码编辑、右侧架构拓扑的并排伴随视图；
+  - 源码跳转（`resolveTargetSourceColumn`）：画布位于右侧分屏时，跳转源码始终在左侧主屏（`ViewColumn.One`）呈现；画布位于主屏时，在右侧分屏呈现。代码与画布永不共占同一编辑器组，彻底消除“点击跳转后画布被代码挤掉/覆盖”的割裂感；
+- **纯原生 HTML5 Canvas 鹰眼小地图 (Minimap)**：右下角提供轻量小地图，实时双向映射主画布节点拓扑与视口选框（Viewfinder），支持点击与拖拽快速定位，可一键展开/折叠（零外部运行时依赖，GR-001 合规）；
+- **视口缩放与跟手度调优**：优化 Cytoscape `wheelSensitivity: 0.8`（消除滚轮卡顿感），提供悬浮缩放控制栏（`+` / `−` / `⤢ 适配全屏` / `1:1`），并支持双击画布空白处自动全屏居中复位；
+- **常驻快捷入口**：侧边栏 `Scene Breakpoints` 视图标题栏常驻 `$(workflow)` 图标（`view/title navigation@0`），一键直达画布。
+
+**场景下拉选择器 (Scene Selector, #SCENE-SELECTOR)**：
+- 画布顶部场景紧凑下拉选择器（`SceneSelector` Combobox + Popover 交互模型，收纳于 `TabBar`）：数据源 `snapshot.availableScenes`，彻底消除场景增多时的横向滚动条；
+- **状态分组与检索**：支持场景名称实时模糊搜索，区分“● 激活中”与“○ 预览中”状态分组；支持单选快速聚焦、多选对比以及“仅看激活场景/查看全部”快捷过滤；
+- **画布内闭环激活**：当选中的单场景未激活时，TabBar 显式呈现 `[⚡ 激活此场景]` 快捷按钮，触发 `activate-scene` 驱动宿主 `sceneBreakpoints.applyScene` 并下发断点到调试器；
+- **"看什么"与"什么在生效"正交解耦**：`visibleScenes`（用户选择，缺省 = 激活集）× `registered`（ownerScene ∈ activeScenes，纯推导标注）；未激活场景节点/泳道以未激活态渲染（半透明 + 角标），Live 脉冲/轨迹天然只命中已登记节点；
+- 展开失败场景（成环）→ 警告泳道（`expandError` 列出环路径），同批其他可见场景互不拖垮（逐场景隔离展开降级）；
+- Scope 为纯视图状态：panel 生命周期内保持，面板关闭重置为跟随激活集；Mermaid 导出经 `controller.getVisibleScenes()` 对齐所见即所得。
+
+---
+
 ## 状态机
 
 ### 全局场景激活状态机 (Scene State Machine)
@@ -208,4 +261,6 @@ stateDiagram-v2
 | 2026-10-06 | 场景激活主流程新增 expandScenes 引用展开步骤与成环中止/悬空禁用降级分支（INV-030） | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / glossary.md / adr/005 / e2e-scenarios.md |
 | 2026-10-07 | 新增「外部编辑与指纹自愈冲突裁决流程」（INV-031）：门控判定、弹窗裁决与磁盘优先缺省语义 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / glossary.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 | 2026-10-07 | 新增「调用栈一键固化流程」（v1.2.0 Capture Call Stack）：DAP 暂停登记捕获上下文、堆栈过滤去重与 local 层固化 | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / glossary.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
+| 2026-10-07 | 新增「可视化画布事件驱动刷新流程」（v1.3.0 Visual Graph Canvas）：ready→render、paused 双消费、terminated 清空与面板生命周期订阅成对 | GLM-5.3-Flash | v1.3.0 批次5 同步更新 constraints.md / boundaries.md / glossary.md / e2e-scenarios.md / adr/007 / CHANGELOG 双语 |
+| 2026-10-07 | 画布流程新增「场景范围选择器 (Scope Selector)」：set-scope 协议分支、visibleScenes/activeScenes 正交解耦与成环警告泳道降级 | GLM-5.3-Flash | #SCOPE-SELECTOR 同步更新 boundaries.md / glossary.md / e2e-scenarios.md / 设计文档 R5 / CHANGELOG 双语 |
 

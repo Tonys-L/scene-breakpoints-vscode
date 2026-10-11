@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import * as vscode from "vscode";
 import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 import { checkAndPromptSkillUpdates } from "#src/ui/commands/skillCommands";
+import { diagnoseAiIntegrationCommand } from "#src/ui/commands/skillDiagnostic";
 import { AgentRuleAsset, OFFICIAL_SKILL_HISTORY } from "#src/domain/models/agentRuleAsset";
 
 export async function runSkillCommandsTests() {
@@ -240,6 +241,99 @@ export async function runSkillCommandsTests() {
 			await checkAndPromptSkillUpdates(context, ws);
 			assert.strictEqual(lastActions.length, 2, "多定制目标时不提供 Diff 动作 = [诊断, 稍后]");
 			assert.ok(lastMsg, "多定制目标仍必须弹出巡检提示");
+			fs.rmSync(ws, { recursive: true, force: true });
+		}
+
+		// ----------------------------------------------------
+		// 10. diagnoseAiIntegrationCommand 交互面板动作全覆盖
+		// ----------------------------------------------------
+		{
+			const ws = mkWorkspace();
+			vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file(ws) }];
+			// 准备各类目标：1 个 UpToDate，1 个 CleanOutdated，1 个 CustomModified
+			writeTargetFile(ws, ".agents/skills/scene-breakpoints", "SKILL.md", upToDateContent);
+			writeTargetFile(ws, ".trae/skills/scene-breakpoints", "SKILL.md", outdatedBody);
+			writeTargetFile(ws, ".cursor/rules", "scene-breakpoints.mdc", customModifiedContent);
+
+			const context = mkContext(extensionRoot);
+
+			// (1) 测试点击开启 AI 文件激活权限
+			let quickPickShown = null;
+			vscode.window.showQuickPick = async (items) => {
+				quickPickShown = items;
+				// 选中第一项：AI File Activation
+				return items[0];
+			};
+			await diagnoseAiIntegrationCommand(context);
+			assert.ok(quickPickShown, "必须展示诊断 QuickPick 列表");
+
+			// (2) 测试点击 CleanOutdated 自动平滑升级
+			let infoMsg = null;
+			const origShowInfo = vscode.window.showInformationMessage;
+			vscode.window.showInformationMessage = async (msg) => {
+				infoMsg = msg;
+				return undefined;
+			};
+			try {
+				vscode.window.showQuickPick = async (items) => {
+					// 找到 CleanOutdated 目标项
+					const outdatedItem = items.find((i) => i.label && i.label.includes("Trae"));
+					return outdatedItem;
+				};
+				await diagnoseAiIntegrationCommand(context);
+				assert.ok(infoMsg && infoMsg.includes("Trae"), "升级完成后必须提示更新成功通知");
+			} finally {
+				vscode.window.showInformationMessage = origShowInfo;
+			}
+
+			// (3) 测试点击 UpToDate 确认覆盖重装
+			let reinstalled = false;
+			vscode.window.showQuickPick = async (items) => {
+				if (Array.isArray(items) && items.some((i) => i.value === true)) {
+					// 二级确认框：选择 Reinstall
+					reinstalled = true;
+					return items[0];
+				}
+				// 一级列表：选择 Antigravity (UpToDate)
+				return items.find((i) => i.label && i.label.includes("Antigravity"));
+			};
+			await diagnoseAiIntegrationCommand(context);
+			assert.strictEqual(reinstalled, true, "必须弹出二级重装确认框并执行");
+
+			// (4) 测试点击 CustomModified 选择 diff
+			let diffExecuted = false;
+			const origExec = vscode.commands.executeCommand;
+			vscode.commands.executeCommand = async (cmd) => {
+				if (cmd === "vscode.diff") diffExecuted = true;
+				return undefined;
+			};
+			try {
+				vscode.window.showQuickPick = async (items) => {
+					if (Array.isArray(items) && items.some((i) => i.value === "diff")) {
+						// 二级操作：选择 diff
+						return items[0];
+					}
+					// 一级列表：选择 Cursor (CustomModified)
+					return items.find((i) => i.label && i.label.includes("Cursor"));
+				};
+				await diagnoseAiIntegrationCommand(context);
+				assert.strictEqual(diffExecuted, true, "自定义修改项选择 diff 必须唤起虚拟 diff 视图");
+			} finally {
+				vscode.commands.executeCommand = origExec;
+			}
+
+			// (5) 测试点击 CustomModified 选择备份并覆盖
+			let backedUpAndOverwritten = false;
+			vscode.window.showQuickPick = async (items) => {
+				if (Array.isArray(items) && items.some((i) => i.value === "backup")) {
+					backedUpAndOverwritten = true;
+					return items.find((i) => i.value === "backup");
+				}
+				return items.find((i) => i.label && i.label.includes("Cursor"));
+			};
+			await diagnoseAiIntegrationCommand(context);
+			assert.strictEqual(backedUpAndOverwritten, true, "必须执行备份并以官方最新模板覆写");
+
 			fs.rmSync(ws, { recursive: true, force: true });
 		}
 

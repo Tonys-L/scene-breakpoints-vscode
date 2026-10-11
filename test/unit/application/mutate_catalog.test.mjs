@@ -275,5 +275,71 @@ export async function runMutateCatalogTests() {
 		sceneStateManager.clearLastAppliedTopologyHash();
 	}
 
+	// 10. 分层重命名继承与目标层路由 (INV-032 / renameOrigin / targetLayer)
+	{
+		let savedOriginByScene = null;
+		let savedConfig = null;
+		const mockLayerRepo = {
+			loadMergedScenesConfig: () => ({
+				config: {
+					scenes: {
+						sharedScene: [{ file: "src/shared.ts", line: 10 }],
+						localScene: [{ file: "src/local.ts", line: 20 }],
+					},
+					activeScenes: [],
+				},
+				originByScene: {
+					sharedScene: "team",
+					localScene: "local",
+				},
+			}),
+			saveScenesLayers: (_root, cfg, origin) => {
+				savedConfig = cfg;
+				savedOriginByScene = origin;
+			},
+			loadScenesConfig: () => ({ scenes: {} }),
+			saveScenesConfig: () => {},
+		};
+
+		// A. 重命名 sharedScene 为 renamedSharedScene，验证继承 team 层
+		await mutateCatalog(
+			"/mock/workspace",
+			(catalog) => catalog.renameScene("sharedScene", "renamedSharedScene"),
+			{
+				sceneRepository: mockLayerRepo,
+				renameOrigin: { from: "sharedScene", to: "renamedSharedScene" },
+			},
+		);
+
+		assert.strictEqual(
+			savedOriginByScene["renamedSharedScene"],
+			"team",
+			"原 shared 层场景重命名后必须继承 team 层归属，杜绝漂移至 local 层",
+		);
+		assert.strictEqual("sharedScene" in savedOriginByScene, false, "原场景名必须从溯源表中删除");
+
+		// B. 新建场景显式指定 targetLayer: "team"
+		await mutateCatalog(
+			"/mock/workspace",
+			(catalog) => {
+				catalog.getOrCreateScene("newTeamScene");
+				return true;
+			},
+			{
+				sceneRepository: mockLayerRepo,
+				targetLayer: "team",
+			},
+		);
+		assert.strictEqual(
+			savedOriginByScene["newTeamScene"],
+			"team",
+			"显式指定 targetLayer: team 的新场景必须路由到 team 层",
+		);
+	}
+
 	console.log("    ✔ mutateCatalog 统一原子写事务管道测试全量通过！");
+}
+
+if (process.argv[1]?.endsWith("mutate_catalog.test.mjs")) {
+	runMutateCatalogTests();
 }

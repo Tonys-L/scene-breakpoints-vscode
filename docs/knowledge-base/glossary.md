@@ -53,6 +53,12 @@ v1.1.0 场景组合引擎的核心概念对。**声明态**：磁盘配置中的
 #### 幽灵场景拦截守卫 (Ghost Scene Guard)
 在调试启动配置推导（`LaunchBindingResolver.resolveScenes`）或命令激活（`applySceneCommand`）时，对输入的目标场景名称进行真实存在性双向审计（存在性过滤与大小写容错匹配）。未在 `debug-scenes.json` 中定义的虚假场景将被强行拦截，绝不作为当前激活状态写入状态机。
 
+#### 图快照 (GraphSnapshot)
+v1.3.0 可视化画布的只读投影数据契约（`buildGraphSnapshot` 产出）：泳道（GraphLane，按场景分层 team/local）、节点（GraphNode，`{ownerScene}#{index}` 稳定 id，kind 区分断点/场景引用）、警告（GraphWarning，悬空/禁用引用）与目录全量场景选项（`availableScenes`，Scope Selector 数据源）的纯字段拷贝。节点与泳道均携带 `registered` 纯推导标注（ownerScene/sceneName ∈ activeScenes），供 webview 渲染未激活态；展开失败泳道以 `expandError`（circular-ref + 环路径）结构化透出。画布渲染、Live 点亮与 Mermaid 导出均以其为唯一数据源，禁止实体引用回写。
+
+#### 场景范围选择器 (Scope Selector)
+v1.3.0 画布顶部场景多选条（webview checkbox chips，team/local 分层着色）：用户勾选决定可见场景集 `visibleScenes`（缺省 = 当前激活集），经 `set-scope` 协议消息回传宿主重建快照。"看什么"（visibleScenes）与"什么在生效"（activeScenes）正交解耦——未激活场景可被查看（未激活态渲染），激活集零影响；Scope 为纯视图状态（面板生命周期内有效，随面板销毁重置），不入业务主状态。轨迹跨 Scope 切换保留（nodeId 稳定）。
+
 ---
 
 ### F
@@ -66,6 +72,9 @@ v1.1.0 场景组合引擎的核心概念对。**声明态**：磁盘配置中的
 
 #### 命中计数断点 (Hit Count Breakpoint)
 仅当代码执行到指定次数或满足频次条件（例如 `> 5`, `% 10 === 0`）时才暂停执行的断点。
+
+#### 命中轨迹时间线 (Hit Trace Timeline)
+v1.3.0 画布第二视图（与执行流 DAG tab 切换）：调试会话内每次 `debug:paused` 追加一条 `TraceRecord`（seq 单调递增、nodeId 经活动断点索引匹配），横向时间轴呈现命中顺序与循环轮次折返模式；`debug:resumed` 保留累积、`debug:terminated` 全量清空。会话级易失，零持久化（不落盘、不入 JSON Schema）。
 
 ---
 
@@ -178,4 +187,6 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 | 2026-10-06 | 新增术语：场景引用、声明态与展开态、收窄点、断点定义场景 (ownerScene)、悬空引用、循环引用 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / adr/005 / e2e-scenarios.md |
 | 2026-10-07 | 新增术语：指纹冲突 (Fingerprint Conflict)、基线播种 (Baseline Seeding) | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 constraints.md / flows.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 | 2026-10-07 | 新增术语：调用栈固化 (Capture Call Stack)、个人私有层 (Local Layer) | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / flows.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
+| 2026-10-07 | 新增术语：图快照 (GraphSnapshot)、命中轨迹时间线 (Hit Trace Timeline) | GLM-5.3-Flash | v1.3.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / e2e-scenarios.md / adr/007 / CHANGELOG 双语 |
+| 2026-10-07 | 扩写图快照（availableScenes/registered/expandError）；新增术语：场景范围选择器 (Scope Selector) | GLM-5.3-Flash | #SCOPE-SELECTOR 同步更新 boundaries.md / flows.md / e2e-scenarios.md / 设计文档 R5 / CHANGELOG 双语 |
 

@@ -8,10 +8,11 @@ import {
 	exportSceneCommand,
 } from "./sceneCommands";
 import { importSceneFromClipboardCommand } from "./clipboardCommands";
+import { showGraphCommand } from "./graphCommands";
 import { isInlayHintsAlwaysOn, toggleInlayHintsMode } from "#src/ui/utils/inlayHintsCoordinator";
 
 export interface MenuQuickPickItem extends vscode.QuickPickItem {
-	action?: "switch" | "clear" | "export" | "importClipboard" | "multiSelect" | "openConfig" | "toggleInlayHintsMode";
+	action?: "switch" | "clear" | "export" | "importClipboard" | "multiSelect" | "openConfig" | "toggleInlayHintsMode" | "showGraph";
 	sceneName?: string;
 }
 
@@ -25,6 +26,11 @@ function buildManagementMenuItems(): MenuQuickPickItem[] {
 	const isAlwaysOn = isInlayHintsAlwaysOn();
 
 	return [
+		{
+			label: `$(type-hierarchy) ${vscode.l10n.t("Open Scene Graph Canvas")}`,
+			description: vscode.l10n.t("Visualize active scenes as a breakpoint flow graph"),
+			action: "showGraph",
+		},
 		{
 			label: `$(clear-all) ${vscode.l10n.t("Clear All Breakpoints")}`,
 			description: vscode.l10n.t("Clear all breakpoints from current workspace"),
@@ -105,6 +111,9 @@ function buildSceneMenuItems(
  */
 async function executeMenuAction(selected: MenuQuickPickItem, workspaceRoot: string): Promise<void> {
 	switch (selected.action) {
+		case "showGraph":
+			await showGraphCommand();
+			break;
 		case "multiSelect":
 			await applySceneCommand();
 			break;

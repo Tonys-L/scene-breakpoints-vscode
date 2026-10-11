@@ -6,6 +6,7 @@ import { runArrayUtilsTests } from "./unit/shared/utils/array_utils.test.mjs";
 import { runStringSimilarityTests } from "./unit/shared/utils/string_similarity.test.mjs";
 import { runTextUtilsTests } from "./unit/shared/utils/text_utils.test.mjs";
 import { runPathUtilsTests } from "./unit/shared/utils/path_utils.test.mjs";
+import { runMermaidGraphExporterTests } from "./unit/shared/utils/mermaid_graph_exporter.test.mjs";
 
 // Domain Layer Unit Tests (models & services)
 import { runFingerprintVoTests } from "./unit/domain/models/fingerprint.test.mjs";
@@ -30,6 +31,8 @@ import { runSerialQueueTests } from "./unit/application/serial_queue.test.mjs";
 import { runActiveBreakpointIndexTests } from "./unit/application/active_breakpoint_index.test.mjs";
 import { runAgentSkillServiceTests } from "./unit/application/agent_skill_service.test.mjs";
 import { runAgentSyncServiceTests } from "./unit/application/agent_sync_service.test.mjs";
+import { runSceneGraphProjectionTests } from "./unit/application/scene_graph_projection.test.mjs";
+import { runDebugTraceBufferTests } from "./unit/application/debug_trace_buffer.test.mjs";
 
 // Infra Layer Unit Tests (storage, bridge & listeners)
 import { runEchoLoopGuardTests } from "./unit/infra/storage/echo_loop_guard.test.mjs";
@@ -38,6 +41,8 @@ import { runAtomicFileJsonStoreTests } from "./unit/infra/storage/atomic_file_js
 import { runFileLineReaderTests } from "./unit/infra/storage/file_line_reader.test.mjs";
 import { runBreakpointBridgeTests } from "./unit/infra/vscode/vscode_breakpoint_bridge.test.mjs";
 import { runDapBridgeTests } from "./unit/infra/vscode/dap_echo_guard.test.mjs";
+import { runVsCodeLineReaderTests } from "./unit/infra/vscode/vscode_line_reader.test.mjs";
+import { runConfigFileWatcherListenerTests } from "./unit/infra/vscode/listeners/config_file_watcher_listener.test.mjs";
 import { runListenersRegistryTests } from "./unit/infra/vscode/listeners/listeners_registry.test.mjs";
 
 // UI Layer Unit Tests (locators, views, commands & utils)
@@ -48,10 +53,16 @@ import { runInlayHintsCoordinatorTests } from "./unit/ui/views/inlay_hints_coord
 import { runStatusBarViewTests } from "./unit/ui/views/status_bar_view.test.mjs";
 import { runTreeViewTests } from "./unit/ui/views/scene_tree_provider.test.mjs";
 import { runTemplateProviderTests } from "./unit/ui/views/template_content_provider.test.mjs";
+import { runGraphMessageProtocolTests } from "./unit/ui/views/graph_canvas/graph_message_protocol.test.mjs";
+import { runTimelineCollapseTests } from "./unit/ui/views/graph_canvas/timeline_collapse.test.mjs";
+import { runGraphWebviewDocumentTests } from "./unit/ui/views/graph_canvas/graph_webview_document.test.mjs";
+import { runCardHtmlTests } from "./unit/ui/views/graph_canvas/card_html.test.mjs";
+import { runGraphCanvasControllerTests } from "./unit/ui/views/graph_canvas/graph_canvas_controller.test.mjs";
 import { runCommandsRegistryTests } from "./unit/ui/commands/commands_registry.test.mjs";
 import { runCommandsExecutionTests } from "./unit/ui/commands/commands_execution.test.mjs";
 import { runAddBreakpointCommandTests } from "./unit/ui/commands/add_breakpoint_command.test.mjs";
 import { runCaptureCallStackCommandTests } from "./unit/ui/commands/capture_call_stack_command.test.mjs";
+import { runGraphCommandsTests } from "./unit/ui/commands/graph_commands.test.mjs";
 import { runSkillCommandsTests } from "./unit/ui/commands/skill_commands.test.mjs";
 import { runSceneCommandsTests } from "./unit/ui/commands/scene_commands.test.mjs";
 import { runTreeCommandsTests } from "./unit/ui/commands/tree_commands.test.mjs";
@@ -69,7 +80,7 @@ import { runRoundtripAndEdgeTests } from "./integration/roundtrip_and_edge.test.
 import { runI18nTests } from "./integration/i18n.test.mjs";
 
 console.log("\n=======================================================");
-console.log("🚀 开始执行 Scene Breakpoints 全量 52 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
+console.log("🚀 开始执行 Scene Breakpoints 全量 59 大自动化测试套件 (Shared / Domain / Application / Infra / UI / Integration)");
 console.log("=======================================================\n");
 
 const startTime = performance.now();
@@ -87,6 +98,8 @@ try {
 	runTextUtilsTests();
 	console.log("");
 	runPathUtilsTests();
+	console.log("");
+	runMermaidGraphExporterTests();
 	console.log("");
 
 	// 2. 领域层纯单元测试 (Domain Models & Services 1:1 镜像)
@@ -133,6 +146,10 @@ try {
 	console.log("");
 	await runAgentSyncServiceTests();
 	console.log("");
+	await runSceneGraphProjectionTests();
+	console.log("");
+	await runDebugTraceBufferTests();
+	console.log("");
 
 	// 4. 基础设施存储与原生桥接测试 (Infra Storage & VSCode 1:1 镜像)
 	await runEchoLoopGuardTests();
@@ -146,6 +163,10 @@ try {
 	await runBreakpointBridgeTests();
 	console.log("");
 	await runDapBridgeTests();
+	console.log("");
+	await runVsCodeLineReaderTests();
+	console.log("");
+	await runConfigFileWatcherListenerTests();
 	console.log("");
 	await runListenersRegistryTests();
 	console.log("");
@@ -171,6 +192,16 @@ try {
 	console.log("");
 	runTemplateProviderTests();
 	console.log("");
+	runGraphMessageProtocolTests();
+	console.log("");
+	runTimelineCollapseTests();
+	console.log("");
+	await runGraphWebviewDocumentTests();
+	console.log("");
+	await runCardHtmlTests();
+	console.log("");
+	await runGraphCanvasControllerTests();
+	console.log("");
 	await runCommandsRegistryTests();
 	console.log("");
 	await runCommandsExecutionTests();
@@ -178,6 +209,8 @@ try {
 	await runAddBreakpointCommandTests();
 	console.log("");
 	await runCaptureCallStackCommandTests();
+	console.log("");
+	await runGraphCommandsTests();
 	console.log("");
 	await runSkillCommandsTests();
 	console.log("");
@@ -201,7 +234,7 @@ try {
 
 	const duration = (performance.now() - startTime).toFixed(2);
 	console.log("\n=======================================================");
-	console.log(`🎉 全部 52 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
+	console.log(`🎉 全部 59 大全维测试套件 100% 通过！总耗时: ${duration}ms`);
 	console.log("=======================================================\n");
 } catch (error) {
 	console.error("\n❌ 测试套件执行失败：\n", error);

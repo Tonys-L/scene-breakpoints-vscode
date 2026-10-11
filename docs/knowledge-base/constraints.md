@@ -111,7 +111,7 @@ src/
 | **INV-012** | **调试会话保护与拓扑 Diff 防线**：调试进行中外部改动断点挂起调度；核心哈希未变时阻断 DAP 重刷，会话结束补发。 | `src/application/agentSyncService.ts` |
 | **INV-013** | **Skill 正文指纹唯一性**：基于剥离 Frontmatter 后纯净正文的标准 SHA-256 (FIPS 180-4) 判定版本（纯 TS 实现 `pureSha256` 已对齐上游 geraintluff/sha256 素数筛上限 313，可与 node:crypto 交叉验证，见 ADR-006）；指纹必须经 `AgentRuleAsset.computeFingerprint()` 领域管线生成，严禁绕过归一化语义直算；覆写前自动生成 `.bak` 备份。 | `src/domain/models/agentRuleAsset.ts` |
 | **INV-027** | **冷启动自愈与崩溃隔离守卫 (Disaster Self-Healing Guard)**：物理持久化写入采用动态并发临时文件 (`tmp.${pid}.${ts}.${rand}`) + 原子覆盖 (`renameSync`)；主文件 0 字节或损坏时，优先从合法临时候选副本自愈恢复，严禁中断扩展生命周期。 | `src/infra/storage/atomicFileJsonStore.ts` |
-| **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停与恢复统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` |
+| **INV-028** | **应用事件总线弱耦合守卫 (Application Event Bus Guard)**：领域与应用层数据状态变更、调试暂停、恢复与会话终止统一由 `ApplicationEventBus` 广播事件驱动 UI 响应式自刷新（含 v1.3.0 画布 Live 点亮与命中轨迹累积）；严禁基础设施监听器与命令层跨层强依赖或持有 UI 视图实例。 | `src/application/eventBus.ts` 与 `src/application/debugTraceBuffer.ts` |
 | **INV-030** | **场景引用解析不变量 (Scene Reference Resolution)**：① 含引用场景激活必先经 `sceneResolver` 展开为纯断点流，方可进入合并/自愈/DAP 管道（`getSteps(): SceneStep[]` 与 `Breakpoint[]` 类型隔离在编译期强制，禁止绕过收窄点）；② 展开严格保持声明时序（深度优先、按序穿插）；③ 成环必须在任何写盘/DAP 下发前抛 `CircularReferenceError`（携带完整环路径），状态机零中间态、磁盘零污染；④ 悬空引用降级为警告并跳过，不中断其余断点激活；⑤ `enabled: false` 引用整棵子树跳过；⑥ 自愈回写按 `ownerScene`（断点定义场景）路由，同源多引用至多回写一次，引用节点自身永不接收回写；⑦ 引用条目在 codec 清洗往返中保真，非法引用（空 name）清洗阶段丢弃。 | `src/domain/services/sceneResolver.ts` 与 `src/application/sceneActivationPipeline.ts` |
 | **INV-031** | **外部编辑指纹冲突显式裁决守卫 (External Edit Fingerprint Conflict Guard)**：外部编辑重锚定断点行号与指纹自愈结论冲突时（门控 = watcher 显式标记 ∨ 磁盘内容相对内部写盘基线漂移，且自愈判定漂移），严禁静默回滚用户行号并回写旧指纹；必须经裁决回调交由用户决策（`disk` 保留磁盘行号并作废旧指纹按磁盘行重提取 / `fingerprint` 维持自愈回滚），用户关闭弹窗缺省磁盘行号优先。裁决回调缺失时维持现状静默自愈（向后兼容）。冷启动必须以磁盘现状播种基线（`seedBaseline`），保证 Git Pull 漂移静默自愈不被误弹窗。 | `src/application/sceneActivationPipeline.ts`（门控与裁决）、`src/infra/storage/echoLoopGuard.ts`（基线播种与漂移判定）、`src/infra/vscode/listeners/configFileWatcherListener.ts`（显式标记） |
 | **INV-032** | **分层配置守卫 (Layered Config Guard)**：`.vscode/debug-scenes.json` 为团队公共层（入 Git），`.vscode/debug-scenes.local.json` 为个人私有层（扩展激活时自动幂等写入 `.gitignore`）。读取链路一律返回合并视图（同名场景 local 覆盖 team）；UI 新建场景（手动新建/导出/调用栈固化）缺省落 local 层；`activeScenes` 激活态仅存团队主文件；echoLoopGuard 写盘基线按文件键控隔离（team/local 双基线，默认键向后兼容单文件语义），watcher 同时监听 `debug-scenes*.json` 双文件。 | `src/infra/storage/jsonFileSceneRepository.ts`（分层读写与合并视图）、`src/application/mutateCatalog.ts`（写入路由：新增场景缺省 local）、`src/infra/storage/echoLoopGuard.ts`（键控基线）、`src/extension.ts`（gitignore 引导） |
@@ -124,7 +124,7 @@ src/
 
 | 门禁代号 | 质量守卫项 | 验证工具与保障机制 | 阻断阈值 / 契约指标 |
 |---|---|---|---|
-| **GR-001 (INV-014)** | **分发包极致轻量与媒体隔离** | `.vscodeignore` 与验证脚本 | VSIX 体积严格限制在 500 KB 以内（当前约 130 KB），README 图片统一外链 CDN |
+| **GR-001 (INV-014)** | **分发包极致轻量与媒体隔离** | `.vscodeignore` 与验证脚本 | VSIX 体积严格限制在 1.5 MB (1536 KB) 以内（ADR-008：引入 G6 v5 企业级图引擎，保持零生产运行时依赖），README 图片统一外链 CDN |
 | **GR-002 (INV-015)** | **CI/CD 原生 Type Stripping 运行环境** | `.github/workflows/*.yml` | 统一锁定 Node 22.x，依托原生 TS Type Stripping 特性 |
 | **GR-003 (INV-016)** | **版本发布单一事实来源 (Release SSOT)** | `package.json` 与验证脚本 | `package.json` 的 `version` 是唯一版本 SSOT，与规则及 CHANGELOG 100% 对齐 |
 | **GR-004 (INV-017)** | **TypeScript 静态类型健全性硬门禁** | `tsconfig.json` (`tsc --noEmit`) | 全工程源码、单测、沙箱 0 errors、0 warnings |
@@ -171,5 +171,6 @@ src/
 | 2026-10-07 | INV-013 语义精确化为"标准 SHA-256 (FIPS 180-4)"并固化领域管线铁律（pureSha256 转写偏差修复，史表全量重生成） | GLM-5.3-Flash | 同批次 ADR-006 / lessons §6.1 / CHANGELOG 双语 |
 | 2026-10-07 | 新增 INV-031 外部编辑指纹冲突显式裁决守卫（冲突弹窗，磁盘行号缺省优先；冷启动基线播种保留 Git Pull 静默自愈） | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同批次 flows.md / glossary.md / lessons / e2e-scenarios.md / CHANGELOG 双语 |
 | 2026-10-07 | 新增 INV-032 分层配置守卫（team/local 双层合并视图、新增场景缺省 local、activeScenes 仅主文件、键控防回环基线） | GLM-5.3-Flash | v1.2.0 同批次 boundaries.md / flows.md / glossary.md / e2e-scenarios.md / roadmap / CHANGELOG 双语 |
+| 2026-10-07 | INV-028 语义扩展：广播事件覆盖调试暂停、恢复与会话终止（`debug:terminated`，v1.3.0 画布 Live 点亮与命中轨迹驱动），保障位置增补 `debugTraceBuffer` | GLM-5.3-Flash | v1.3.0 批次5 同步更新 boundaries.md / flows.md / glossary.md / e2e-scenarios.md / adr/007 / CHANGELOG 双语 |
 
 

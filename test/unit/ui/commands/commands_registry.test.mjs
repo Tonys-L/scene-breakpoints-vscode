@@ -28,7 +28,7 @@ class MockExtensionContext {
 export function runCommandsRegistryTests() {
 	console.log("  ▶ [Command Registry] 运行命令注册中枢与生命周期防灾测试套件（直连生产源码）...");
 
-	// 1. 测试基础 9 大交互命令全量注册（直连 registerAllCommands）
+	// 1. 测试基础交互命令全量注册（直连 registerAllCommands）
 	{
 		__resetMockVscodeState();
 		const context = new MockExtensionContext();
@@ -46,11 +46,13 @@ export function runCommandsRegistryTests() {
 			"sceneBreakpoints.installSkill",
 			"sceneBreakpoints.diagnoseAiIntegration",
 			"sceneBreakpoints.captureCallStack",
+			"sceneBreakpoints.showGraph",
+			"sceneBreakpoints.exportGraphMermaid",
 		];
 		for (const cmdId of expectedCoreCmds) {
 			assert.strictEqual(vscode.commands._registered.has(cmdId), true, `核心命令 [${cmdId}] 必须被生产代码正确注册`);
 		}
-		assert.strictEqual(context.subscriptions.length, 11, "基础交互命令 + 调用栈固化 + 解析警告通知器数量必须严格对齐 11 个");
+		assert.strictEqual(context.subscriptions.length, 13, "基础交互命令 + 调用栈固化 + 画布双命令 + 解析警告通知器数量必须严格对齐 13 个");
 	}
 
 	// 2. 测试带 TreeDataProvider 依赖注入时的 14 大级联树命令与真实方法调度
@@ -84,11 +86,12 @@ export function runCommandsRegistryTests() {
 			"sceneBreakpoints.moveBreakpointDown",
 			"sceneBreakpoints.moveBreakpointToTop",
 			"sceneBreakpoints.moveBreakpointToBottom",
+			"sceneBreakpoints.toggleSceneRef",
 		];
 		for (const cmdId of treeCmds) {
 			assert.strictEqual(vscode.commands._registered.has(cmdId), true, `树命令 [${cmdId}] 必须被生产代码正确级联注册`);
 		}
-		assert.strictEqual(context.subscriptions.length, 11 + 17, "核心命令 + 通知器 + 树命令（含 revealRefSource）总数必须严格为 28 个");
+		assert.strictEqual(context.subscriptions.length, 13 + 18, "核心命令 + 通知器 + 树命令（含 revealRefSource/toggleSceneRef）总数必须严格为 31 个");
 
 		// 测试 refreshView 处理器真实调度
 		assert.strictEqual(refreshed, false);
@@ -152,7 +155,7 @@ export function runCommandsRegistryTests() {
 		const context = new MockExtensionContext();
 		registerAllCommands(context, { treeDataProvider: { refresh: () => {} } });
 
-		assert.strictEqual(vscode.commands._registered.size, 27, "注册完成后应有 27 个已注册命令");
+		assert.strictEqual(vscode.commands._registered.size, 30, "注册完成后应有 30 个已注册命令（含 toggleSceneRef 与画布双命令）");
 
 		// 模拟插件停用或重载，逐一调用 subscriptions 中的 dispose
 		for (const sub of context.subscriptions) {

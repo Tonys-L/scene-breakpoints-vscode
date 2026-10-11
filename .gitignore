@@ -26,3 +26,9 @@ coverage/
 reports/
 
 
+# Scene Breakpoints personal scenes
+.vscode/debug-scenes.local.json
+
+# Python cache
+__pycache__/
+*.pyc

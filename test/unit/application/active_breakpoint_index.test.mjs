@@ -51,6 +51,10 @@ export async function runActiveBreakpointIndexTests() {
 		assert.strictEqual(docA[0].breakpoint.line, 10);
 		assert.strictEqual(docA[1].breakpoint.line, 20);
 
+		// 二次读取命中内部 docCache 缓存
+		const docACached = index.getBreakpointsForDocument("/workspace/demo-app/src/auth/login.ts");
+		assert.strictEqual(docACached, docA, "二次读取必须直接复用 docCache 缓存引用");
+
 		// B. 相对路径命中
 		const docB = index.getBreakpointsForDocument("src/auth/login.ts");
 		assert.strictEqual(docB.length, 2);
@@ -173,4 +177,8 @@ export async function runActiveBreakpointIndexTests() {
 	}
 
 	console.log("  ✅ [ActiveBreakpointIndex] 内存索引投影单元测试全部通过！");
+}
+
+if (process.argv[1]?.endsWith("active_breakpoint_index.test.mjs")) {
+	runActiveBreakpointIndexTests();
 }

@@ -4,7 +4,11 @@ import { sceneStateManager } from "#src/application/sceneStateManager";
 import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
 import { appEventBus } from "#src/application/eventBus";
 import { loadScenesConfig } from "#src/infra/storage/jsonFileSceneRepository";
-import { setCapturablePauseContext } from "#src/application/debugPauseContext";
+import {
+	setCapturablePauseContext,
+	isInternalOrVirtualFramePath,
+	isSourceNavigationLocked,
+} from "#src/application/debugPauseContext";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 import { handleExternalScenesFileChange } from "./configFileWatcherListener";
 
@@ -84,6 +88,48 @@ function createRevealAndClearCallbacks() {
 	return { revealPausedBreakpoint, clearPausedBreakpoint };
 }
 
+interface DapStackFrame {
+	line?: number;
+	source?: { path?: string };
+}
+
+/** 模块级状态：当前调试暂停是否已由 DAP 权威栈帧捕获（防止 VS Code 编辑器切入跟随重复上报） */
+let isCurrentPauseCapturedByDap = false;
+
+/**
+ * 从 DAP stackFrames 中提取首选场景断点栈帧（场景优先 + 真实物理源码兜底）：
+ * 1. 过滤所有非源码内部虚拟模块 (<node_internals>, node:*, internal/modules/ 等)；
+ * 2. 优先在堆栈中寻找匹配当前激活场景断点的物理帧（精准穿透包装）；
+ * 3. 兜底提取调用栈首个真实用户物理源码帧（如 main.ts:1086）；
+ * 4. 若整栈全为内部虚拟模块，严格返回 undefined 并静默忽略。
+ */
+export function selectBestUserSourceFrame(
+	frames: readonly DapStackFrame[],
+	workspaceRoot?: string,
+): DapStackFrame | undefined {
+	if (!frames || frames.length === 0) return undefined;
+
+	// 1. 过滤内部虚拟模块
+	const userFrames = frames.filter((f) => !isInternalOrVirtualFramePath(f.source?.path));
+	if (userFrames.length === 0) {
+		return undefined;
+	}
+
+	// 2. 优先提取当前激活场景中的断点帧
+	if (workspaceRoot) {
+		for (const f of userFrames) {
+			if (f.source?.path && typeof f.line === "number") {
+				if (activeBreakpointIndex.isHitInActiveScenes(f.source.path, f.line, workspaceRoot)) {
+					return f;
+				}
+			}
+		}
+	}
+
+	// 3. 兜底提取首个物理源码帧
+	return userFrames[0];
+}
+
 function createDapTrackerFactory(
 	revealPausedBreakpoint: (file: string, line: number) => Promise<void>,
 	clearPausedBreakpoint: () => void,
@@ -91,6 +137,7 @@ function createDapTrackerFactory(
 	return vscode.debug.registerDebugAdapterTrackerFactory("*", {
 		createDebugAdapterTracker(session: vscode.DebugSession) {
 			let sessionPausedThreadId: number | undefined;
+			let hasCapturedThisPause = false;
 
 			return {
 				onDidSendMessage(msg: DapMessagePayload) {
@@ -100,14 +147,30 @@ function createDapTrackerFactory(
 						msg.body?.stackFrames &&
 						msg.body.stackFrames.length > 0
 					) {
+						if (hasCapturedThisPause) {
+							return;
+						}
 						if (sessionPausedThreadId !== undefined) {
-							const topFrame = msg.body.stackFrames[0];
-							if (topFrame.source?.path && typeof topFrame.line === "number") {
-								void revealPausedBreakpoint(topFrame.source.path, topFrame.line);
+							const wsRoot = getWorkspaceRoot();
+							if (wsRoot && (activeBreakpointIndex.getNeedsSync() || activeBreakpointIndex.getAllIndexedBreakpoints().length === 0)) {
+								try {
+									const cfg = loadScenesConfig(wsRoot);
+									activeBreakpointIndex.syncFromConfig(wsRoot, cfg);
+								} catch {
+									// ignore
+								}
+							}
+							const targetFrame = selectBestUserSourceFrame(msg.body.stackFrames, wsRoot);
+							if (targetFrame?.source?.path && typeof targetFrame.line === "number") {
+								hasCapturedThisPause = true;
+								isCurrentPauseCapturedByDap = true;
+								void revealPausedBreakpoint(targetFrame.source.path, targetFrame.line);
 							}
 						}
 					} else if (msg?.type === "event") {
 						if (msg.event === "stopped") {
+							hasCapturedThisPause = false;
+							isCurrentPauseCapturedByDap = false;
 							if (typeof msg.body?.threadId === "number") {
 								sessionPausedThreadId = msg.body.threadId;
 								// v1.2.0：登记可捕获暂停上下文，供 captureCallStack 命令固化调用栈
@@ -118,11 +181,15 @@ function createDapTrackerFactory(
 							const allContinued = msg.body?.allThreadsContinued === true;
 							if (allContinued || (sessionPausedThreadId !== undefined && continuedThreadId === sessionPausedThreadId)) {
 								sessionPausedThreadId = undefined;
+								hasCapturedThisPause = false;
+								isCurrentPauseCapturedByDap = false;
 								setCapturablePauseContext(undefined);
 								clearPausedBreakpoint();
 							}
 						} else if (msg.event === "terminated") {
 							sessionPausedThreadId = undefined;
+							hasCapturedThisPause = false;
+							isCurrentPauseCapturedByDap = false;
 							setCapturablePauseContext(undefined);
 							clearPausedBreakpoint();
 						}
@@ -137,6 +204,8 @@ function createEditorCheckListener(
 	revealPausedBreakpoint: (file: string, line: number) => Promise<void>,
 ): vscode.Disposable[] {
 	const checkEditor = (editor?: vscode.TextEditor): void => {
+		if (isSourceNavigationLocked()) return;
+		if (isCurrentPauseCapturedByDap) return;
 		if (!vscode.debug.activeDebugSession || !editor || editor.document.uri.scheme !== "file") return;
 		const workspaceRoot = getWorkspaceRoot();
 		if (!workspaceRoot) return;
@@ -174,6 +243,7 @@ export function registerDebugPauseService(): vscode.Disposable {
 		onDidChangeActiveStackItem?: (cb: (item: { source?: { path?: string }; line?: number }) => Promise<void>) => vscode.Disposable;
 	};
 	const stackItemListener = debugExt.onDidChangeActiveStackItem?.(async (item) => {
+		if (isSourceNavigationLocked() || isCurrentPauseCapturedByDap) return;
 		if (item && item.source?.path && typeof item.line === "number") {
 			await revealPausedBreakpoint(item.source.path, item.line);
 		}
@@ -183,6 +253,9 @@ export function registerDebugPauseService(): vscode.Disposable {
 	}
 
 	disposables.push(
+		vscode.debug.onDidStartDebugSession(() => {
+			appEventBus.emit("debug:started", undefined);
+		}),
 		vscode.debug.onDidTerminateDebugSession(() => {
 			setCapturablePauseContext(undefined);
 			clearPausedBreakpoint();
@@ -198,6 +271,8 @@ export function registerDebugPauseService(): vscode.Disposable {
  */
 export function registerSessionLifecycleService(): vscode.Disposable {
 	return vscode.debug.onDidTerminateDebugSession(async () => {
+		// v1.3.0：会话终止广播（与 debug:resumed 区分），供命中轨迹缓存等会话级消费方清空状态
+		appEventBus.emit("debug:terminated", undefined);
 		sceneStateManager.clearLastAppliedTopologyHash();
 		if (sceneStateManager.isPendingTopologyUpdate()) {
 			sceneStateManager.setPendingTopologyUpdate(false);

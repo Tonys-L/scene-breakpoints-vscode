@@ -22,7 +22,8 @@ suite("Suite 04: 树视图交互命令与运行时联动", () => {
       const configUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json");
       await vscode.workspace.fs.writeFile(configUri, Buffer.from(initialConfigContent, "utf-8"));
     }
-
+    const localUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.local.json");
+    try { await vscode.workspace.fs.delete(localUri); } catch {}
   });
 
   teardown(async () => {
@@ -31,6 +32,10 @@ suite("Suite 04: 树视图交互命令与运行时联动", () => {
       const workspaceFolders = vscode.workspace.workspaceFolders!;
       const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
       require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+      const localPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.local.json").fsPath;
+      if (require("node:fs").existsSync(localPath)) {
+        try { require("node:fs").unlinkSync(localPath); } catch {}
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
@@ -149,10 +154,12 @@ suite("Suite 04: 树视图交互命令与运行时联动", () => {
     const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     raw.scenes["rename-temp-scene"] = [{ type: "line", file: "src/sample.ts", line: 3 }];
     fs.writeFileSync(configPath, JSON.stringify(raw, null, 2), "utf-8");
+    await vscode.commands.executeCommand("sceneBreakpoints.refreshView");
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     // 激活该场景
     await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["rename-temp-scene"]);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     let rootNodes = await api.treeDataProvider.getChildren();
     const tempNode = rootNodes.find((n: any) => n.sceneName === "rename-temp-scene");
@@ -164,7 +171,7 @@ suite("Suite 04: 树视图交互命令与运行时联动", () => {
 
     try {
       await vscode.commands.executeCommand("sceneBreakpoints.renameSceneItem", tempNode);
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
       // 验证树视图更新
       rootNodes = await api.treeDataProvider.getChildren();

@@ -7,4 +7,7 @@ execSync(
 	{ stdio: "inherit" },
 );
 
+console.log("🚀 Building graph webview bundle...");
+execSync("node scripts/build-graph-bundle.mjs", { stdio: "inherit" });
+
 console.log("✅ VS Code Extension built successfully: extension.js");

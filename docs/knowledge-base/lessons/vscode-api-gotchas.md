@@ -270,6 +270,280 @@
 **关联变更**: #TASK-EXT-CONFLICT（INV-031）
 **日期**: 2026-10-07
 
+### 1.28 Webview 画布架构重构：Preact 声明式组件化与 Cytoscape CSS 变量 Canvas 渲染陷阱 (Preact Webview Componentization & Cytoscape CSS Variables Trap)
 
+**问题**: 
+1. 初始版本的 Webview 画布视图在 TS 代码中拼接大段 HTML 字符串，配合原生命令式 DOM 操作（`document.createElement` / `appendChild` / `innerHTML`），当增加工具栏、标签页切换、单节点脉冲动画、悬停卡片与轨迹时，状态流转与 DOM 节点更新极其散乱，交互扩展与维护成本急剧攀升；
+2. Cytoscape.js 在 HTML5 Canvas 图层中绘制复合节点文字（如泳道场景标题）时，文字颜色若直接使用 CSS 变量（如 `var(--vscode-editor-foreground)`），Canvas 无法解析 CSS 变量表达式，静默降级（fallback）为纯黑色 `#000000`，在深色主题下完全不可见；
+3. 未激活状态的断点卡片如果直接使用外层容器全局 `opacity: 0.65`，深色背景透出冲淡了卡片内文字，导致弱光或低对比度主题下断点文件路径与行号模糊难辨。
 
+**原因**:
+1. 命令式拼装 HTML 缺乏单向数据流与虚拟 DOM 局部补丁机制，随着交互组件增多必然演化为意大利面条式代码；
+2. HTML5 `<canvas>` 的 2D 绘图上下文（`CanvasRenderingContext2D.fillText`）仅接受标准十六进制/RGB/HSL 色值，不受浏览器 CSS 样式引擎的变量计算器驱动；
+3. 全局透明度会级联作用于所有子元素文本的 alpha 通道，在深底浅字的高对比度要求下严重损害可读性。
 
+**解决方案**:
+1. **轻量引入 Preact 声明式组件化**：将 Preact 作为 `devDependency`（零生产运行时依赖，生产 `dependencies` 保持为空），在构建期通过 esbuild 打包至 `media/graph/graphWebview.js`（压缩后仅 24.3 KB，VSIX 体积 330 KB，远低于 GR-001 500 KB 刚性上限）。基于组件树（`App` -> `TabBar` / `ScopeBar` / `FlowView` / `TraceView` / `BreakpointCard` / `Tooltip`）声明式管理状态与渲染；
+2. **宿主真实颜色计算提取注入**：在渲染前通过 `window.getComputedStyle(document.body).getPropertyValue("--vscode-...")` 动态提取解析后的真实十六进制或 RGB 颜色字符串，以纯色值传递给 Cytoscape 的 `style` 配置字典；
+3. **分层状态与局部高对比度样式**：取消卡片外层容器全局 `opacity`，改为通过边框虚线（`border-style: dashed`）、灰度状态徽标（`pill badge`）与半透明背景来表达未激活状态，确保卡片文本始终以 100% 不透明度呈现，文字清晰锐利。
+
+**影响文件**: `src/ui/views/graphCanvas/webview/*`, `scripts/build-graph-bundle.mjs`, `package.json`
+**日期**: 2026-10-07
+
+### 1.29 Webview 激活状态双向闭环、CSS Border 简写覆盖陷阱与防焦点夺取交互设计 (Webview State Sync, CSS Border Shorthand Pitfall, and Non-Intrusive Card Interactions)
+
+**问题**:
+1. 用户在 Webview 画布上点击激活场景，或者外部修改场景激活状态时，画布未实时更新，卡片仍持续显示为“未激活”；且无激活场景时画布陷入空白状态；
+2. 卡片左侧的断点类别强调色条（如条件断点黄条、命中计数绿条、标准行断点蓝条等）在未激活时莫名消失，只显示灰框；
+3. 界面中混杂 Emoji 图标，不同操作系统下渲染风格怪异且不符合 VS Code 设计系统；
+4. 用户在画布中查看节点时，任何单击都会直接触发跳转到源码并夺取活动编辑器焦点（Focus Hijacking），打断了宏观结构审视的心流；
+5. 场景数量增多时，顶部场景列表出现横向滚动条，严重破坏整体界面的规整性与紧凑度。
+
+**原因**:
+1. **单向事件流断链**：`GraphCanvasController` 原先只监听了 `appEventBus` 的 `scenes:changed` 与 `scene:activated`，但忽略了核心状态机权威单例 `sceneStateManager.onDidChangeState`；同时未向 Webview 暴露激活当前选定场景的闭环通信信道（`activate-scene`）；
+2. **CSS `border-color` 简写陷阱**：CSS 中子类 `.bp-card.bp-inactive` 写了 `border-color: var(--bp-border-muted)`，这等价于同时设置了 `top/right/bottom/left` 四个方向，将 `.bp-card` 原本设置的 `border-left-color: var(--bp-accent)` 强行覆盖冲刷；
+3. **Emoji 缺乏设计自适应性**：Emoji 依赖操作系统字体库，缺乏原生 IDE 的矢量缩放、`currentColor` 自适应与专业感；
+4. **宏观浏览与微观编辑的认知冲突 (Cognitive Friction)**：用户查看拓扑图属于高层宏观认知，直接单击跳代码强制切换到微观源码视图，属于反模式（Focus Hijacking）；
+5. **平铺水平排列的扩展性硬伤 (Scalability Bottleneck)**：水平平铺标签只适合 2~3 个固定项，当场景达到 5 个以上时出现水平滚动条属于典型 Overwhelm Upfront 设计坏味道。
+
+**解决方案**:
+1. **全生命周期状态监听与闭环激活**：
+   - 控制器接入 `sceneStateManager.onDidChangeState(() => this.resendAll())`，确保任意途径的场景激活变动实时全量推送到画布；
+   - 协议扩充 `{ type: "activate-scene", sceneName: string }`，用户在画布中选中未激活场景时，在 TabBar 提供一键激活按钮驱动宿主 `sceneBreakpoints.applyScene`；
+2. **精准定向覆写与 `!important` 边框锚定**：
+   - 卡片核心边框样式使用 `border-left: 4px solid var(--bp-accent) !important;`；
+   - 未激活态仅定向覆盖其余三边：`border-top-color: ...; border-right-color: ...; border-bottom-color: ...;`，誓死捍卫左侧强调色条；
+3. **全面升级 VS Code 官方高精矢量 SVG 图标库**：
+   - 编写 `icons.tsx`，以 `currentColor` 内联 SVG 替换全部 Emoji（Line, Cond, Log, Hit, Func, Ref, Warning, OpenExternal, Zap），完全自适应 VS Code 主题色；
+4. **渐进披露式交互分级 (Progressive Disclosure)**：
+   - 区分操作意图：卡片单击为高亮选中（`onSelect` 聚焦上下文并驱动轨迹联动），双击（`onOpenSource`）或点击右上角独立直达按钮（`[↗]`）方跳转源码；
+5. **收敛为 Combobox + Popover 下拉选择面板**：
+   - 移除粗暴的平铺水平栏，收敛为标准 `SceneSelector` 下拉组件：集成搜索框、场景状态分组（“● 激活中” / “○ 预览中”）、单选聚焦、多选对比，彻底清除横向滚动条，释放 34px 垂直空间。
+
+**影响文件**: `src/ui/views/graphCanvas/GraphCanvasController.ts`, `src/ui/views/graphCanvas/graphMessageProtocol.ts`, `src/ui/views/graphCanvas/webview/*`, `docs/knowledge-base/flows.md`
+**日期**: 2026-10-07
+
+### 1.30 Webview 伴随分屏（Companion Mode）调度防遮挡与零依赖高精 Canvas 鹰眼小地图 (Companion Mode ViewColumn Resolution and Zero-Dep Canvas Minimap)
+
+**问题**:
+1. 用户在查看画布时，点击节点跳转到源码文件，代码文件直接覆盖了画布所在的 Editor Tab，导致画布消失，用户必须频繁切换 Tab，体验极度割裂；
+2. 只能通过右键上下文菜单或命令面板打开画布，操作路径长且不易发现；
+3. 大规模场景拓扑下，滚轮缩放迟缓（默认 `wheelSensitivity: 0.2` 过小），且缺乏全局视口感（不知道当前身处全图何处）。
+
+**原因**:
+1. **单一 ViewColumn.Active 独占冲突**：`GraphCanvasController.createPanel` 原先直接使用 `vscode.ViewColumn.Active`，而代码文件也是通过 `showTextDocument` 在同一列打开，导致代码与 Webview 争抢同一个编辑组；
+2. **菜单入口层级过深**：未在 VS Code 的 `view/title` 侧边栏标题栏暴露顶级常驻命令；
+3. **第三方鹰眼插件体积庞大**：市面上 Cytoscape 导航小地图扩展多包含大量 DOM 节点和臃肿样式，引入会严重突破 GR-001（零生产运行时依赖、VSIX <= 500 KB）硬限制。
+
+**解决方案**:
+1. **伴随分屏智能决策（Companion Mode ViewColumn Resolution）**：
+   - 提取纯函数 `resolveCanvasColumn`：若当前已有打开的活动编辑器，画布优先在右侧分屏（`ViewColumn.Beside`）打开，天然形成左侧看代码、右侧看拓扑的并排伴随视图；
+   - 提取纯函数 `resolveTargetSourceColumn`：当在画布中跳转源码时，若画布位于右侧分屏（`>= ViewColumn.Two`），代码强制在左侧主屏（`ViewColumn.One`）激活；若画布位于主屏，代码在分屏打开。**代码与画布永不争抢同一编辑器组**，实现真正的沉浸式双屏联动；
+2. **侧边栏顶栏常驻图标**：在 `package.json` 的 `view/title` 配置 `sceneBreakpoints.showGraph`（`navigation@0`），使用 `$(workflow)` 图标，一键直达；
+3. **零依赖原生 HTML5 Canvas 鹰眼小地图 (Minimap)**：
+   - 手写 `Minimap.tsx`（压缩后不足 3 KB，支持 DPR 视网膜高清），实时双向映射节点全景包围盒与当前视口矩形（Viewfinder）；
+   - 支持点击/拖拽视口快速平移，提供一键收起/展开，不引入任何第三方 npm 依赖；
+4. **缩放灵敏度调优与视口控制栏**：
+   - 调整 `wheelSensitivity: 0.8`（提升 4 倍跟手度）；
+   - 提供悬浮视口控制栏（`+` / `−` / `⤢ 适配全屏` / `1:1`），并支持双击画布空白处自动全屏居中。
+
+**影响文件**: `package.json`, `src/ui/views/graphCanvas/GraphCanvasController.ts`, `src/ui/views/graphCanvas/webview/*`, `test/unit/ui/views/graph_canvas/graph_canvas_controller.test.mjs`
+**日期**: 2026-10-07
+
+### 1.31 复合节点拖拽子代联动、卡片坐标 RAF 节流对齐与视口记忆恢复 (Compound Node Drag-Descendants Sync and Viewport Preservation)
+
+**问题**:
+1. 用户在画布中点击节点跳转到源码文件时，由于焦点切换触发重发，画布缩放（Pan/Zoom）被强制复位重置，打断了浏览心流；
+2. 拖拽场景泳道外框（`.lane` 复合父节点）时，外框移动了但里面的断点节点与卡片完全没有跟着动；
+3. 场景选择栏多选时使用“N 个场景对比中”，产生在做 Diff 比较的语义歧义。
+
+**原因**:
+1. **视口无记忆重建 (State Reset on Rebuild)**：在 `FlowView` 中，每次接收到 `snapshot` 重建 Cytoscape 实例时，未保存并恢复上一次的视口坐标，`dagre` 布局自动将其重置到默认初始视口；
+2. **Cytoscape 复合父节点与 HTML 浮层双重脱节**：
+   - Cytoscape 原生规范中，拖动复合父节点（Compound Parent）并不会自动带动子节点（Descendants）；
+   - 同时，HTML 断点卡片的坐标更新原先仅绑定在 `layoutstop` 事件上；在节点被直接拖拽（`drag`/`position`）时没有更新卡片 `positions`，导致 HTML DOM 卡片与 Cytoscape 占位框严重脱节。
+
+**解决方案**:
+1. **视口状态记忆（Viewport Preservation）**：
+   - 在 `FlowView` 中引入 `savedViewportRef`，在销毁旧实例前捕获 `cy.pan()` 与 `cy.zoom()`；并在新实例 `layoutstop` 时通过 `cy.viewport(...)` 自动恢复用户的缩放与平移状态；
+2. **复合节点子代拖拽联动（以 e.position 鼠标真实物理坐标为基准）**：
+   - ⚠️ **严防父节点包围盒坐标正反馈死循环**：Cytoscape 复合父节点（Compound Node）的位置是根据子节点包围盒计算的纯函数推导值，严禁用 `e.target.position()` 算位移增量（否则修改子节点会瞬间改变父节点自身，导致位移量指数级翻倍飞移出屏幕！）；
+   - 正确做法：在 `cy.on("grab", "node:parent")` 中记录 `lastMousePos = { x: e.position.x, y: e.position.y }`；在 `drag` 中以 `e.position`（鼠标在 Cytoscape 坐标系中的真实物理位置）计算 $(dx, dy)$ 增量，通过 `e.target.descendants().not(":parent").positions(...)` 逐帧同步平移其所有子孙节点；
+3. **RAF 节流卡片实时吸附**：
+   - 在节点 `drag` 事件中通过 `requestAnimationFrame` 节流调度 `updatePositions()`，确保 HTML 卡片与图形引擎 100% 像素级吸附对齐；
+4. **多选语义修正**：
+   - 将“对比中”修改为自然直观的“已展示 N 个场景”，彻底清除语义歧义。
+
+**影响文件**: `src/ui/views/graphCanvas/webview/components/FlowView.tsx`, `src/ui/views/graphCanvas/webview/components/SceneSelector.tsx`
+**日期**: 2026-10-07
+
+### 1.32 Webview retainContextWhenHidden、Dagre 同步布局错失事件与 Minimap 物理 Pan 坐标映射 (Webview retainContextWhenHidden, Synchronous Layout Timing, and Minimap Physical Pan Coordinates)
+
+**问题**:
+1. 用户在画布双击断点卡片跳转源码时，画布缩放（Zoom/Pan）仍然被强制重置回初始视图；
+2. 鹰眼小地图（Minimap）中的蓝色视口矩形（Viewfinder）用鼠标拖拽完全不会动。
+
+**原因**:
+1. **Dagre 同步布局错失 layoutstop 监听时机**：
+   在 `FlowView` 中，Cytoscape 初始化配置了 `layout: { name: "dagre", animate: false }`。同步布局在 `cytoscape({...})` 构造函数内部就已经同步完成并触发了 `layoutstop` 事件！代码在构造函数执行完毕后才注册 `cy.on("layoutstop", ...)`，导致初次布局的视口恢复回调根本没有被触发；同时控制器未配置 `retainContextWhenHidden: true`，在焦点切换至文本编辑器时 Webview 上下文面临被 VS Code 卸载重建风险；
+2. **非法 API 调用导致 Minimap 蓝框无法平移**：
+   在 `Minimap` 中原先调用了 `cy.center({ x: targetX, y: targetY })`。然而 Cytoscape 官方的 `cy.center(eles)` **仅接受 Collection 元素集合参数，根本不接受坐标对象**！传坐标对象直接被静默忽略为 No-op，导致主画布的 `pan` 从未改变，小地图自然无法联动；同时原先采用 `mouse` 事件而非 `pointer` 事件，鼠标稍微移出 180×120px 视窗就丢失拖拽流。
+
+**解决方案**:
+1. **即刻恢复视口与后台上下文保活**：
+   - 在 `FlowView` 中，于 `cytoscape({...})` 构造完毕后，立即无缝执行 `if (savedViewportRef.current) cy.viewport(...)`，消除对异步 `layoutstop` 事件的时序依赖；
+   - 在 `GraphCanvasController` 中设置 `retainContextWhenHidden: true`，确保失焦时 DOM 树与 Canvas 上下文不被丢弃；
+2. **正确解算视口中心平移物理公式**：
+   - 目标模型坐标 $(X_m, Y_m)$ 对齐主视口中心 $(\frac{W}{2}, \frac{H}{2})$ 的物理公式：
+     $$\text{newPanX} = \frac{\text{cy.width()}}{2} - X_m \times \text{cy.zoom()}$$
+     $$\text{newPanY} = \frac{\text{cy.height()}}{2} - Y_m \times \text{cy.zoom()}$$
+     通过合法的 `cy.pan({ x: newPanX, y: newPanY })` 驱动平移；
+   - 采用 Pointer Events 并配合 `setPointerCapture` / `releasePointerCapture`，确保鼠标在任意速度与移出小地图边界时均能平滑拖拽。
+
+**影响文件**: `src/ui/views/graphCanvas/GraphCanvasController.ts`, `src/ui/views/graphCanvas/webview/components/FlowView.tsx`, `src/ui/views/graphCanvas/webview/components/Minimap.tsx`
+**日期**: 2026-10-07
+
+### 1.33 衍生 IDE 中 ThemeColor 解析断层与树节点本地 SVG 兼容性实践 (ThemeColor Breakdown in Forked IDEs and Resilient Local SVG Tree Icons)
+
+**问题**:
+1. Antigravity IDE 中场景树（TreeView）的子场景引用节点前面图标不显示（空白透明），而在 Trae 中能显示；
+2. 子场景引用断点后面的内联操作图标与普通断点的“在配置文件中定位”图标（`$(go-to-file)`）完全重叠混淆，操作意图不清晰。
+
+**原因**:
+1. **衍生 IDE ThemeColor 变量映射缺失**:
+   在 `treeNodes.ts` 中原先使用了 `new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"))`。在 VS Code 衍生 IDE（如 Antigravity IDE、Trae、Cursor）中，宿主自带的主题调色板与 Codicon CSS 变量并不完全同构。当宿主未暴露 `charts.blue` 调色板变量时，Trae 内部做了降级容错，而 Antigravity IDE 会因颜色规则解析失效直接导致图标容器透明或丢弃渲染；
+2. **命令图标语义冲突**:
+   普通断点的 inline 按钮 `sceneBreakpoints.revealInConfigFile`（在 `debug-scenes.json` 定位）配置为 `$(go-to-file)`；子场景引用的断点 inline 按钮 `sceneBreakpoints.revealRefSource`（定位源场景定义）同样配置为 `$(go-to-file)`，导致同一树视图中相同图标承载了两种不同的语义动作。
+
+**解决方案**:
+1. **本地高精矢量 SVG 消除宿主依赖**:
+   - 在 `media/icons/` 中引入专用的 `scene-ref-enabled.svg`（高对比主色）与 `scene-ref-disabled.svg`（低饱和置灰）矢量图标文件；
+   - 在 `SceneRefTreeItem` 中支持通过 `vscode.Uri.file(...)` 加载本地磁盘 SVG 图标，彻底摆脱对宿主 IDE CSS 变量与 `ThemeColor` 的运行期解析依赖；
+   - 若未透传 `extensionPath`，安全降级回退至无附加色的纯净 Codicon `new vscode.ThemeIcon("references")`；
+2. **精准区分操作图标语义**:
+   - 在 `package.json` 中将 `sceneBreakpoints.revealRefSource` 的图标重构为标准 Codicon `$(references)`（指向源引用的书本箭头），与 `$(go-to-file)`（跳转配置文件）形成显著语义区隔。
+
+**影响文件**: `package.json`, `src/ui/views/treeNodes.ts`, `src/ui/views/sceneRefProjection.ts`, `media/icons/scene-ref-enabled.svg`, `media/icons/scene-ref-disabled.svg`
+**日期**: 2026-10-07
+
+### 1.34 Webview Payload 序列化浅拣选漏透传与 i18n 多语言硬编码回退陷阱 (Webview Payload Shallow Picking and i18n Fallback Trap)
+
+**问题**:
+在场景可视化画布中切换到“命中轨迹”时，空状态错误展示为硬编码英文 `"No trace records."`，未能展示语言包已翻译的本地化文案 `"本次调试会话暂无断点命中记录。"`。
+
+**原因**:
+1. **HTML 注入 Payload 浅拣选漏字段**：
+   在 `graphWebviewDocument.ts` 的 `buildGraphWebviewDocument` 中，向 `<script id="sb-payload">` 注入数据包时，手动挑选了 `labels: { sceneInactive: ..., laneCircular: ... }`，遗漏了 `traceEmpty`、`flowEmpty` 等标签的展开；
+2. **Webview 组件静默回退硬编码默认值**：
+   `TraceView.tsx` 依赖 `{labels.traceEmpty || "No trace records."}`。当字段为 `undefined` 时静默吞掉真实国际化配置并降级为英文，使得 i18n 测试难以在运行时直接感知。
+
+**解决方案**:
+1. **全量展开透传（Forward All Labels）**：
+   在 `buildGraphWebviewDocument` 中使用 `labels: { ...labels }`，确保宿主经由 `vscode.l10n.t` 计算的所有标签 100% 完整流入 Webview 数据契约；
+2. **规范化组件兜底文案**：
+   将 `TraceView.tsx` 中的回退默认字符串与规范主英文词条 `"No hit records in this debug session yet."` 严格对齐，并在单元测试中新增全量 label 序列化注入断言保护。
+
+**影响文件**: `src/ui/views/graphCanvas/graphWebviewDocument.ts`, `src/ui/views/graphCanvas/webview/components/TraceView.tsx`, `test/unit/ui/views/graph_canvas/graph_webview_document.test.mjs`
+**日期**: 2026-10-08
+
+### 1.35 编辑器选区监听自激回流风暴、DAP 内部栈帧穿透与 TraceView 滚动防跳实践 (Editor Selection Self-Triggering Loop, DAP Internal Frame Penetration, and Scroll Jitter Prevention)
+
+**问题**:
+1. 用户在 TraceView 时间轴上点击断点卡片定位源码时，界面偶发红框脉冲闪烁（`live-pulse`），且刚选中的卡片蓝框焦点被强行抢夺跳回；
+2. 命中跟踪列表中偶发出现 `<node_internals>/internal/modules/esm/module_job:303` 等非源码帧，抢占真实业务断点，点击定位抛错失效；
+3. 点击断点卡片定位源码时，TraceView 面板自身的滚动条会突兀地向下一跳，产生明显的抽搐感。
+
+**原因**:
+1. **编辑器选区监听自激回流 (Self-triggering Loop)**：
+   `debugLifecycleListener` 的 `createEditorCheckListener` 监听了 `onDidChangeTextEditorSelection`，在有调试会话时，若光标落在场景断点行就直接派发 `debug:paused`。当用户在 TraceView 中点击定位源码时，宿主主动移动编辑器光标，被该监听器误判为“运行时又命中了断点”，触发了假的 `debug:paused` 广播，导致 Webview 收到 `live-pulse` 红框闪烁，同时轨迹流压入重复新记录，强制夺走了前端卡片选中态；
+2. **DAP 栈帧机械抓取 Frame 0 穿透内部模块**：
+   在 Node.js ESM 启动或调度时，Frame 0 为 Node 内部虚拟帧 `<node_internals>`，真实业务断点位于后续帧。直接取 `stackFrames[0]` 导致虚拟内部路径污染轨迹，且点击时本地磁盘无对应物理文件导致定位失败；
+3. **TraceView 自动贴底机制被伪记录误触发**：
+   `TraceView.tsx` 原逻辑仅依赖 `isAtBottom`，在假记录压入导致组件重绘时，强制执行了 `el.scrollTop = el.scrollHeight`，造成容器滚动条突兀跳动。
+
+**解决方案**:
+1. **导航抑制锁 (Navigation Guard)**：
+   在应用层 `debugPauseContext.ts` 引入 `setSourceNavigationLock` 瞬态锁；在宿主 `revealSource` 执行期间加锁并在 350ms 窗口期内完全屏蔽 `checkEditor`，彻底斩断事件自激回流闭环；
+2. **DAP 栈帧过滤与真实源码优先 (selectBestUserSourceFrame)**：
+   在 DAP 堆栈解析中过滤 `<node_internals>`、`node:*`、`internal/` 等内部虚拟路径，优先选取匹配当前激活场景断点的物理帧，兜底取首个用户物理源码帧；
+3. **TraceView 交互视角锁定与单向贴底**：
+   引入 `prevRecordsLengthRef`，仅在真正有新断点到达且此前处于底部时才跟随贴底；用户主动点击任意卡片时立即设置 `setIsAtBottom(false)` 并锁定当前滚动视角，彻底根除任何滚动条跳动。
+
+**影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/application/debugPauseContext.ts`, `src/ui/views/graphCanvas/graphCanvasController.ts`, `src/ui/views/graphCanvas/webview/components/TraceView.tsx`, `test/unit/infra/vscode/listeners/listeners_registry.test.mjs`
+**日期**: 2026-10-10
+
+### 1.36 DAP 堆栈多次响应重复上报、单次暂停幂等防抖与 TraceView 滚动条 0 像素锁定实践 (DAP Multi-stackTrace Dedup, Single-pause Idempotency, and Zero-jitter Scrollbar Lock)
+
+**问题**:
+1. 调试断点命中时，时间轴轨迹中偶尔会出现两步一模一样的命中（例如 `#1 cli.ts:27 00:01:24.383` 与 `#2 cli.ts:27 00:01:24.488 +105ms`），且被算法折叠成了“🔁 [CLI 进程入口] 循环 2 次 (2 步) 🔴 当前停在循环中”，形成伪循环假象；
+2. 在 TraceView 中点击断点卡片定位源码文件时，画布面板中的滚动条经常会突兀地向下一跳/抽搐。
+
+**原因**:
+1. **DAP 协议的多阶段 stackTrace 响应与编辑器跟随双重击穿**：
+   - 当 DAP 发出 `stopped` 事件后，VS Code 调试面板为了渲染调用栈、局部变量及监视表达式，会在约 100ms 左右连续返回多次 `stackTrace` 响应。若调试生命周期监听器每次收到 `stackTrace` 都机械地调用 `revealPausedBreakpoint`，同一次物理暂停就会被上报多次；
+   - 此外，VS Code 在断点命中后会自动打开该文件并将光标定位至断点行，`checkEditor` 监听到光标在场景断点行，若没有单次暂停捕获状态保护，也会在 105ms 左右补发一次 `debug:paused`；
+   - 两条相隔 105ms 的相同命中记录被压入 `DebugTraceBuffer`，时间线折叠算法将其识别为循环，卡片由普通单步卡片剧烈重组为循环折叠块，DOM 高度产生瞬间变化；
+2. **记录增加触发自动贴底与点击事件未锁视口**：
+   - 伪重复记录写入触发了 `trace-append`，`records.length` 变大导致 `TraceView` 执行了 `el.scrollTop = el.scrollHeight`，将滚动条猛烈向下拉扯；
+   - 用户在点击卡片时，未对滚动容器的 `scrollTop` 做瞬态锁定与事件冒泡隔离，组件选区重新渲染与浏览器原生焦点重绘导致了像素级位移。
+
+**解决方案**:
+1. **DAP 适配器单次暂停捕获锁（`hasCapturedThisPause`）**：
+   - 在 `createDapTrackerFactory` 中为每个调试会话维护 `hasCapturedThisPause` 标志：收到 `stopped` 时置 `false`；首个合法的用户源码帧成功解析并上报后立即置 `true`；后续所有的 `stackTrace` 响应直接跳过；直到收到 `continued` 或 `terminated` 事件后才复位；
+2. **模块级 DAP 暂停捕获状态拦截（`isCurrentPauseCapturedByDap`）**：
+   - 在 DAP 处于暂停且已捕获状态期间，`createEditorCheckListener` 的 `checkEditor` 直接静默返回，彻底隔绝编辑器光标跟随定位引起的二次触发；
+3. **应用层 TraceBuffer 物理防抖终极底线（Idempotency Guard）**：
+   - 在 `DebugTraceBuffer.append(file, line)` 入口处增加物理防抖：若最后一条记录满足 `last.file === file && last.line === line && (now - last.wallTime < 500)`，直接返回 `last`，坚决不追加重复记录；
+4. **TraceView 交互 0 像素位移锁定**：
+   - 在 `handleStepClick` 与 `toggleLoop` 中增加 `e.stopPropagation()` 隔离事件；同时捕获触发前的 `currentScrollTop`，在 `requestAnimationFrame` 中确保 `el.scrollTop === currentScrollTop`，实现绝对 0 像素跳动。
+
+**影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/application/debugTraceBuffer.ts`, `src/ui/views/graphCanvas/webview/components/TraceView.tsx`, `test/unit/infra/vscode/listeners/listeners_registry.test.mjs`, `test/unit/application/debug_trace_buffer.test.mjs`
+**日期**: 2026-10-11
+
+### 1.37 G6 HTML 节点原生事件遮挡导致滚轮缩放失效、层级视觉降噪与国际化沉淀 (G6 HTML Node Wheel Event Piercing, Layer Noise Reduction, and UI Internationalization)
+
+**问题**:
+1. 在流程图画布（FlowView）中，当鼠标悬停在断点卡片（`.bp-card`）或子场景卡片（`.sc-scene-card`）上时，滚动鼠标滚轮无法触发画布缩放；
+2. 场景选择器下拉列表中每个场景后方均机械显示大写的 `TEAM` 标签，个人/独立开发者在单人开发场景下感到困惑与违和，且全部贴标造成了视觉噪点；
+3. 卡片类型徽章为纯英文缩写（`Line`、`Cond`、`Log`、`Hit`、`Func`、`Ref`），Tooltip 为 `● Line` 等，且宿主未配置语言包时出现 `Not Active` 英文。
+
+**原因**:
+1. G6 v5 的 `ZoomCanvas` behavior 默认仅向底层的 `<canvas>` 视口挂载了 wheel 监听。当图节点配置为 `node: { type: "html" }` 时，各卡片为脱离 canvas 渲染树的原生 DOM `div` 元素。鼠标悬停在卡片上触发的原生 `wheel` 事件直接派发到该 DOM 节点，未能被底层 canvas 捕获，导致缩放交互被阻断；
+2. 业务模型中的 `team` 仅代表 Git 跟踪的工程标准场景（`.vscode/debug-scenes.json`），`local` 代表本地私有草稿（`.vscode/debug-scenes.local.json`）。默认工程场景无需过度强调，仅当处于本地私有场景时方需特殊提示；
+3. 部分组件徽章使用了未经本地化的类型大写缩写。
+
+**解决方案**:
+1. **容器级 Wheel 事件精准桥接与原点传递**：
+   - 在 `#flow-view` 外层容器绑定原生 `onWheel` 事件监听；
+   - 当检测到鼠标目标命中卡片（`target.closest(".bp-card, .sc-scene-card")`）时，拦截默认滚动行为（`e.preventDefault()`），以鼠标在画布中的相对视口坐标 `[e.clientX - rect.left, e.clientY - rect.top]` 作为 `origin` 原点参数，平滑驱动 `g6.zoomBy(ratio, { duration: 80 }, origin)`，实现卡片悬停无缝丝滑缩放；
+2. **场景分层视觉降噪与心智收敛**：
+   - 彻底移除 `team` 默认标签，普通项目场景保持纯净无噪音；
+   - 仅当 `sc.layer === "local"` 时渲染小巧精致的 `[本地]` 徽章，悬停明确提示本地私有场景；
+3. **卡片徽章与浮窗动态国际化与纯英文 Fallback**：
+   - `cardHtml.ts` 与 `Tooltip.tsx` 杜绝任何中文硬编码，静态字典统一回退标准英文（`Line`, `Cond`, `Log`, `Hit`, `Func`, `Ref`）；
+   - 所有展示文案与类型标题完全由宿主下发的 `labels` 动态驱动，通过 `vscode.l10n.t` 实现 100% 国际化无缝覆盖。
+
+**影响文件**: `src/ui/views/graphCanvas/webview/components/FlowView.tsx`, `src/ui/views/graphCanvas/webview/components/SceneSelector.tsx`, `src/ui/views/graphCanvas/webview/components/cardHtml.ts`, `src/ui/views/graphCanvas/webview/components/Tooltip.tsx`
+**日期**: 2026-10-11
+
+### 1.38 异步写盘防回环安全窗在测试集中运行器中的跨用例状态污染与单文件覆盖率穿透 (EchoLoopGuard Cross-Test State Leakage and Per-File Coverage Transparency)
+
+**问题**:
+1. 单独运行 `config_file_watcher_listener.test.mjs` 测试 100% 成功通过，但在集中运行器 `test/run-all.mjs` 中批量执行时，其在测试外部磁盘修改时发生断言失败，导致后续测试套件被截断退出；
+2. 全工程整体测试覆盖率虽然高达 95.70%，但个别底层适配器（如 `vscodeLineReader.ts`）在单测中因未触发真实 API 而存在覆盖率盲区（63.15%），被全局大数法则掩盖。
+
+**原因**:
+1. **写盘防回环异步延时窗口污染**：
+   `echoLoopGuard.markInternalSaving(600)` 在前序测试（如 `json_file_scene_repository.test.mjs`）写盘后会启动 600ms 的保护窗口。在集中运行器中，紧随其后的 watcher 单测在 600ms 窗口内触发外部变更，被误判为“扩展自身的内部写盘行为”，从而直接 `return` 阻断了变更广播；
+2. **全局聚合平均 vs 单文件独立阈值**：
+   `c8 check-coverage` 默认按所有文件的聚合平均值判定，大模块的高覆盖率容易掩盖小模块的未测分支。
+
+**解决方案**:
+1. **基础设施守卫显式暴露 `reset()` 契约**：
+   在 `EchoLoopGuard` 中新增 `public reset(): void`，不仅清除内容指纹 Map，更显式取消挂起的 `internalSavingTimer` 定时器并将 `_isInternalSaving` 复位为 `false`；在监听器单测的 setup 和关键步骤前调用 `echoLoopGuard.reset()`，确保测试用例 100% 环境隔离；
+2. **单测盲区针对性补齐与双层互补验证**：
+   - 为 `vscodeLineReader.ts`、`jsonFileSceneRepository.ts`、`skillDiagnostic.ts` 补充专职单测，将单文件覆盖率从 56%~84% 全量拉升至 90%~100%；
+   - 结合 E2E 真实宿主测试采集综合覆盖率，验证底层 VS Code 适配器在真实运行时的完整闭环。
+
+**影响文件**: `src/infra/storage/echoLoopGuard.ts`, `src/infra/vscode/vscodeLineReader.ts`, `test/unit/infra/vscode/listeners/config_file_watcher_listener.test.mjs`, `test/unit/infra/vscode/vscode_line_reader.test.mjs`
+**日期**: 2026-10-11

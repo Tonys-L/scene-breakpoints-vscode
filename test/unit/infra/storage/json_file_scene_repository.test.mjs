@@ -16,6 +16,7 @@ import {
 	stripJsonComments,
 	isContentMatchingLastSaved,
 	getLastSavedContent,
+	isDiskContentModifiedSinceLastSaved,
 } from "#src/infra/storage/jsonFileSceneRepository";
 import { echoLoopGuard } from "#src/infra/storage/echoLoopGuard";
 
@@ -214,6 +215,22 @@ export async function runSceneRepositoryTests() {
 				true,
 				"local 层写盘后必须以私有文件键记录独立基线",
 			);
+
+			// (6) isDiskContentModifiedSinceLastSaved 磁盘外部漂移守卫检测 (INV-031)
+			assert.strictEqual(isDiskContentModifiedSinceLastSaved(layerRoot), false, "写盘后磁盘内容与基线一致，未发生漂移");
+			// 模拟主文件未存在
+			const emptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sb-empty-root-"));
+			assert.strictEqual(isDiskContentModifiedSinceLastSaved(emptyRoot), false, "主文件不存在时必须安全返回 false");
+			fs.rmSync(emptyRoot, { recursive: true, force: true });
+
+			// 模拟外部直接修改磁盘主文件
+			const mainPath = getScenesConfigPath(layerRoot);
+			fs.writeFileSync(mainPath, '{"scenes":{"drift":[]}}', "utf-8");
+			assert.strictEqual(isDiskContentModifiedSinceLastSaved(layerRoot), true, "磁盘内容被外部修改后必须检出漂移");
+
+			// 容错异常捕获测试 (传入非法非字符串路径触发 catch)
+			assert.strictEqual(isDiskContentModifiedSinceLastSaved(null), false, "非法入参异常时必须安全 catch 返回 false");
+			assert.strictEqual(ensureLocalScenesGitignore(null), false, "ensureLocalScenesGitignore 非法入参异常时必须安全 catch 返回 false");
 		} finally {
 			fs.rmSync(layerRoot, { recursive: true, force: true });
 		}

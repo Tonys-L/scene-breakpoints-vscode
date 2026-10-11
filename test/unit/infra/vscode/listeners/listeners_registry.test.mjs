@@ -12,6 +12,8 @@ import {
 	registerDebugPauseService,
 	registerSessionLifecycleService,
 } from "#src/infra/vscode/listeners/index";
+import { selectBestUserSourceFrame } from "#src/infra/vscode/listeners/debugLifecycleListener";
+import { setSourceNavigationLock, isInternalOrVirtualFramePath } from "#src/application/debugPauseContext";
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import { appEventBus } from "#src/application/eventBus";
 import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
@@ -254,6 +256,12 @@ export async function runListenersRegistryTests() {
 			event: "stopped",
 			body: { reason: "breakpoint", threadId: 1 },
 		});
+
+		let pauseEmitCount = 0;
+		const pauseListener = appEventBus.on("debug:paused", () => {
+			pauseEmitCount++;
+		});
+
 		tracker.onDidSendMessage({
 			type: "response",
 			command: "stackTrace",
@@ -261,6 +269,20 @@ export async function runListenersRegistryTests() {
 				stackFrames: [{ source: { path: "X:/mock-workspace/project/src/cli.ts" }, line: 20 }],
 			},
 		});
+
+		assert.strictEqual(pauseEmitCount, 1, "首个有效 stackTrace 必须触发 debug:paused");
+
+		// 步骤 A2: 同一次暂停期间，调试器再次发来 stackTrace 响应（如更新变量或作用域），必须被 hasCapturedThisPause 彻底拦截
+		tracker.onDidSendMessage({
+			type: "response",
+			command: "stackTrace",
+			body: {
+				stackFrames: [{ source: { path: "X:/mock-workspace/project/src/cli.ts" }, line: 20 }],
+			},
+		});
+
+		assert.strictEqual(pauseEmitCount, 1, "同一次暂停期间多余的 stackTrace 响应绝不可重复触发 debug:paused！");
+		pauseListener.dispose();
 
 		assert.deepStrictEqual(
 			customTreeProvider.getPausedLocation(),
@@ -417,6 +439,107 @@ export async function runListenersRegistryTests() {
 			activeBreakpointIndex.clear();
 			fs.rmSync(tmpWs4, { recursive: true, force: true });
 		}
+	}
+
+	// 9. registerDebugPauseService 源码导航抑制锁 (setSourceNavigationLock) 阻断虚假命中
+	{
+		__resetMockVscodeState();
+
+		let activeEditorCb = null;
+		const origActiveEditorEvt = vscode.window.onDidChangeActiveTextEditor;
+		vscode.window.onDidChangeActiveTextEditor = (cb) => {
+			activeEditorCb = cb;
+			return { dispose() {} };
+		};
+
+		const tmpWs5 = fs.mkdtempSync(path.join(os.tmpdir(), "sb-navlock-"));
+		const hitFile = path.join(tmpWs5, "src", "nav.ts");
+		fs.mkdirSync(path.dirname(hitFile), { recursive: true });
+		fs.writeFileSync(hitFile, "console.log('line 1');\nconsole.log('line 2');\n", "utf-8");
+
+		const pauseDisposable = registerDebugPauseService();
+		const pausedEvents = [];
+		const pauseSub = appEventBus.on("debug:paused", (e) => pausedEvents.push(e));
+
+		try {
+			vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpWs5 } }];
+			vscode.debug.activeDebugSession = { name: "mock-session", type: "node" };
+			sceneStateManager.setActiveScenes(["nav-scene"], 1);
+			activeBreakpointIndex.sync(
+				tmpWs5,
+				{ "nav-scene": [{ file: "src/nav.ts", line: 2, type: "line", enabled: true }] },
+				["nav-scene"],
+			);
+
+			const makeEditor = (fsPath, line) => ({
+				document: { uri: { fsPath, scheme: "file" } },
+				selection: { active: { line } },
+			});
+
+			// A. 开启导航锁 -> 光标即使落在断点行 (第 1 行 0-based -> 第 2 行)，也绝不触发 debug:paused
+			setSourceNavigationLock(true, 500);
+			activeEditorCb(makeEditor(hitFile, 1));
+			assert.strictEqual(pausedEvents.length, 0, "导航锁激活时绝不可触发 debug:paused（防自激回流）");
+
+			// B. 释放导航锁 -> 恢复常规监听
+			setSourceNavigationLock(false);
+			activeEditorCb(makeEditor(hitFile, 1));
+			assert.strictEqual(pausedEvents.length, 1, "导航锁释放后正常触发断点广播");
+		} finally {
+			setSourceNavigationLock(false);
+			pauseSub.dispose();
+			pauseDisposable.dispose();
+			vscode.window.onDidChangeActiveTextEditor = origActiveEditorEvt;
+			vscode.debug.activeDebugSession = undefined;
+			sceneStateManager.setActiveScenes([]);
+			activeBreakpointIndex.clear();
+			fs.rmSync(tmpWs5, { recursive: true, force: true });
+		}
+	}
+
+	// 10. selectBestUserSourceFrame 场景断点白名单匹配机制
+	{
+		const tmpWs6 = "/workspace/demo";
+		sceneStateManager.setActiveScenes(["test-scene"], 1);
+		activeBreakpointIndex.sync(
+			tmpWs6,
+			{ "test-scene": [{ file: "src/cli.ts", line: 27, type: "line", enabled: true }] },
+			["test-scene"],
+		);
+
+		// A. 栈顶为 Node 内部帧，但 Frame 1 为激活场景断点 -> 精准穿透提取 Frame 1
+		const mixedFrames = [
+			{ line: 303, source: { path: "<node_internals>/internal/modules/esm/module_job" } },
+			{ line: 27, source: { path: path.join(tmpWs6, "src", "cli.ts") } },
+			{ line: 15, source: { path: "node:events" } },
+		];
+
+		const chosen = selectBestUserSourceFrame(mixedFrames, tmpWs6);
+		assert.ok(chosen, "必须成功穿透并提取命中场景断点的业务帧");
+		assert.strictEqual(chosen.source.path, path.join(tmpWs6, "src", "cli.ts"));
+		assert.strictEqual(chosen.line, 27);
+
+		// B. 全部帧均属于虚拟内部模块（如纯运行时底层调度） -> 严格返回 undefined 并静默忽略
+		const allVirtualFrames = [
+			{ line: 303, source: { path: "<node_internals>/internal/modules/esm/module_job" } },
+			{ line: 10, source: { path: "node:internal/bootstrap" } },
+		];
+		const fallback = selectBestUserSourceFrame(allVirtualFrames, tmpWs6);
+		assert.strictEqual(fallback, undefined, "全虚拟内部调度帧必须严格返回 undefined 并静默忽略");
+
+		// C. 不在场景断点中，但包含合法物理源码（如单步调试/新断点） -> 兜底提取首个物理源码帧
+		const stepFrames = [
+			{ line: 303, source: { path: "<node_internals>/internal/modules/esm/module_job" } },
+			{ line: 1086, source: { path: path.join(tmpWs6, "src", "main.ts") } },
+		];
+		const stepChosen = selectBestUserSourceFrame(stepFrames, tmpWs6);
+		assert.ok(stepChosen, "必须兜底提取物理源码帧");
+		assert.strictEqual(stepChosen.source.path, path.join(tmpWs6, "src", "main.ts"));
+		assert.strictEqual(stepChosen.line, 1086);
+
+		// 清理场景态
+		sceneStateManager.setActiveScenes([]);
+		activeBreakpointIndex.clear();
 	}
 
 	console.log("  ✅ [Listeners Registry] 5 大核心事件监听与生命周期单元测试全部通过！");

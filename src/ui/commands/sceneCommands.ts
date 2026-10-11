@@ -126,7 +126,7 @@ function showActivationFeedback(
 		const unmatches = result.unmatchedBreakpoints || [];
 		const firstItem = unmatches[0];
 		const summary = unmatches.slice(0, 3).map((bp) => `${path.basename(bp.file)}:${bp.line}`).join(", ");
-		const more = count > 3 ? ` 等 ${count} 处` : "";
+		const more = count > 3 ? vscode.l10n.t(" and {0} other locations", count) : "";
 		const viewAction = vscode.l10n.t("Locate Code");
 
 		void vscode.window

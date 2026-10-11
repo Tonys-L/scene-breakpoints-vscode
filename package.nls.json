@@ -7,6 +7,8 @@
   "command.exportScene": "Export Current Breakpoints to Scene...",
   "command.showMenu": "Show Scene Menu...",
   "command.captureCallStack": "Save Current Call Stack as Scene...",
+  "command.showGraph": "Show Scene Graph Canvas",
+  "command.exportGraphMermaid": "Export Scene Graph as Mermaid",
   "command.refreshView": "Refresh Scenes",
   "command.createNewScene": "New Scene...",
   "command.applySceneItem": "Activate Scene",
@@ -32,7 +34,6 @@
   "config.allowAiFileActivation": "Allow AI Agent to declaratively activate and switch scenes by modifying activeScenes in debug-scenes.json",
   "config.autoInstallSkill": "Prompt to install AI Skill when an AI Agent workspace is detected",
   "config.inlayHintsEnabled": "Show subtle scene breakpoint annotations and ghost text at the end of editor lines",
-  "view.sceneBreakpoints": "Scene Breakpoints"
+  "view.sceneBreakpoints": "Scene Breakpoints",
+  "command.toggleSceneRef": "Toggle Scene Reference"
 }
-
-

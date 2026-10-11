@@ -356,18 +356,8 @@ export class SceneTreeDataProvider
 							item.updateAppearance();
 							this.refresh(item);
 						}
-					} else if (item instanceof SceneRefTreeItem) {
-						// 引用节点 checkbox：多态 toggle（引用为一等步骤，getStep(index).toggle() 原生支持）
-						const result = await breakpointManager.toggleBreakpoint(
-							workspaceRoot,
-							item.sceneName,
-							item.index,
-							state === vscode.TreeItemCheckboxState.Checked,
-						);
-						if (result.success) {
-							this.refresh();
-						}
 					}
+					// 注：引用节点已移除 checkboxState（宿主单击语义冲突），启停改走 toggleSceneRef 实体命令
 				}
 			}),
 		);

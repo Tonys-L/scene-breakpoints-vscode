@@ -10,6 +10,8 @@
 | **ADR-004** | [建立架构防摇摆与深浅模块裁决工程规范](004-architectural-anti-churn-standard.md) | 架构防震荡 | Accepted | `constraints`, `sceneStateManager`, `ui/commands/*` | 2026-10-05 |
 | **ADR-005** | [引入场景组合引擎——声明态/展开态分离的完全多态 SceneStep 模型](005-scene-composition-engine.md) | 场景组合 | Accepted | `sceneResolver`, `sceneStep`, `sceneActivationPipeline`, `scene`, `types`, `schema.json` | 2026-10-06 |
 | **ADR-006** | [pureSha256 转写偏差修复——对齐上游素数筛上限 313 还原标准 SHA-256](006-puresha256-fips-alignment.md) | 领域指纹 | Accepted | `agentRuleAsset`, `gen-skill-fingerprint.mjs`, `agent_rule_asset.test.mjs` | 2026-10-07 |
+| **ADR-007** | [可视化画布渲染库选型 cytoscape+dagre，构建期打包为零运行时依赖的本地静态资源](007-webview-graph-renderer-bundling.md) | 可视化画布 | Superseded by ADR-008 | `graphCanvasController`, `graphWebviewDocument`, `build-graph-bundle.mjs`, `media/graph/` | 2026-10-07 |
+| **ADR-008** | [场景图迁移至 AntV G6 v5 企业级图引擎与分发包体积门禁调整至 1.5MB](008-graph-engine-g6-migration-and-bundle-budget.md) | 可视化画布 / 业务导读 | Accepted | `graphCanvasController`, `FlowView.tsx`, `build.mjs`, `verify-guardrails.mjs` | 2026-10-11 |
 
 ---
 

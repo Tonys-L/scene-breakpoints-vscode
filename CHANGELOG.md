@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.3.0] - 2026-10-11
+
+### Added
+- **Visual Graph Canvas for Scene Breakpoints (roadmap §5)**: the new `sceneBreakpoints.showGraph` command (command palette / status-bar menu / tree-view scene context menu) opens a read-only Webview canvas rendering the expanded execution-flow DAG of all active scenes — scene lanes (team/local layering), nested reference groups, and per-breakpoint nodes with type shapes, disabled translucency, and unmatched warning markers (INV-028, INV-030). Breakpoint types are encoded across three channels — shape (rectangle / tag / hexagon / cut-rectangle / octagon), label icon (● ≡ 💬 ＃ ƒ) and a desaturated semantic border color (GitHub-dark palette) on a unified dark node fill, with the live pulse and latest trace point using the VS Code breakpoint-red semantics.
+- **Click-through Source Navigation**: clicking any canvas node (or trace marker) resolves through the snapshot's single-source nodeId resolver and reveals the target file with viewport centering plus a one-shot 800ms decoration highlight.
+- **Live DAP Pulse & Hit Trace Timeline**: `debug:paused` events simultaneously pulse the matched execution-flow node and append a `TraceRecord` to the session-scoped trace buffer; `debug:resumed` clears the pulse but keeps the accumulated trace, and `debug:terminated` clears it entirely. The trace timeline renders as an inline-SVG scatter/line view exposing loop iterations and never-hit breakpoints. Traces are session-volatile: zero persistence, no JSON Schema changes.
+- **One-click Mermaid Export**: the new `sceneBreakpoints.exportGraphMermaid` command (command palette / canvas button) copies a renderable `flowchart TD` document (nested lane subgraphs, unmatched ⚠ markers) to the clipboard with zero disk writes; a gentle info is shown when no scene is active.
+- **Reactive Refresh & Safe Lifecycle**: scene changes rebuild and re-render the snapshot while preserving traces (stable `{ownerScene}#{index}` node ids keep trace remapping drift-free); panel disposal unsubscribes all event listeners in pairs, while the trace buffer lives independently until extension teardown.
+- **Scene Scope Selector (canvas)**: the canvas now supports viewing **any** scene (including inactive ones) and arbitrary multi-scene combinations via a top multi-select scope bar (team/local layer-colored chips). "What is visible" (`visibleScenes`, user-selected, defaults to the active set) is decoupled from "what is active" (`activeScenes`); inactive scenes render in an inactive style (translucent + badge) with `registered` as a pure derived annotation, while live pulses and traces naturally only hit registered nodes. A scene whose expansion fails (circular reference) degrades to a dedicated warning lane listing the cycle path instead of rendering blank, and sibling scenes are isolated from the failure. Mermaid export is aligned with what the canvas shows (blocked only when no visible lanes remain); the scope is pure view state within the panel lifecycle and resets to follow the active set on reopen.
+- **Native VS Code Codicon Alignment**: unified title-bar actions to standard Codicon `$(type-hierarchy)`, seamlessly matching native VS Code dark, light, and high-contrast themes.
+- **AI Skill tutorial updated**: SKILL.md now covers the Visual Graph Canvas collaboration workflow (read-only canvas, Mermaid export for PRs/docs, session-volatile trace) and a new fingerprint is registered in the official history, so existing clean installs will receive the update prompt.
+
+### Performance & Compatibility
+- **AntV G6 5.x & Preact Component Architecture (ADR-008)**: the graph canvas engine migrated from Cytoscape to `@antv/g6` 5.x with a Preact-driven reactive UI architecture, bundled at build time via esbuild into `media/graph/g6-bundle.js` and `media/graph/graphWebview.js`. Production `dependencies` remain empty, with zero external CDN links (GR-012). The packaged VSIX measures **767.67 KB**, safely below the strict 1536 KB engineering budget ceiling (GR-001).
+
+---
+
 ## [1.2.0] - 2026-10-07
 
 ### Added

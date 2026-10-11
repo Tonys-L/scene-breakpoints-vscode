@@ -71,12 +71,22 @@ suite("Suite 12: 场景引用组合激活、成环拦截、悬空降级、引用
     if (initialConfigContent) {
       fs.writeFileSync(configPath, initialConfigContent, "utf-8");
     }
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const localConfigPath = path.join(workspaceFolders[0].uri.fsPath, ".vscode", "debug-scenes.local.json");
+    if (fs.existsSync(localConfigPath)) {
+      try { fs.unlinkSync(localConfigPath); } catch {}
+    }
   });
 
   teardown(async () => {
     await vscode.commands.executeCommand("sceneBreakpoints.clearAll");
     if (initialConfigContent) {
       fs.writeFileSync(configPath, initialConfigContent, "utf-8");
+    }
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const localConfigPath = path.join(workspaceFolders[0].uri.fsPath, ".vscode", "debug-scenes.local.json");
+    if (fs.existsSync(localConfigPath)) {
+      try { fs.unlinkSync(localConfigPath); } catch {}
     }
     await sleep(200);
   });
@@ -106,7 +116,7 @@ suite("Suite 12: 场景引用组合激活、成环拦截、悬空降级、引用
     const refNode = children[0];
     assert.strictEqual(refNode.refName, "auth-core", "首子节点应为 auth-core 一等引用节点");
     assert.strictEqual(refNode.index, 0, "引用节点应保真其在声明步骤中的索引");
-    assert.strictEqual(refNode.checkboxState, vscode.TreeItemCheckboxState.Checked);
+    assert.strictEqual(refNode.isEnabled, true, "引用节点初始应为启用态");
     const refChildren = await api.treeDataProvider.getChildren(refNode);
     assert.strictEqual(refChildren.length, 1, "引用子树应投影源场景声明态");
     assert.ok(
@@ -204,7 +214,7 @@ suite("Suite 12: 场景引用组合激活、成环拦截、悬空降级、引用
     const refNode = children[0];
     assert.strictEqual(refNode.refName, "auth-core");
     assert.strictEqual(refNode.contextValue, "sceneRefDisabled", "树节点应同步呈现禁用态");
-    assert.strictEqual(refNode.checkboxState, vscode.TreeItemCheckboxState.Unchecked);
+    assert.strictEqual(refNode.isEnabled, false, "树节点应同步呈现禁用态");
     const diskConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     assert.strictEqual(diskConfig.scenes["payment-debug"][0].enabled, false, "禁用态必须落盘保真");
 
@@ -254,7 +264,11 @@ suite("Suite 12: 场景引用组合激活、成环拦截、悬空降级、引用
     }
 
     // 导入结果：引用条目在配置中原样保留（字段/顺序 100% 保真）
-    const diskConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    // 遵循 INV-032 分层配置守卫：新场景缺省落 local 私有层，若存在 local 文件优先从 local 读取
+    const workspaceFolders = vscode.workspace.workspaceFolders!;
+    const localConfigPath = path.join(workspaceFolders[0].uri.fsPath, ".vscode", "debug-scenes.local.json");
+    const targetConfigPath = fs.existsSync(localConfigPath) ? localConfigPath : configPath;
+    const diskConfig = JSON.parse(fs.readFileSync(targetConfigPath, "utf-8"));
     const imported = diskConfig.scenes["payment-debug-imported"];
     assert.ok(Array.isArray(imported), "导入场景必须写入配置文件");
     assert.strictEqual(imported.length, 2, "导入场景应包含引用条目与断点条目");

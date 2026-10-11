@@ -22,7 +22,7 @@ graph TD
     subgraph UI_Layer["开发者交互展示层 (UI Layer - src/ui/)"]
         direction TB
         Cmds["命令控制器 (commands/ & utils/)<br/>• runWithWorkspace (命令执行上下文脱水)<br/>• sceneCommands / treeCommands<br/>• clipboardCommands / menuCommands / skillCommands"]
-        Views["视图渲染与透视 (views/)<br/>• SceneTreeDataProvider (树视图: 响应EventBus)<br/>• StatusBarView (状态栏)<br/>• SceneCodeLens / SceneInlayHints"]
+        Views["视图渲染与透视 (views/)<br/>• SceneTreeDataProvider (树视图: 响应EventBus)<br/>• StatusBarView (状态栏)<br/>• SceneCodeLens / SceneInlayHints<br/>• graphCanvas (v1.3.0 可视化画布: Webview + cytoscape 本地 bundle)"]
     end
 
     %% 4. 应用服务与生命周期管理层
@@ -33,6 +33,7 @@ graph TD
         AgentSvc["AgentSyncService (单例)<br/>(AI声明式激活 / 拓扑比对 / 外部变更同步)"]
         StateManager["SceneStateManager (单例)<br/>(状态机 SSOT / 拓扑指纹比对 / 脏状态管理)"]
         EventBus["ApplicationEventBus (单例)<br/>(状态变更与UI自动刷新解耦事件总线)"]
+        GraphProj["sceneGraphProjection + debugTraceBuffer (v1.3.0)<br/>(画布只读投影 buildGraphSnapshot / 会话级命中轨迹累积)"]
     end
 
     %% 5. 领域核心层：纯内聚无依赖 (零宿主概念污染)
@@ -65,6 +66,8 @@ graph TD
     Cmds -->|调度断点操作| BpMgr
     Listeners -->|调度外部变更同步| AgentSvc
     Views -->|读取激活与脏状态| StateManager
+    Views -->|画布只读投影与轨迹读取| GraphProj
+    EventBus -->|debug:paused / resumed / terminated 广播| GraphProj
 
     SceneMgr -->|更新活动投影| StateManager
     BpMgr -->|调度实体行为| Domain_Models

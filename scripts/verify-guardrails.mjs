@@ -35,6 +35,13 @@ export function verifySceneMapGuard(workspaceRoot) {
 						}
 						continue;
 					}
+					if (step && step.type === "function") {
+						if (typeof step.functionName !== "string" || step.functionName.trim().length === 0) {
+							errors.push(`场景断点地图失效：场景 [${sName}] 存在缺少有效 functionName 的函数断点`);
+						}
+						totalBps++;
+						continue;
+					}
 					totalBps++;
 					const targetFile = path.isAbsolute(step.file) ? step.file : path.join(workspaceRoot, step.file);
 					if (!fs.existsSync(targetFile)) {
@@ -247,7 +254,7 @@ export function verifyAllGuardrails(workspaceRoot = process.cwd()) {
 	for (const vf of vsixFiles) {
 		const stat = fs.statSync(path.join(workspaceRoot, vf));
 		const sizeKb = stat.size / 1024;
-		const MAX_ALLOWED_KB = 500; // 硬门禁：安装包绝不允许超过 500 KB
+		const MAX_ALLOWED_KB = 1536; // 硬门禁 (GR-001 / ADR-008)：安装包绝不允许超过 1.5 MB (1536 KB)
 		if (sizeKb > MAX_ALLOWED_KB) {
 			errors.push(
 				`VSIX 包体积超标门禁触发：${vf} 大小为 ${sizeKb.toFixed(2)} KB，超过硬上限 ${MAX_ALLOWED_KB} KB！`

@@ -55,6 +55,23 @@
 - ⚡ **按 F5 启动调试，自动加载对应断点**
   在 `launch.json` 里配好名字，按 F5 启动调试时，自动把关联场景的断点打好，不用每次手动切。
 
+- 📊 **可视化画板全景透视，复杂链路一览无余 (v1.3.0)**
+  点击调试侧边栏顶部的拓扑图按钮（或在命令面板输入 `Scene Breakpoints: Show Graph Canvas`），即可秒级打开交互式只读画板。泳道分层、场景引用嵌套、断点卡片一目了然；调试时实时脉冲点亮执行流并记录命中轨迹，还支持一键导出 Mermaid 流程图分享到文档或 PR。
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-canvas.png" alt="场景断点可视化画布与执行链路拓扑 (Scene Graph Canvas)" width="85%" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-hit-trace.png" alt="调试运行时断点实时脉冲与执行流命中轨迹 (Hit Trace)" width="85%" />
+</p>
+
+- 🔒 **团队共享与个人私有配置智能隔离 (v1.2.0)**
+  公共场景保存在 `.vscode/debug-scenes.json` 随 Git 团队共享；个人临时调试断点自动保存到 `.vscode/debug-scenes.local.json` 并自动追加至 `.gitignore`。本地调试随心所欲，绝对不会污染代码仓库。
+
+- 📸 **暂停态逆向固化：调用栈一键生成场景 (v1.2.0)**
+  命中断点暂停时，右键即可将当前调用栈中跨文件的源码帧提取为新场景，自带 3 行上下文指纹。遇到棘手 Bug 时一键保存“事故现场”，随时复现或交给同事与 AI 协查。
+
 - 🤖 **AI 自动生成场景断点，调用链路一键落盘**
   让 AI 分析 Bug 或梳理业务时，AI 梳理完关键步骤可直接生成一套带有步骤备注的场景断点并自动激活。告别对照聊天记录人肉翻文件打断点的麻烦，按 F5 就能直接顺着链路调试。
 
@@ -97,7 +114,31 @@
 
 ---
 
-## 📝 配置文件示例 (`.vscode/debug-scenes.json`)
+## 🎨 进阶核心特性
+
+### 1. 场景断点可视化画布 (Visual Graph Canvas, v1.3.0)
+
+在调试侧边栏“Scene Breakpoints”标题栏点击拓扑图按钮（或在命令面板输入 `Scene Breakpoints: Show Graph Canvas`），即可唤出交互式画板：
+- **执行流 DAG 拓扑全景**：以泳道分层（团队主场景 / 本地私有场景）、引用嵌套（Scene Reference）和清晰的断点卡片直观呈现；
+- **点击直达源码**：在画布中点击任意断点卡片或执行步数，编辑器自动分屏打开目标文件、视口平滑居中并触发 800ms 行高亮；
+- **Live DAP 实时脉冲与命中轨迹**：调试运行命中断点时，画布节点同步闪烁脉冲；并以内联时间线（Trace Timeline）记录执行步数与循环折叠，清楚展现“代码停在哪、从哪跳过来”；
+- **场景范围选择器 (Scope Selector)**：支持勾选查看任意场景（包含未激活场景），所见即所得；
+- **一键 Mermaid 流程图导出**：在画布右上角点击导出按钮，秒级生成合法 `flowchart TD` 并复制到剪贴板，直接粘贴到 Markdown 文档、GitHub PR 或架构评审报告中。
+
+### 2. 团队与个人私有配置智能隔离 (v1.2.0)
+
+针对多人协作项目中“临时断点容易污染 Git 提交”的痛点，插件提供双层配置机制：
+- **团队主配置**：`.vscode/debug-scenes.json`（提交到 Git，团队统一沉淀与共享主干业务场景）；
+- **个人私有配置**：`.vscode/debug-scenes.local.json`（插件激活时**自动追加到 `.gitignore`**，私有场景零污染）；
+- **分层合并与就地覆盖**：本地与团队同名场景时，本地私有层自动无缝覆盖团队层，侧边栏合并展示并标记 `[local]` 徽标。
+
+### 3. 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
+
+当调试命中断点或代码抛错暂停时：
+- 在代码编辑器右键选择 `Scene Breakpoints: Capture Call Stack to Scene`（或在命令面板执行）；
+- 插件会自动提取当前线程的所有源码堆栈帧（自动去重并过滤外部依赖），自动计算 3 行上下文指纹（防代码漂移），一键固化存盘为新场景！
+
+---
 
 断点数据以纯文本声明式保存在工作区 `.vscode/debug-scenes.json` 中，自带代码透视（CodeLens）一键激活与语法提示：
 

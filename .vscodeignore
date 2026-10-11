@@ -2,6 +2,8 @@
 .vscode/**
 .vscode-test/**
 .trae/**
+.agents/**
+.claude/**
 src/**
 test/**
 test-e2e/**

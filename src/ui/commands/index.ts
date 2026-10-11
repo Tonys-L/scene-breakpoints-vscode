@@ -9,6 +9,7 @@ import {
 } from "./sceneCommands";
 import { showMenuCommand } from "./menuCommands";
 import { captureCallStackCommand } from "./captureCallStackCommand";
+import { showGraphCommand, exportGraphMermaidCommand } from "./graphCommands";
 import {
 	copySceneToClipboardCommand,
 	importSceneFromClipboardCommand,
@@ -43,6 +44,9 @@ export function registerAllCommands(
 		["sceneBreakpoints.showMenu", showMenuCommand],
 		// 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
 		["sceneBreakpoints.captureCallStack", captureCallStackCommand],
+		// 场景断点可视化画布与 Mermaid 导出 (v1.3.0)
+		["sceneBreakpoints.showGraph", showGraphCommand],
+		["sceneBreakpoints.exportGraphMermaid", exportGraphMermaidCommand],
 		// 剪贴板快速流转与团队共享
 		["sceneBreakpoints.copySceneToClipboard", copySceneToClipboardCommand],
 		["sceneBreakpoints.importSceneFromClipboard", importSceneFromClipboardCommand],
@@ -67,6 +71,7 @@ export * from "./addBreakpointCommand";
 export * from "./sceneCommands";
 export * from "./menuCommands";
 export * from "./captureCallStackCommand";
+export * from "./graphCommands";
 export * from "./clipboardCommands";
 export * from "./treeCommands";
 export * from "./skillCommands";

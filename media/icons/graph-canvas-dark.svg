@@ -1,0 +1,11 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 拓扑连接线 -->
+  <path d="M5.5 8H8L11 4.5" stroke="#C5C5C5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8 8L11 11.5" stroke="#C5C5C5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 节点1：输入源断点 -->
+  <circle cx="3.5" cy="8" r="2" fill="#C5C5C5"/>
+  <!-- 节点2：上分支断点 -->
+  <circle cx="12.5" cy="4.5" r="2" fill="#C5C5C5"/>
+  <!-- 节点3：下分支断点 -->
+  <circle cx="12.5" cy="11.5" r="2" fill="#C5C5C5"/>
+</svg>

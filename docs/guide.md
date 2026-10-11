@@ -16,6 +16,10 @@
    - [3.5 Multi-Scene Stacking: Tackle Complex Cross-Service Traces](#35-multi-scene-stacking-tackle-complex-cross-service-traces)
    - [3.6 Auto-Mount on Launch via bindings](#36-auto-mount-on-launch-via-bindings)
    - [3.7 Clipboard Sharing: Hand Off Debugging Sessions in Seconds](#37-clipboard-sharing-hand-off-debugging-sessions-in-seconds)
+   - [3.8 Visual Graph Canvas & Architecture Topology (v1.3.0)](#38-visual-graph-canvas--architecture-topology-v130)
+   - [3.9 Team & Personal Config Isolation (v1.2.0)](#39-team--personal-config-isolation-v120)
+   - [3.10 Incident-to-Scene: Capture Call Stack (v1.2.0)](#310-incident-to-scene-capture-call-stack-v120)
+   - [3.11 Scene References & Modular Composition (v1.1.0)](#311-scene-references--modular-composition-v110)
 4. [Code Drift & Self-Healing Architecture](#4-code-drift--self-healing-architecture)
    - [4.1 What is a Code Fingerprint? (3-Line Context Window)](#41-what-is-a-code-fingerprint-3-line-context-window)
    - [4.2 Two-Stage Self-Healing Engine: Near-Site Radiation + Scope Cruise](#42-two-stage-self-healing-engine-near-site-radiation--scope-cruise)
@@ -131,9 +135,41 @@ Stuck on a tricky bug and need a colleague's second pair of eyes?
 3. They simply click the **Import from Clipboard** button on their TreeView header to replicate your exact debugging scenario;
 4. Even if you copied Markdown code fences (````json ... ````) or comments, the built-in parser cleanses everything automatically.
 
+### 3.8 Visual Graph Canvas & Architecture Topology (v1.3.0)
+
+When complex execution chains span across dozens of source files and nested sub-scenes, flat lists fail to show the big picture:
+1. **One-Click Living Canvas**: Click the graph canvas button on the "Scene Breakpoints" sidebar title bar (or run `Scene Breakpoints: Show Graph Canvas` from the Command Palette);
+2. **Execution-Flow DAG View**: Automatically arranges breakpoints into an execution DAG with lane layering (Team vs. Local private layer) and nested scene reference structures;
+3. **Click-Through Source Navigation**: Clicking any node or trace step splits and focuses the target source file with smooth viewport centering and an 800ms highlight;
+4. **Live DAP Pulse & Hit Trace Timeline**: Highlights active execution pulses as breakpoints are hit, while recording step counts and collapsing loops in an inline trace timeline;
+5. **Scope Selector**: Multi-select any combination of scenes (active or preview) with instant WYSIWYG updates;
+6. **One-Click Mermaid Export**: Click the export button in the top bar to copy clean `flowchart TD` code directly to your clipboard, ready for Markdown docs or PR reviews.
+
 ---
 
-## 4. Code Drift & Self-Healing Architecture
+### 3.9 Team & Personal Config Isolation (v1.2.0)
+
+Avoid cluttering team repositories with temporary experimental breakpoints:
+- **Team Layer**: `.vscode/debug-scenes.json` (tracked in Git, shared across the engineering team);
+- **Personal Private Layer**: `.vscode/debug-scenes.local.json` (**automatically appended to `.gitignore`** upon extension activation);
+- **Merged View & Overrides**: Local scenes seamlessly override same-named team scenes and appear with a distinct `[local]` badge in the sidebar.
+
+---
+
+### 3.10 Incident-to-Scene: Capture Call Stack (v1.2.0)
+
+When paused at an unexpected exception or critical breakpoint:
+1. Right-click in the editor and choose `Scene Breakpoints: Capture Call Stack to Scene` (or invoke via Command Palette);
+2. Automatically extracts in-workspace frames, dedupes lines, and computes 3-line code fingerprints into a new debug scene in seconds!
+
+---
+
+### 3.11 Scene References & Modular Composition (v1.1.0)
+
+When multiple scenarios share common authentication or bootstrap logic, avoid duplicating breakpoint lists:
+Declare a reference `{ "$ref": "common-auth" }` inside any scene. The engine recursively expands child scene breakpoints with automatic circular reference detection and independent branch toggles.
+
+---
 
 When source code is modified, line numbers shift up or down. Conventional debuggers store rigid line numbers (e.g. line 42) that quickly drift out of sync. Scene Breakpoints eliminates this via **Code Fingerprints** and a **Two-Stage Self-Healing Algorithm**.
 
@@ -320,10 +356,24 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
         "desc": "Intercept tax calculations globally",
         "enabled": true
       }
+    ],
+    "checkout-flow": [
+      { "$ref": "common-auth" },
+      {
+        "type": "line",
+        "file": "src/checkout/payment.ts",
+        "line": 64,
+        "desc": "Process cashout execution"
+      }
     ]
   }
 }
 ```
+
+### Layered Configuration Architecture (v1.2.0)
+- **Team Layer**: `.vscode/debug-scenes.json` (tracked in Git, shared across the engineering team);
+- **Personal Private Layer**: `.vscode/debug-scenes.local.json` (**automatically appended to `.gitignore`** upon extension activation, zero Git pollution);
+- **Layer Merging & Overrides**: Same-named scenes in the local file override team scenes seamlessly and are indicated with a `[local]` badge in the sidebar tree.
 
 ---
 
@@ -333,6 +383,9 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
 | :--- | :--- | :--- | :--- |
 | **Switch / Activate Scene** | `Ctrl + Alt + S` | `Cmd + Alt + S` | Click Status Bar indicator |
 | **Save Current Line to Scene** | `Ctrl + Alt + B` | `Cmd + Alt + B` | Right-click editor line |
+| **Open Graph Canvas** | `Ctrl + Shift + P` | `Cmd + Shift + P` | TreeView header `$(type-hierarchy)` icon / Command: `Scene Breakpoints: Show Graph Canvas` |
+| **Capture Incident Call Stack** | `Ctrl + Shift + P` | `Cmd + Shift + P` | Right-click paused line: `Scene Breakpoints: Capture Call Stack to Scene` |
+| **Export Mermaid Flowchart** | Click Export in Canvas | Click Export in Canvas | Canvas header button: `Export Mermaid (Copy to Clipboard)` |
 | **Export Active Breakpoints** | `Ctrl + Shift + P` | `Cmd + Shift + P` | Command: `Scene Breakpoints: Export Current...` |
 | **Clear All Editor Breakpoints** | `Ctrl + Shift + P` | `Cmd + Shift + P` | Command: `Scene Breakpoints: Clear All...` |
 | **Multi-select Scenes** | `Ctrl + Shift + P` | `Cmd + Shift + P` | TreeView header `Multi-select Scenes` button |
@@ -360,6 +413,15 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
 
 ### Q5: Will my customized AI rules be overwritten when the plugin updates?
 **A**: **Never.** The fingerprinting engine identifies customized files and marks them as `[Custom modified]`. You can review changes side-by-side using VS Code's native diff editor, and an automatic timestamped `.bak` backup is created before any file is overwritten.
+
+### Q6: How do I keep temporary experimental breakpoints from polluting Git?
+**A**: Use the local private layer! Add your scenes to `.vscode/debug-scenes.local.json`. The extension automatically adds it to `.gitignore`, keeping your temporary breakpoints completely private while letting you override team scenes seamlessly.
+
+### Q7: How do I reuse common breakpoints (e.g. auth, bootstrap) across multiple scenes?
+**A**: Use Scene References (`$ref`). Add `{ "$ref": "common-auth" }` to your scene array. The engine automatically recurses and expands nested child breakpoints with circular dependency guards.
+
+### Q8: How can I share execution flow diagrams for team review or architecture docs?
+**A**: Open the Visual Graph Canvas by clicking the topology tree icon in the sidebar title bar. Once rendered, click the "Export Mermaid" button at the top-right to copy clean `flowchart TD` code to your clipboard, ready to paste into Markdown notes or GitHub PRs.
 
 ---
 

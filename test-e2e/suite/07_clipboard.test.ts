@@ -22,7 +22,8 @@ suite("Suite 07: 剪贴板场景导入导出与数据清洗", () => {
       const configUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json");
       await vscode.workspace.fs.writeFile(configUri, Buffer.from(initialConfigContent, "utf-8"));
     }
-
+    const localUri = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.local.json");
+    try { await vscode.workspace.fs.delete(localUri); } catch {}
   });
 
   teardown(async () => {
@@ -31,6 +32,10 @@ suite("Suite 07: 剪贴板场景导入导出与数据清洗", () => {
       const workspaceFolders = vscode.workspace.workspaceFolders!;
       const configPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.json").fsPath;
       require("node:fs").writeFileSync(configPath, initialConfigContent, "utf-8");
+      const localPath = vscode.Uri.joinPath(workspaceFolders[0].uri, ".vscode", "debug-scenes.local.json").fsPath;
+      if (require("node:fs").existsSync(localPath)) {
+        try { require("node:fs").unlinkSync(localPath); } catch {}
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   });

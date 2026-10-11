@@ -334,6 +334,7 @@ export interface SceneRefTreeItemOptions {
 	childCount: number;
 	/** 被引用场景不存在（悬空） */
 	isDangling: boolean;
+	extensionPath?: string;
 }
 
 /**
@@ -358,16 +359,24 @@ export class SceneRefTreeItem extends vscode.TreeItem {
 			: options.isDangling || options.childCount === 0
 				? "sceneRefEmpty"
 				: "sceneRef";
-		this.checkboxState = options.enabled
-			? vscode.TreeItemCheckboxState.Checked
-			: vscode.TreeItemCheckboxState.Unchecked;
-		this.iconPath = options.isDangling
-			? new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"))
-			: options.enabled
-				? new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"))
+		// 启停状态供 toggleSceneRef 命令推导翻转目标；不设 checkboxState——
+		// 带 checkbox 的树节点单击 label 会被宿主消费为勾选切换（无法展开），且宿主事件兼容性不可靠
+		this.isEnabled = options.enabled;
+		if (options.isDangling) {
+			this.iconPath = new vscode.ThemeIcon("error", new vscode.ThemeColor("charts.red"));
+		} else if (options.extensionPath) {
+			const iconFileName = options.enabled ? "scene-ref-enabled.svg" : "scene-ref-disabled.svg";
+			this.iconPath = vscode.Uri.file(path.join(options.extensionPath, "media", "icons", iconFileName));
+		} else {
+			this.iconPath = options.enabled
+				? new vscode.ThemeIcon("references")
 				: new vscode.ThemeIcon("circle-slash");
+		}
 		// 单击 = 展开/折叠（与顶层场景一致）；跳转源场景由 inline $(go-to-file) 图标与右键菜单承接
 	}
+
+	/** 引用当前启停状态（toggleSceneRef 的翻转基准） */
+	public readonly isEnabled: boolean;
 
 	/** 声明所在场景（toggle/remove/move 的路由目标） */
 	public get sceneName(): string {

@@ -50,7 +50,7 @@ export class ActiveBreakpointIndex {
 	}
 
 	/**
-	 * 同步/刷新当前激活场景的断点索引
+	 * 同步/刷新当前激活场景的断点索引（支持组合场景引用深度优先递归展开）
 	 */
 	public sync(
 		workspaceRoot: string,
@@ -64,16 +64,26 @@ export class ActiveBreakpointIndex {
 		this.hitCache.clear();
 		this.needsSync = false;
 
-		for (const sceneName of activeScenes) {
+		const visitedScenes = new Set<string>();
+
+		const collectBreakpoints = (sceneName: string): void => {
+			if (visitedScenes.has(sceneName)) return;
+			visitedScenes.add(sceneName);
+
 			const sceneBps = scenes[sceneName];
-			if (!Array.isArray(sceneBps)) continue;
+			if (!Array.isArray(sceneBps)) return;
 
 			let stepIndex = 0;
 			for (const bp of sceneBps) {
-				// 引用条目无物理身份，不参与物理断点索引（声明世界 → 物理世界投影收窄点）
-				if (!bp || typeof bp !== "object" || bp.type === "function" || bp.type === "scene") continue;
-				stepIndex++;
+				if (!bp || typeof bp !== "object" || bp.type === "function") continue;
 
+				// 深度优先递归展开子场景引用 (Scene Reference)
+				if (bp.type === "scene" && (bp as { name?: string }).name) {
+					collectBreakpoints((bp as { name: string }).name);
+					continue;
+				}
+
+				stepIndex++;
 				const srcBp = bp as SourceSceneBreakpoint;
 				if (!srcBp.file || typeof srcBp.line !== "number" || srcBp.line <= 0) continue;
 
@@ -83,6 +93,10 @@ export class ActiveBreakpointIndex {
 					breakpoint: srcBp,
 				});
 			}
+		};
+
+		for (const sceneName of activeScenes) {
+			collectBreakpoints(sceneName);
 		}
 	}
 

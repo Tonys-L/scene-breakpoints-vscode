@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { configureDependencies, sceneStateManager } from "./application";
+import {
+	configureDependencies,
+	sceneStateManager,
+	sceneManager,
+	debugTraceBuffer,
+	buildGraphSnapshot,
+	type GraphSnapshot,
+} from "./application";
 import {
 	registerAllCommands,
 	checkAndPromptSkillUpdates,
@@ -27,6 +34,9 @@ import {
 	vscodeLineReader,
 } from "./infra";
 import { promptFingerprintConflict } from "./ui/utils/promptHelpers";
+import { GraphCanvasController } from "./ui/views/graphCanvas/graphCanvasController";
+import type { GraphWebviewLabels } from "./ui/views/graphCanvas/graphWebviewDocument";
+import { setGraphCommandDeps } from "./ui/commands/graphCommands";
 
 /**
  * 组装装配根基础设施依赖
@@ -44,6 +54,115 @@ function setupCompositionRoot(): void {
 		// INV-031：指纹冲突裁决弹窗（用户关闭弹窗时缺省磁盘行号优先）
 		resolveFingerprintConflict: promptFingerprintConflict,
 	});
+}
+
+function buildGraphCanvasLabels(): GraphWebviewLabels {
+	return {
+		panelTitle: vscode.l10n.t("Scene Graph"),
+		tabFlow: vscode.l10n.t("Flow"),
+		tabTrace: vscode.l10n.t("Hit Trace"),
+		exportButton: vscode.l10n.t("Export Mermaid"),
+		flowEmpty: vscode.l10n.t(
+			"Canvas is empty. Select scenes in the scope bar above, or activate a scene.",
+		),
+		traceEmpty: vscode.l10n.t("No hit records in this debug session yet."),
+		scopeLabel: vscode.l10n.t("Scene Scope"),
+		sceneInactive: vscode.l10n.t("Not Active"),
+		laneCircular: vscode.l10n.t("Circular scene reference"),
+		localLayerBadge: vscode.l10n.t("Local"),
+		localLayerTitle: vscode.l10n.t("Local private scene (.vscode/debug-scenes.local.json)"),
+		zoomIn: vscode.l10n.t("Zoom In"),
+		zoomOut: vscode.l10n.t("Zoom Out"),
+		zoomFit: vscode.l10n.t("Fit View"),
+		zoomReset: vscode.l10n.t("Reset Zoom (1:1)"),
+		unmatchedBadge: vscode.l10n.t("Code Drifter Unmatched"),
+		conditionLabel: vscode.l10n.t("Condition:"),
+		hitConditionLabel: vscode.l10n.t("Hit Count:"),
+		logMessageLabel: vscode.l10n.t("Log Message:"),
+		bpTypeLabels: {
+			line: { name: vscode.l10n.t("Line"), title: vscode.l10n.t("Line Breakpoint") },
+			condition: { name: vscode.l10n.t("Cond"), title: vscode.l10n.t("Conditional Breakpoint") },
+			logpoint: { name: vscode.l10n.t("Log"), title: vscode.l10n.t("Logpoint") },
+			hitCount: { name: vscode.l10n.t("Hit"), title: vscode.l10n.t("Hit Count Breakpoint") },
+			function: { name: vscode.l10n.t("Func"), title: vscode.l10n.t("Function Breakpoint") },
+			ref: { name: vscode.l10n.t("Scene"), title: vscode.l10n.t("Scene Reference") },
+		},
+		sceneSelectTooltip: vscode.l10n.t("Click to switch active debug scene"),
+		scenePrefix: vscode.l10n.t("Scene:"),
+		selectScenePrompt: vscode.l10n.t("Select Scene"),
+		statusActive: vscode.l10n.t("● Active"),
+		statusPreview: vscode.l10n.t("○ Preview"),
+		searchScenePlaceholder: vscode.l10n.t("Search scene name..."),
+		activeScenesGroup: vscode.l10n.t("Active Scenes"),
+		inactiveScenesGroup: vscode.l10n.t("Pending / Preview Scenes"),
+		switchToSceneTooltip: vscode.l10n.t("Switch to scene: {0}"),
+		noScenesFound: vscode.l10n.t("No matching scenes found"),
+		openInEditorTooltip: vscode.l10n.t("Open in editor (or double-click card)"),
+		refPrefix: vscode.l10n.t("Ref: {0}"),
+		refScenePrefix: vscode.l10n.t("Referenced Scene: {0}"),
+		conditionExprTooltip: vscode.l10n.t("Condition Expression: {0}"),
+		hitCountTooltip: vscode.l10n.t("Hit Count Condition: {0}"),
+		logMessageTooltip: vscode.l10n.t("Log Message: {0}"),
+		codeDriftWarning: vscode.l10n.t("Code drift exceeds safety threshold"),
+		notActiveTooltip: vscode.l10n.t("Current scene is not active in debugger"),
+		expand: vscode.l10n.t("Expand"),
+		collapse: vscode.l10n.t("Collapse"),
+		breakpointFallback: vscode.l10n.t("Breakpoint"),
+		activateScene: vscode.l10n.t("Activate Scene"),
+		activateSceneTooltip: vscode.l10n.t("Activate [{0}] and register breakpoints immediately"),
+		exportMermaidTooltip: vscode.l10n.t("Export Mermaid Flowchart"),
+		flowEmptyHint: vscode.l10n.t("Multiple scenes can be checked in the menu above for cross-flow comparison"),
+		pendingActiveScene: vscode.l10n.t("Pending Active Scene"),
+		traceFilterPlaceholder: vscode.l10n.t("Filter description, file path, or step..."),
+		clearSearch: vscode.l10n.t("Clear Search"),
+		traceTotalSteps: vscode.l10n.t("Total {0} steps"),
+		traceTotalStepsTooltip: vscode.l10n.t("{0} execution hits recorded"),
+		traceLoopCollapsed: vscode.l10n.t("Collapsed {0} loop groups"),
+		traceLoopCollapsedTooltip: vscode.l10n.t("Automatically collapsed {0} hits into {1} loops"),
+		statusDebugPaused: vscode.l10n.t("Debugger Paused"),
+		statusSessionTerminated: vscode.l10n.t("Session Terminated"),
+		statusRunning: vscode.l10n.t("Running"),
+		clearTraceTooltip: vscode.l10n.t("Clear Current Hit Trace"),
+		traceLoopUnit: vscode.l10n.t("Loop {0} times ({1} steps)"),
+		tracePausedInLoop: vscode.l10n.t("Currently paused inside loop"),
+		scrollToLatest: vscode.l10n.t("Jump to latest step ↓"),
+		jumpToSourceTooltip: vscode.l10n.t("Click to jump and locate source line"),
+		pausedHere: vscode.l10n.t("Paused here"),
+		exitPoint: vscode.l10n.t("Exit point"),
+		locateSource: vscode.l10n.t("Locate Source"),
+		expandMinimap: vscode.l10n.t("Expand Minimap"),
+		collapseMinimap: vscode.l10n.t("Collapse Minimap"),
+		minimap: vscode.l10n.t("Minimap"),
+		minimapNav: vscode.l10n.t("Minimap Navigation"),
+	};
+}
+
+/**
+ * 场景断点可视化画布装配 (v1.3.0)：轨迹缓存先行订阅，控制器经命令依赖注入点接线
+ */
+function setupGraphCanvas(context: vscode.ExtensionContext): GraphCanvasController {
+	debugTraceBuffer.init();
+	const loadGraphSnapshot = (
+		workspaceRoot: string,
+		visibleScenes?: readonly string[],
+	): GraphSnapshot => {
+		const { catalog, originByScene } = sceneManager.loadMergedCatalog(workspaceRoot);
+		return buildGraphSnapshot({
+			workspaceRoot,
+			catalog,
+			activeScenes: sceneStateManager.getActiveScenes(),
+			visibleScenes,
+			originByScene,
+			isUnmatched: (file, line) => sceneStateManager.isBreakpointUnmatched(file, line),
+		});
+	};
+	const graphCanvasController = new GraphCanvasController({
+		extensionUri: context.extensionUri,
+		labels: buildGraphCanvasLabels(),
+		loadSnapshot: loadGraphSnapshot,
+	});
+	setGraphCommandDeps({ controller: graphCanvasController, loadSnapshot: loadGraphSnapshot });
+	return graphCanvasController;
 }
 
 /**
@@ -79,6 +198,9 @@ export function activate(context: vscode.ExtensionContext) {
 	// 3. 表驱动集中注册所有用户命令与树交互动作
 	registerAllCommands(context, { treeDataProvider, treeView });
 
+	// 3.1 场景断点可视化画布 (v1.3.0)：轨迹缓存先行订阅，控制器经命令依赖注入点接线
+	const graphCanvasController = setupGraphCanvas(context);
+
 	// 4. 挂载各领域协同业务服务 (Services) 与技术层提供者
 	context.subscriptions.push(
 		// 启动项三级匹配与调试配置联动服务
@@ -112,6 +234,10 @@ export function activate(context: vscode.ExtensionContext) {
 			templateContentProvider,
 		),
 		treeView,
+		// 场景断点画布控制器：总线订阅与面板生命周期成对释放
+		graphCanvasController,
+		// 调试命中轨迹缓存订阅（随扩展卸载退订）
+		{ dispose: () => debugTraceBuffer.dispose() },
 		{ dispose: () => sceneStateManager.dispose() },
 	);
 
@@ -128,6 +254,7 @@ export function activate(context: vscode.ExtensionContext) {
 		checkAndPromptSkillUpdates,
 		sceneStateManager,
 		inlayHintsProvider,
+		graphCanvasController,
 	};
 }
 

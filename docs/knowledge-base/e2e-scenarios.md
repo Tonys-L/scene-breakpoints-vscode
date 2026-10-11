@@ -14,7 +14,9 @@
 | **测试沙箱** | `test-fixtures/sample-workspace`（完全与开发环境隔离） |
 | **执行命令** | `npm run test:e2e`（先编译扩展与测试套件，后在沙箱中拉起运行） |
 | **构建机制** | `npm run build:test`（esbuild 打包输出至 `out-test/suite/`） |
-| **套件目录** | `test-e2e/suite/*.test.ts`（12 个单一职责微测试套件，零 `and`） |
+| **套件目录** | `test-e2e/suite/*.test.ts`（13 个单一职责微测试套件，零 `and`） |
+| **执行命令** | `npm run test:e2e`（先编译扩展与测试套件，后在沙箱中拉起运行） |
+| **构建机制** | `npm run build:test`（esbuild 打包输出至 `out-test/suite/`） |
 
 ### 1.1 套件单一职责架构分布
 
@@ -32,10 +34,11 @@
 | `10_agent_skills.test.ts` | Agent 技能分发、巡检与平滑升级 | CMD-08, CMD-09, TC-SKILL-01 ~ TC-SKILL-04 |
 | `11_system_guards.test.ts` | 系统级拓扑守卫、防回环死锁与容灾防线 | TC-AI-01 ~ TC-AI-04, TC-SESS-01 ~ TC-SESS-02, TC-CONF-01 ~ TC-CONF-05 |
 | `12_scene_references.test.ts` | 场景引用组合激活、成环拦截、悬空降级、引用启停与导出保真 | TC-REF-01 ~ TC-REF-05 |
+| `13_graph_canvas.test.ts` | 场景断点可视化画布与 Mermaid 导出 | TC-GRAPH-01 ~ TC-GRAPH-06 |
 
 ---
 
-## 2. 全量 66 大 E2E 测试场景矩阵
+## 2. 全量 72 大 E2E 测试场景矩阵
 
 ### 维度一：DAP 原生断点装配与运行时生命周期 (TC-DAP)
 
@@ -210,6 +213,23 @@
 
 ---
 
+### 维度十四：场景断点可视化画布 (TC-GRAPH)
+
+> v1.3.0 新增维度。通过单元测试（真实源码 1:1 镜像）全面保障核心逻辑，并在真实宿主 E2E 套件 `13_graph_canvas.test.ts` 中完成端到端生命周期与命令契约验证。
+
+| 编号 | 场景名称 | 操作与触发步骤 | 预期断言与验证要求 | 关联约束 |
+| :--- | :--- | :--- | :--- | :--- |
+| **TC-GRAPH-01** | **打开全景画布与快照渲染** | 激活含断点与引用嵌套的场景后执行 `sceneBreakpoints.showGraph`（命令面板/状态栏菜单/树右键） | Webview 面板创建并按 `ready` 后收到 `render` 全量快照；泳道/节点与展开态断点流 100% 一致，`unmatched` 节点携带警告标记，引用分组呈现悬空/禁用占位 | INV-028<br>INV-030 |
+| **TC-GRAPH-02** | **点击节点直达源码** | 在画布上点击断点节点（或轨迹标记）触发 `open-source` | 经 nodeId 解析器命中快照 `{file, line}`，编辑器打开目标文件、目标行视口居中（`revealRange Center`）并一次性装饰高亮 | KDD-TREEVIEW-001 |
+| **TC-GRAPH-03** | **执行流 Live 点亮与熄灭** | 调试暂停命中断点（`debug:paused`）随后恢复（`debug:resumed`） | 命中 ≤100ms 收到 `live-pulse`（nodeId 经 `findActiveBreakpoint` 匹配）与 `trace-append` 同事件双消费；恢复后 `live-clear` 即刻熄灭，轨迹保留 | INV-028 |
+| **TC-GRAPH-04** | **命中轨迹累积与会话终止清空** | 同一调试会话内多次暂停/恢复后触发 `debug:terminated` | `TraceRecord.seq` 会话内单调递增、`resumed` 不清空；终止后 `trace-clear` 全量清空；轨迹零落盘、不入 `debug-scenes.json`（会话级易失） | INV-028 |
+| **TC-GRAPH-05** | **一键 Mermaid 导出零落盘** | 画布就绪时执行 `sceneBreakpoints.exportGraphMermaid`（命令面板/画布内按钮） | 输出合法 Mermaid `flowchart TD`（泳道 subgraph 嵌套、unmatched 加 ⚠）写入剪贴板并提示成功；磁盘零写盘；可见泳道为空时温和提示并终止 | GR-011 |
+| **TC-GRAPH-06** | **场景变更响应式重建与面板生命周期** | 画布打开期间切换/停用激活场景，随后关闭面板 | `scenes:changed` / `scene:activated` 事件驱动快照重建并 `render`（轨迹保留，nodeId 由快照 id 稳定性重映射）；关闭面板后事件订阅成对退订，`debugTraceBuffer` 独立存活至扩展卸载 | INV-028 |
+| **TC-GRAPH-07** | **场景范围选择器：查看任意/多场景** | 在画布顶部 Scope 选择条勾选未激活场景（含仅含引用的子场景）与已激活场景组合 | `set-scope` 回传后快照重建并 `render`；未激活场景泳道/节点完整展开且呈未激活态（`registered: false` 半透明 + 角标），激活集零变化；轨迹跨 Scope 切换保留 | #SCOPE-SELECTOR |
+| **TC-GRAPH-08** | **成环场景警告泳道降级** | Scope 中勾选一个引用成环的场景与一个正常场景 | 成环场景渲染警告泳道（`expandError` 列出环路径，零节点），正常场景照常展开互不拖垮；画布零异常打开 | INV-030<br>#SCOPE-SELECTOR |
+
+---
+
 ## 3. 用例维护与演进规范
 
 为了确保测试资产与项目演进绝对同步，建立以下铁律：
@@ -225,10 +245,11 @@
 
 ## 变更记录
 
-| 日期 | 变更内容 | 变更人 | 关联变更 |
-|------|----------|--------|----------|
-| 2026-10-07 | 维度七新增 TC-HEAL-05（外部编辑与指纹自愈冲突显式裁决），场景矩阵 58 → 59，套件 `09_breakpoint_healing` 覆盖范围同步扩展 | GLM-5.3-Flash | #TASK-EXT-CONFLICT 同步更新 constraints.md / flows.md / glossary.md / lessons / CHANGELOG |
-| 2026-10-06 | 新增套件 `12_scene_references.test.ts` 与维度十二（TC-REF-01 ~ TC-REF-05），场景矩阵 53 → 58 | GLM-5.3-Flash | v1.1.0 批次5 同步更新 constraints.md / boundaries.md / flows.md / glossary.md / adr/005 |
-| 2026-10-07 | 新增维度十三（TC-LAYER-01 ~ 04 / TC-CAP-01 ~ 03），场景矩阵 59 → 66；v1.2.0 先以单测保障，真实宿主 E2E 后续补齐 | GLM-5.3-Flash | v1.2.0 同批次 constraints.md / boundaries.md / flows.md / glossary.md / roadmap / CHANGELOG 双语 |
+| 日期 | 变更内容 | 关联版本 |
+|------|----------|----------|
+| 2026-10-11 | 新增套件 `13_graph_canvas.test.ts`，落地维度十四真实宿主 E2E 测试（WebviewPanel 生命周期、单例复用、消息双向流转、Mermaid 剪贴板导出与销毁退订），场景矩阵 74 项全面跑通 | v1.3.0 |
+| 2026-10-07 | 维度七新增 TC-HEAL-05（外部编辑与指纹自愈冲突显式裁决），套件 `09_breakpoint_healing` 覆盖范围同步扩展 | v1.2.0 |
+| 2026-10-07 | 新增维度十三（TC-LAYER-01 ~ 04 / TC-CAP-01 ~ 03，分层配置与调用栈固化） | v1.2.0 |
+| 2026-10-06 | 新增套件 `12_scene_references.test.ts` 与维度十二（TC-REF-01 ~ TC-REF-05，场景引用组合激活） | v1.1.0 |
 
 ---

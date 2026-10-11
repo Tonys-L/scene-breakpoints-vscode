@@ -17,6 +17,8 @@ export interface MutateCatalogOptions {
 	queue?: SerialQueue;
 	reason?: string;
 	silent?: boolean;
+	targetLayer?: SceneLayerOrigin;
+	renameOrigin?: { from: string; to: string };
 }
 
 export type CatalogMutationOptions = MutateCatalogOptions;
@@ -96,8 +98,17 @@ export async function mutateCatalog<T = boolean>(
 			if (merged && sceneRepository.saveScenesLayers) {
 				// 分层回写路由 (INV-032)：新增场景（合并视图中不存在）缺省落 local 私有层，杜绝临时场景污染 Git
 				const originByScene: Record<string, SceneLayerOrigin> = { ...merged.originByScene };
+				if (options?.renameOrigin) {
+					const { from, to } = options.renameOrigin;
+					if (from in originByScene) {
+						originByScene[to] = originByScene[from];
+						delete originByScene[from];
+					}
+				}
 				for (const name of Object.keys(catalog.toJSON().scenes || {})) {
-					if (!(name in originByScene)) originByScene[name] = "local";
+					if (!(name in originByScene)) {
+						originByScene[name] = options?.targetLayer ?? "local";
+					}
 				}
 				sceneRepository.saveScenesLayers(workspaceRoot, catalog.toJSON(), originByScene);
 			} else {

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="Content-Security-Policy"
+		content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src {{cspSource}} 'nonce-{{nonce}}'; img-src {{cspSource}} data:;">
+	<link rel="stylesheet" href="{{stylesUri}}">
+</head>
+<body>
+	<div id="app"></div>
+	<script type="application/json" id="sb-payload">{{payload}}</script>
+	<script nonce="{{nonce}}" src="{{libUri}}"></script>
+	<script nonce="{{nonce}}" src="{{runtimeUri}}"></script>
+</body>
+</html>

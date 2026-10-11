@@ -20,3 +20,40 @@ export function setCapturablePauseContext(context: CapturablePauseContext | unde
 export function getCapturablePauseContext(): CapturablePauseContext | undefined {
 	return capturablePause;
 }
+
+/** 判断是否为内部虚拟帧（如 Node.js internal 或虚拟模块） */
+export function isInternalOrVirtualFramePath(filePath?: string): boolean {
+	if (!filePath) return true;
+	const norm = filePath.replace(/\\/g, "/");
+	if (norm.includes("<node_internals>") || norm.startsWith("node:") || norm.includes("/internal/modules/")) {
+		return true;
+	}
+	return false;
+}
+
+let isNavigatingSourceLocked = false;
+let navigationLockTimer: NodeJS.Timeout | undefined;
+
+/**
+ * 设置主动源码导航抑制锁：
+ * 避免用户在画布或 TraceView 中主动点击跳转定位时，因触发编辑器选区变更 (selection change)
+ * 被误判为“运行时命中断点”，彻底杜绝自激回流风暴与红框闪烁。
+ */
+export function setSourceNavigationLock(active: boolean, autoReleaseMs = 350): void {
+	if (navigationLockTimer) {
+		clearTimeout(navigationLockTimer);
+		navigationLockTimer = undefined;
+	}
+	isNavigatingSourceLocked = active;
+	if (active && autoReleaseMs > 0) {
+		navigationLockTimer = setTimeout(() => {
+			isNavigatingSourceLocked = false;
+			navigationLockTimer = undefined;
+		}, autoReleaseMs);
+		navigationLockTimer.unref?.();
+	}
+}
+
+export function isSourceNavigationLocked(): boolean {
+	return isNavigatingSourceLocked;
+}

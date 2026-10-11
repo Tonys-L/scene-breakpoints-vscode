@@ -9,3 +9,5 @@ export * from "./mutateCatalog";
 export * from "./activeBreakpointIndex";
 export * from "./sceneActivationPipeline";
 export * from "./agentSkillService";
+export * from "./sceneGraphProjection";
+export * from "./debugTraceBuffer";

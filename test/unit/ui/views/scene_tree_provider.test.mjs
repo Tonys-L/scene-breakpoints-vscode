@@ -585,7 +585,7 @@ export async function runTreeViewTests() {
 		const disabledNode = stepNodes[3];
 		assert.ok(disabledNode instanceof SceneRefTreeItem);
 		assert.strictEqual(disabledNode.contextValue, "sceneRefDisabled");
-		assert.strictEqual(disabledNode.checkboxState, vscode.TreeItemCheckboxState.Unchecked);
+		assert.strictEqual(disabledNode.isEnabled, false, "禁用引用节点必须携带 isEnabled:false 基准");
 		assert.deepStrictEqual(await provider.getChildren(disabledNode), [], "空目标场景引用展开必须为空");
 
 		// E. 同层重名引用 id 消歧（第二次出现追加 @index）
@@ -631,14 +631,10 @@ export async function runTreeViewTests() {
 		});
 
 		const provider = new SceneTreeDataProvider("/mock/ext");
-		let checkboxHandler = null;
 		const mockTreeView = {
 			onDidExpandElement: () => new vscode.Disposable(() => {}),
 			onDidCollapseElement: () => new vscode.Disposable(() => {}),
-			onDidChangeCheckboxState: (cb) => {
-				checkboxHandler = cb;
-				return new vscode.Disposable(() => {});
-			},
+			onDidChangeCheckboxState: () => new vscode.Disposable(() => {}),
 		};
 		provider.bindView(mockTreeView);
 
@@ -646,15 +642,17 @@ export async function runTreeViewTests() {
 		const payNode = rootNodes.find((n) => n instanceof SceneNode && n.sceneName === "pay");
 		const stepNodes = await provider.getChildren(payNode);
 		const refNode = stepNodes[0];
-		assert.strictEqual(refNode.checkboxState, vscode.TreeItemCheckboxState.Checked, "缺省启用的引用必须呈现勾选态");
+		// 引用节点已移除 checkboxState：宿主对带 checkbox 的节点单击 label 会消费为勾选切换（无法单击展开），
+		// 且 Trae IDE 宿主 checkbox 事件兼容性不可靠（点击无落盘），启停改走 toggleSceneRef 实体命令
+		assert.strictEqual(refNode.checkboxState, undefined, "引用节点不得提供 checkbox（单击必须保持展开/折叠语义）");
+		assert.strictEqual(refNode.isEnabled, true, "缺省启用的引用必须携带 isEnabled 基准供 toggle 翻转");
 
-		// A. 引用节点 checkbox → 多态 toggle 落盘（复用 breakpointManager.toggleBreakpoint）
-		await checkboxHandler({ items: [[refNode, vscode.TreeItemCheckboxState.Unchecked]] });
-		const cfgAfterToggle = loadScenesConfig(tmpWs);
-		assert.strictEqual(
-			cfgAfterToggle.scenes.pay[0].enabled,
+		// A. 引用启停落盘走 toggleBreakpoint 实体命令（行为在 tree_commands 套件端到端验证），此处守护节点基准
+		const cfgAfterToggleProbe = loadScenesConfig(tmpWs);
+		assert.notStrictEqual(
+			cfgAfterToggleProbe.scenes.pay[0].enabled,
 			false,
-			"引用 checkbox 取消勾选必须落盘 enabled:false",
+			"未触发 toggle 时缺省引用必须保持启用语义（enabled 缺省或 true）",
 		);
 
 		// B. 拖拽排除：只读断点禁止拖拽，引用节点非断点不参与，本场景断点正常参与
@@ -675,7 +673,7 @@ export async function runTreeViewTests() {
 		assert.doesNotThrow(() => provider.findPausedBreakpointNode());
 
 		fs.rmSync(tmpWs, { recursive: true, force: true });
-		console.log("    ✔ 批次4引用交互（多态启停/拖拽排除/缓存过滤防护）测试通过");
+		console.log("    ✔ 批次4引用交互（单击展开语义/拖拽排除/缓存过滤防护）测试通过");
 	}
 
 	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（直连生产源码）全部通过！");

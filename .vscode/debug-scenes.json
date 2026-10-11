@@ -1,10 +1,95 @@
 {
   "scenes": {
+    "demo:full-feature-gallery": [
+      {
+        "type": "line",
+        "file": "src/extension.ts",
+        "line": 44,
+        "enabled": true,
+        "desc": "步骤 1 [行断点]: setupCompositionRoot 组装装配根基础设施依赖",
+        "contextSnippet": {
+          "current": "function setupCompositionRoot(): void {",
+          "prev": "*/",
+          "next": "configureDependencies({",
+          "scopeAnchor": "setupCompositionRoot",
+          "indent": 0
+        }
+      },
+      {
+        "type": "condition",
+        "file": "src/extension.ts",
+        "line": 52,
+        "enabled": true,
+        "condition": "wsRoot !== undefined",
+        "desc": "步骤 2 [条件断点]: 仅当 wsRoot 有效时触发拦截",
+        "contextSnippet": {
+          "current": "return wsRoot ? isDiskContentModifiedSinceLastSaved(wsRoot) : false;",
+          "prev": "const wsRoot = getWorkspaceRoot();",
+          "next": "},",
+          "scopeAnchor": "setupCompositionRoot",
+          "indent": 6
+        }
+      },
+      {
+        "type": "logpoint",
+        "file": "src/extension.ts",
+        "line": 55,
+        "enabled": true,
+        "logMessage": "检测到指纹冲突裁决请求",
+        "desc": "步骤 3 [日志断点]: 控制台动态输出运行时上下文",
+        "contextSnippet": {
+          "current": "resolveFingerprintConflict: promptFingerprintConflict,",
+          "next": "});",
+          "scopeAnchor": "setupCompositionRoot",
+          "indent": 4
+        }
+      },
+      {
+        "type": "hitCount",
+        "file": "src/extension.ts",
+        "line": 47,
+        "enabled": true,
+        "hitCondition": "> 3",
+        "desc": "步骤 4 [计数断点]: 拦截第 3 次及以上命中调用",
+        "contextSnippet": {
+          "current": "breakpointBridge: vscodeBreakpointBridge,",
+          "prev": "sceneRepository: jsonFileSceneRepository,",
+          "next": "lineReader: vscodeLineReader,",
+          "scopeAnchor": "setupCompositionRoot",
+          "indent": 4
+        }
+      },
+      {
+        "type": "function",
+        "functionName": "setupCompositionRoot",
+        "enabled": true,
+        "desc": "步骤 5 [函数断点]: 全局拦截 setupCompositionRoot 调用"
+      },
+      {
+        "type": "scene",
+        "name": "core:plugin-lifecycle",
+        "desc": "步骤 6 [场景引用]: 嵌套组合引用生命周期核心链路"
+      },
+      {
+        "type": "line",
+        "file": "src/extension.ts",
+        "line": 18,
+        "enabled": false,
+        "desc": "步骤 7 [禁用状态]: 演示置灰不参与下发的灰度断点",
+        "contextSnippet": {
+          "current": "getStatusBarItem,",
+          "prev": "templateContentProvider,",
+          "next": "initStatusBarItem,",
+          "scopeAnchor": "GraphSnapshot",
+          "indent": 2
+        }
+      }
+    ],
     "core:plugin-lifecycle": [
       {
         "type": "line",
         "file": "src/extension.ts",
-        "line": 47,
+        "line": 185,
         "enabled": true,
         "desc": "步骤 1: 插件主入口 activate，初始化状态栏与调试侧边栏树视图",
         "contextSnippet": {
@@ -16,7 +101,7 @@
       {
         "type": "line",
         "file": "src/ui/commands/index.ts",
-        "line": 34,
+        "line": 36,
         "enabled": true,
         "desc": "步骤 2: registerAllCommands 表驱动集中注册所有命令与 globalState 挂载",
         "contextSnippet": {
@@ -30,7 +115,7 @@
       {
         "type": "line",
         "file": "src/extension.ts",
-        "line": 64,
+        "line": 205,
         "enabled": true,
         "desc": "步骤 3: 挂载 5 大核心事件监听器、Inlay Hints 与 CodeLens 提供者",
         "contextSnippet": {
@@ -146,7 +231,7 @@
       {
         "type": "line",
         "file": "src/application/sceneManager.ts",
-        "line": 66,
+        "line": 87,
         "enabled": true,
         "desc": "步骤 2: activateScene 进入单写者串行队列排队与校验",
         "contextSnippet": {
@@ -693,7 +778,7 @@
     ]
   },
   "activeScenes": [
-    "feat:apply-and-heal-flow"
+    "demo:full-feature-gallery"
   ],
   "bindings": {
     "Launch Extension": [

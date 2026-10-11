@@ -32,6 +32,18 @@ export class EchoLoopGuard {
 	}
 
 	/**
+	 * 重置内部状态（供单元测试环境复位）
+	 */
+	public reset(): void {
+		if (this.internalSavingTimer) {
+			clearTimeout(this.internalSavingTimer);
+			this.internalSavingTimer = undefined;
+		}
+		this._isInternalSaving = false;
+		this.lastSavedContentByKey.clear();
+	}
+
+	/**
 	 * 记录指定键控文件最新一次内部持久化写盘的内容指纹 (v1.2.0 分层配置)
 	 */
 	public setLastSavedContentForKey(key: string, content: string): void {

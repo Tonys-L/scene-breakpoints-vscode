@@ -309,6 +309,26 @@ function registerRevealRefSourceCommand(
 }
 
 /**
+ * 引用节点启停实体命令：右键菜单 toggle（不依赖宿主 checkbox API，落盘语义与断点启停一致）
+ */
+function registerSceneRefToggleCommand(treeDataProvider: SceneTreeDataProvider): vscode.Disposable {
+	return vscode.commands.registerCommand("sceneBreakpoints.toggleSceneRef", async (node?: SceneRefTreeItem) => {
+		if (!node) return;
+		await runWithWorkspace(true, async (workspaceRoot) => {
+			const result = await breakpointManager.toggleBreakpoint(
+				workspaceRoot,
+				node.sceneName,
+				node.index,
+				!node.isEnabled,
+			);
+			if (result.success) {
+				treeDataProvider.refresh();
+			}
+		});
+	});
+}
+
+/**
  * 注册侧边栏场景管理树视图相关的所有用户交互与上下文命令
  */
 export function registerTreeCommands(
@@ -322,5 +342,6 @@ export function registerTreeCommands(
 		...registerBreakpointMutationCommands(),
 		...registerBreakpointReorderCommands(treeDataProvider, treeView),
 		registerRevealRefSourceCommand(treeView, treeDataProvider),
+		registerSceneRefToggleCommand(treeDataProvider),
 	);
 }

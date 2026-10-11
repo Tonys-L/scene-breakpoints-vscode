@@ -7,6 +7,8 @@
   "command.exportScene": "将当前所有断点导出为新场景 (Export to Scene)...",
   "command.showMenu": "呼出场景断点控制菜单 (Show Menu)...",
   "command.captureCallStack": "将当前调用栈保存为场景断点 (Capture Call Stack)...",
+  "command.showGraph": "打开场景断点可视化画布 (Show Graph)",
+  "command.exportGraphMermaid": "导出场景画布为 Mermaid 图 (Export Mermaid)",
   "command.refreshView": "刷新场景列表",
   "command.createNewScene": "新建调试场景...",
   "command.applySceneItem": "激活此场景",
@@ -32,7 +34,6 @@
   "config.allowAiFileActivation": "允许 AI Agent 通过直接修改 debug-scenes.json 中的 activeScenes 字段声明式自动激活与切换场景",
   "config.autoInstallSkill": "检测到 AI Agent 工作区目录时提示安装场景管理 Skill",
   "config.inlayHintsEnabled": "在编辑器断点所在代码行末尾显示优雅的场景名称、步骤与备注幽灵注解 (Inlay Hints)",
-  "view.sceneBreakpoints": "场景断点 (Scene Breakpoints)"
+  "view.sceneBreakpoints": "场景断点 (Scene Breakpoints)",
+  "command.toggleSceneRef": "启用/禁用场景引用"
 }
-
-
