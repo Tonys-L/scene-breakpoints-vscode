@@ -66,6 +66,9 @@
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-hit-trace.png" alt="调试运行时断点实时脉冲与执行流命中轨迹 (Hit Trace)" width="85%" />
 </p>
 
+- 🧩 **场景引用：组合复用，一处维护 (v1.1.0)**
+  在场景中声明 `{ "type": "scene", "name": "..." }`，即可在该位置组合另一场景的全部断点。认证、会话等通用链路断点只维护一处、全场景复用：声明顺序即执行顺序，引用成环自动阻断并报出完整环路径，悬空引用降级为警告不阻断其余断点。
+
 - 🔒 **团队共享与个人私有配置智能隔离 (v1.2.0)**
   公共场景保存在 `.vscode/debug-scenes.json` 随 Git 团队共享；个人临时调试断点自动保存到 `.vscode/debug-scenes.local.json` 并自动追加至 `.gitignore`。本地调试随心所欲，绝对不会污染代码仓库。
 
@@ -125,14 +128,22 @@
 - **场景范围选择器 (Scope Selector)**：支持勾选查看任意场景（包含未激活场景），所见即所得；
 - **一键 Mermaid 流程图导出**：在画布右上角点击导出按钮，秒级生成合法 `flowchart TD` 并复制到剪贴板，直接粘贴到 Markdown 文档、GitHub PR 或架构评审报告中。
 
-### 2. 团队与个人私有配置智能隔离 (v1.2.0)
+### 2. 场景组合引擎：内联场景引用 (v1.1.0)
+
+多个业务流程共享基础鉴权或初始化断点时，无需复制粘贴，直接用场景组合：
+- **内联引用条目**：声明 `{ "type": "scene", "name": "auth-flow" }`，被引用场景的全部断点在该位置按深度优先展开，声明顺序即执行顺序；
+- **安全展开防护**：引用成环（含自引用）在写盘与下发调试器之前中止激活，报错携带完整环路径（如 `A → B → A`）；悬空引用降级为警告并跳过，不阻断其余断点下发；
+- **启停不删配置**：`enabled: false` 一键临时摘除整棵引用子树；可选 `desc` 备注在侧边栏展示；
+- **树视图导航**：侧边栏渲染只读嵌套引用节点，支持一键跳转引用源场景（`revealRefSource`）与启停切换；自愈回写按断点归属场景（ownerScene）精准路由。
+
+### 3. 团队与个人私有配置智能隔离 (v1.2.0)
 
 针对多人协作项目中“临时断点容易污染 Git 提交”的痛点，插件提供双层配置机制：
 - **团队主配置**：`.vscode/debug-scenes.json`（提交到 Git，团队统一沉淀与共享主干业务场景）；
 - **个人私有配置**：`.vscode/debug-scenes.local.json`（插件激活时**自动追加到 `.gitignore`**，私有场景零污染）；
 - **分层合并与就地覆盖**：本地与团队同名场景时，本地私有层自动无缝覆盖团队层，侧边栏合并展示并标记 `[local]` 徽标。
 
-### 3. 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
+### 4. 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
 
 当调试命中断点或代码抛错暂停时：
 - 在代码编辑器右键选择 `Scene Breakpoints: Capture Call Stack to Scene`（或在命令面板执行）；
@@ -154,7 +165,20 @@
     "Launch API Server": "login-debug"
   },
   "scenes": {
+    "common-setup": [
+      {
+        "type": "line",
+        "file": "src/server.ts",
+        "line": 12,
+        "desc": "公共链路：服务启动自检"
+      }
+    ],
     "login-debug": [
+      {
+        "type": "scene",
+        "name": "common-setup",
+        "desc": "步骤 0: 组合公共初始化场景"
+      },
       {
         "type": "condition",
         "file": "src/auth.ts",

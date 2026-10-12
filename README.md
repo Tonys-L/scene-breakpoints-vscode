@@ -66,6 +66,9 @@ Every developer debugging in VS Code runs into these frustrations:
   <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-hit-trace.png" alt="Live DAP Breakpoint Hit Trace & Pulse Timeline" width="85%" />
 </p>
 
+- 🧩 **Compose Scenes with Scene References (v1.1.0)**
+  Reference an entire scene inside another with `{ "type": "scene", "name": "..." }`. Common flows like auth or bootstrap are maintained once and reused everywhere—declaration order is execution order, circular references abort activation with the full cycle path, and dangling references degrade to warnings instead of blocking other breakpoints.
+
 - 🔒 **Team & Personal Config Isolation (v1.2.0)**
   Store shared team scenes in `.vscode/debug-scenes.json` under Git, while personal temporary breakpoints live in `.vscode/debug-scenes.local.json` which is **automatically added to `.gitignore`**. Experiment freely without dirtying git diffs.
 
@@ -125,14 +128,22 @@ Click the graph canvas button on the "Scene Breakpoints" sidebar title bar (or r
 - **Scope Selector**: Multi-select any combination of scenes (active or inactive) with instant "what you see is what you inspect" canvas updates;
 - **One-click Mermaid Export**: Click the export button in the top bar to copy clean `flowchart TD` code directly to your clipboard, ready for Markdown docs or PR reviews.
 
-### 2. Team & Personal Config Isolation (v1.2.0)
+### 2. Scene Composition Engine: Inline Scene References (v1.1.0)
+
+Build scenes from other scenes instead of copy-pasting shared breakpoint lists:
+- **Inline Reference Entries**: `{ "type": "scene", "name": "auth-flow" }` expands the referenced scene's entire breakpoint set at that exact position—depth-first, declaration order = execution order;
+- **Safe Expansion**: Circular references (including self-reference) abort activation before touching disk or dispatching to the debugger, reporting the full cycle path (e.g. `A → B → A`); dangling references degrade to warnings and are skipped;
+- **Toggle Without Deleting**: `enabled: false` temporarily detaches the whole reference subtree; optional `desc` labels the node in the sidebar;
+- **Tree View Navigation**: Nested reference nodes render read-only in the sidebar with jump-to-source (`revealRefSource`) and enable/disable toggles; self-healing write-backs are routed to the owning scene (ownerScene).
+
+### 3. Team & Personal Config Isolation (v1.2.0)
 
 Avoid cluttering team repositories with temporary experimental breakpoints:
 - **Team Layer**: `.vscode/debug-scenes.json` (tracked in Git, shared across the engineering team);
 - **Personal Private Layer**: `.vscode/debug-scenes.local.json` (**automatically appended to `.gitignore`** upon extension activation);
 - **Merged View & Overrides**: Local scenes seamlessly override same-named team scenes and appear with a distinct `[local]` badge in the sidebar.
 
-### 3. Incident-to-Scene: Capture Call Stack (v1.2.0)
+### 4. Incident-to-Scene: Capture Call Stack (v1.2.0)
 
 When paused at an unexpected exception or critical breakpoint:
 - Right-click in the editor and choose `Scene Breakpoints: Capture Call Stack to Scene` (or invoke via Command Palette);
@@ -154,7 +165,20 @@ Presets are stored in declarative JSON at `.vscode/debug-scenes.json`, with buil
     "Launch API Server": "login-debug"
   },
   "scenes": {
+    "common-setup": [
+      {
+        "type": "line",
+        "file": "src/server.ts",
+        "line": 12,
+        "desc": "Shared: server bootstrap check"
+      }
+    ],
     "login-debug": [
+      {
+        "type": "scene",
+        "name": "common-setup",
+        "desc": "Step 0: compose the shared setup scene"
+      },
       {
         "type": "condition",
         "file": "src/auth.ts",

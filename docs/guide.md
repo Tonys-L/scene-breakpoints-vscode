@@ -167,7 +167,11 @@ When paused at an unexpected exception or critical breakpoint:
 ### 3.11 Scene References & Modular Composition (v1.1.0)
 
 When multiple scenarios share common authentication or bootstrap logic, avoid duplicating breakpoint lists:
-Declare a reference `{ "$ref": "common-auth" }` inside any scene. The engine recursively expands child scene breakpoints with automatic circular reference detection and independent branch toggles.
+Declare an inline reference entry `{ "type": "scene", "name": "common-auth" }` inside a scene's step list. The engine expands the referenced scene's breakpoints at that exact position (depth-first, declaration order = execution order). Optional fields: `desc` (sidebar note) and `enabled: false` (temporarily detach the whole subtree without deleting config).
+
+- **Cycle Protection**: Circular references (including self-reference) abort activation before writing to disk or dispatching to the debugger, reporting the full cycle path (e.g. `A → B → A`);
+- **Dangling Reference Degradation**: Missing referenced scenes degrade to a warning and are skipped, never blocking the remaining breakpoints;
+- **Tree View Navigation**: The sidebar renders read-only nested reference nodes with quick jump-to-source (`revealRefSource`) and enable/disable toggles; self-healing write-backs are routed to the scene that owns each breakpoint (ownerScene), at most once per source.
 
 ---
 
@@ -357,8 +361,16 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
         "enabled": true
       }
     ],
+    "common-auth": [
+      {
+        "type": "line",
+        "file": "src/auth/session.ts",
+        "line": 21,
+        "desc": "Shared flow: session validation entry"
+      }
+    ],
     "checkout-flow": [
-      { "$ref": "common-auth" },
+      { "type": "scene", "name": "common-auth", "desc": "Reuse the shared auth flow, expanded at this position" },
       {
         "type": "line",
         "file": "src/checkout/payment.ts",
@@ -418,7 +430,7 @@ Here is a complete, real-world `.vscode/debug-scenes.json` configuration showing
 **A**: Use the local private layer! Add your scenes to `.vscode/debug-scenes.local.json`. The extension automatically adds it to `.gitignore`, keeping your temporary breakpoints completely private while letting you override team scenes seamlessly.
 
 ### Q7: How do I reuse common breakpoints (e.g. auth, bootstrap) across multiple scenes?
-**A**: Use Scene References (`$ref`). Add `{ "$ref": "common-auth" }` to your scene array. The engine automatically recurses and expands nested child breakpoints with circular dependency guards.
+**A**: Use inline scene reference entries. Add `{ "type": "scene", "name": "common-auth" }` to your scene array. The engine expands the shared breakpoints at the declared position (depth-first); circular references abort activation with the full cycle path, and missing referenced scenes degrade to warnings without blocking the rest.
 
 ### Q8: How can I share execution flow diagrams for team review or architecture docs?
 **A**: Open the Visual Graph Canvas by clicking the topology tree icon in the sidebar title bar. Once rendered, click the "Export Mermaid" button at the top-right to copy clean `flowchart TD` code to your clipboard, ready to paste into Markdown notes or GitHub PRs.
