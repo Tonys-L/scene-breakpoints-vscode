@@ -37,12 +37,12 @@ suite("Suite 08: 扩展命令总线就绪与快捷键触发契约", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
 
-  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 30 大命令注册与总线就绪校验", async () => {
+  test("TC-CMD-01: 命令面板 (Ctrl+Shift+P) 全量 31 大命令注册与总线就绪校验", async () => {
     // 1. 读取 package.json 中声明的 contributes.commands
     const pkgPath = path.resolve(__dirname, "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
     const contributesCommands: Array<{ command: string; title: string }> = pkg.contributes?.commands || [];
-    assert.strictEqual(contributesCommands.length, 30, "package.json 应完整声明 30 个命令");
+    assert.strictEqual(contributesCommands.length, 31, "package.json 应完整声明 31 个命令");
 
     // 2. 从 VS Code 内部命令总线拉取所有已注册的内部与扩展命令
     const allRegisteredCommands = await vscode.commands.getCommands(true);

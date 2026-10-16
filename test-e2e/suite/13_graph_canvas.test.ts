@@ -54,7 +54,7 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
     await sleep(300);
 
     // 2. 执行 showGraph 命令
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(400);
 
     // 3. 断言 WebviewPanel 存在且就绪
@@ -72,13 +72,13 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
 
   test("TC-GRAPH-02: 连续触发 showGraph 保持单例复用 (无重复 Tab 堆叠)", async () => {
     // 1. 第一次打开
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
     const panel1 = api.graphCanvasController.getPanel();
     assert.ok(panel1, "第一次打开应创建面板");
 
     // 2. 第二次打开相同命令
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(200);
     const panel2 = api.graphCanvasController.getPanel();
 
@@ -89,7 +89,7 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
   test("TC-GRAPH-03: Webview 消息双向协议：Scope 变更与 ready 握手仿真", async () => {
     // 1. 激活并打开画布
     await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["login-flow"]);
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
 
     const controller = api.graphCanvasController;
@@ -116,7 +116,7 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
   test("TC-GRAPH-04: 点击节点直达源码交互 (open-source 定位跳转)", async () => {
     // 1. 打开画布
     await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["login-flow"]);
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
 
     const controller = api.graphCanvasController;
@@ -149,7 +149,7 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
   test("TC-GRAPH-05: 一键 Mermaid 导出零落盘 (exportGraphMermaid 写入剪贴板)", async () => {
     // 1. 激活真实场景 login-flow 并打开画布
     await vscode.commands.executeCommand("sceneBreakpoints.applyScene", ["login-flow"]);
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
 
     // 先清空剪贴板
@@ -175,7 +175,7 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
 
   test("TC-GRAPH-06: 面板生命周期销毁与事件退订 (dispose 干净清理)", async () => {
     // 1. 打开画布
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
 
     const controller = api.graphCanvasController;
@@ -194,11 +194,26 @@ suite("Suite 13: 场景断点可视化画布与 Mermaid 导出", () => {
       "dispose 后 visibleScenes 必须复位为 undefined",
     );
 
-    // 4. 再次触发 showGraph，应重新创建全新面板
-    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    // 4. 再次触发 openGraphInEditor，应重新创建全新面板
+    await vscode.commands.executeCommand("sceneBreakpoints.openGraphInEditor");
     await sleep(300);
     const newPanel = controller.getPanel();
     assert.ok(newPanel, "再次触发应当能够重新拉起全新面板");
     assert.notStrictEqual(newPanel, panel, "重建的面板对象应为新实例");
+  });
+
+  test("TC-GRAPH-07: 触发 showGraph 优先聚焦副侧边栏常驻画布视图 (无编辑区 Tab 挤占)", async () => {
+    // 1. 关闭已有面板
+    if (api.graphCanvasController?.getPanel()) {
+      api.graphCanvasController.getPanel().dispose();
+    }
+    await sleep(200);
+
+    // 2. 触发常规 showGraph 命令
+    await vscode.commands.executeCommand("sceneBreakpoints.showGraph");
+    await sleep(300);
+
+    // 3. 验证 showGraph 绝对不会弹出 WebviewPanel 挤占代码编辑区
+    assert.strictEqual(api.graphCanvasController.getPanel(), undefined, "showGraph 绝不可在编辑区创建 WebviewPanel");
   });
 });
