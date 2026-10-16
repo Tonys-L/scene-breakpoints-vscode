@@ -4,7 +4,9 @@ import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 import {
 	setGraphCommandDeps,
 	showGraphCommand,
+	openGraphInEditorCommand,
 	exportGraphMermaidCommand,
+	refreshGraphCanvas,
 } from "#src/ui/commands/graphCommands";
 
 export async function runGraphCommandsTests() {
@@ -64,6 +66,47 @@ export async function runGraphCommandsTests() {
 			setWorkspace("/ws/graph");
 			await showGraphCommand();
 			assert.deepEqual(showArgs, ["/ws/graph"], "必须以工作区根打开画布");
+		}
+
+		// ----------------------------------------------------
+		// 2.1 openGraphInEditor 将工作区根透传给 controller.showInEditor
+		// ----------------------------------------------------
+		{
+			const showInEditorArgs = [];
+			setGraphCommandDeps({
+				controller: { showInEditor: (root) => showInEditorArgs.push(root) },
+				loadSnapshot: () => {
+					throw new Error("should not load snapshot");
+				},
+			});
+			setWorkspace(null);
+			lastWarn = null;
+			await openGraphInEditorCommand();
+			assert.strictEqual(showInEditorArgs.length, 0, "无工作区不得打开全屏画布");
+			assert.ok(lastWarn, "无工作区必须弹告警");
+
+			setWorkspace("/ws/full-editor");
+			await openGraphInEditorCommand();
+			assert.deepEqual(showInEditorArgs, ["/ws/full-editor"], "必须以工作区根打开全屏画布");
+		}
+
+		// ----------------------------------------------------
+		// 2.2 refreshGraphCanvas 联动触发 controller.resendAll
+		// ----------------------------------------------------
+		{
+			let resendAllCalled = false;
+			setGraphCommandDeps({
+				controller: {
+					resendAll: () => {
+						resendAllCalled = true;
+					},
+				},
+				loadSnapshot: () => {
+					throw new Error("should not load snapshot");
+				},
+			});
+			refreshGraphCanvas();
+			assert.strictEqual(resendAllCalled, true, "refreshGraphCanvas 必须调用 controller.resendAll");
 		}
 
 		// ----------------------------------------------------

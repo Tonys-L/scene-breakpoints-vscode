@@ -8,6 +8,7 @@ import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator";
 import { applySceneCommand } from "./sceneCommands";
 import { runWithWorkspace } from "#src/ui/utils/commandRunner";
 import { promptSceneName, confirmModalAction } from "#src/ui/utils/promptHelpers";
+import { refreshGraphCanvas } from "./graphCommands";
 
 function registerSceneActivationCommands(): vscode.Disposable[] {
 	const handleToggleSceneItem = async (node?: SceneNode) => {
@@ -26,6 +27,7 @@ function registerSceneCrudCommands(treeDataProvider: SceneTreeDataProvider): vsc
 	return [
 		vscode.commands.registerCommand("sceneBreakpoints.refreshView", () => {
 			treeDataProvider.refresh();
+			refreshGraphCanvas();
 		}),
 		vscode.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
 			await runWithWorkspace(true, async (workspaceRoot) => {

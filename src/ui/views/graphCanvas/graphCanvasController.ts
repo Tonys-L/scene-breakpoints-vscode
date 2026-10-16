@@ -72,7 +72,10 @@ export function resolveTargetSourceColumn(panelColumn?: vscode.ViewColumn): vsco
 	return vscode.ViewColumn.One;
 }
 
-export class GraphCanvasController implements vscode.Disposable {
+export class GraphCanvasController implements vscode.WebviewViewProvider, vscode.Disposable {
+	public static readonly viewType = "sceneBreakpointsGraphView";
+
+	private webviewView: vscode.WebviewView | undefined;
 	private panel: vscode.WebviewPanel | undefined;
 	private snapshot: GraphSnapshot | undefined;
 	private workspaceRoot = "";
@@ -81,7 +84,10 @@ export class GraphCanvasController implements vscode.Disposable {
 	private visibleScenes: readonly string[] | undefined;
 	private readonly busDisposables: { dispose(): void }[] = [];
 	private readonly panelDisposables: vscode.Disposable[] = [];
+	private readonly viewDisposables: vscode.Disposable[] = [];
 	private readonly highlightDecoration: vscode.TextEditorDecorationType;
+	private debugStatus: "paused" | "running" | "terminated" = "terminated";
+	private lastPanelVisible = true;
 
 	constructor(private readonly options: GraphCanvasControllerOptions) {
 		this.highlightDecoration = vscode.window.createTextEditorDecorationType({
@@ -90,12 +96,62 @@ export class GraphCanvasController implements vscode.Disposable {
 		});
 	}
 
-	/** 打开或聚焦画布（幂等：已开面板 reveal 并全量重发） */
-	public show(workspaceRoot: string): void {
+	/**
+	 * 实现 WebviewViewProvider：宿主解析副侧边栏常驻画布仪表盘 (v1.4.0)
+	 */
+	public resolveWebviewView(
+		webviewView: vscode.WebviewView,
+		_context: vscode.WebviewViewResolveContext,
+		_token: vscode.CancellationToken,
+	): void {
+		this.webviewView = webviewView;
+		webviewView.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [vscode.Uri.joinPath(this.options.extensionUri, "media", "graph")],
+		};
+
+		const snapshot = this.refreshSnapshot();
+		webviewView.webview.html = this.buildHtml(webviewView.webview, snapshot);
+
+		this.viewDisposables.push(
+			webviewView.webview.onDidReceiveMessage((msg) => this.handleWebviewMessage(msg)),
+			webviewView.onDidChangeVisibility(() => {
+				if (this.webviewView?.visible) {
+					this.resendToWebview(this.webviewView.webview);
+				}
+			}),
+			webviewView.onDidDispose(() => this.handleWebviewViewDisposed()),
+		);
+
+		this.ensureBusSubscribed();
+	}
+
+	private handleWebviewViewDisposed(): void {
+		for (const d of this.viewDisposables) {
+			d.dispose();
+		}
+		this.viewDisposables.length = 0;
+		this.webviewView = undefined;
+		this.disposeBusIfIdle();
+	}
+
+	/** 打开或聚焦画布（展开/聚焦副侧边栏仪表盘视图，绝对杜绝自动弹编辑器 Tab） */
+	public async show(workspaceRoot: string): Promise<void> {
+		this.workspaceRoot = workspaceRoot;
+		if (this.webviewView) {
+			this.webviewView.show?.(true);
+			this.resendToWebview(this.webviewView.webview);
+			return;
+		}
+		await vscode.commands.executeCommand("sceneBreakpointsGraphView.focus");
+	}
+
+	/** 在编辑器分栏中以全屏 WebviewPanel 打开画布（全屏逃生门，v1.4.0） */
+	public showInEditor(workspaceRoot: string): void {
 		this.workspaceRoot = workspaceRoot;
 		if (this.panel) {
 			this.panel.reveal();
-			this.resendAll();
+			this.resendToWebview(this.panel.webview);
 			return;
 		}
 		this.createPanel();
@@ -122,30 +178,39 @@ export class GraphCanvasController implements vscode.Disposable {
 			panel.onDidChangeViewState((e) => {
 				const isNowVisible = e.webviewPanel.visible;
 				// 仅当面板从“完全隐藏（后台Tab）”重新切换到前台显示时才重发刷新；
-				// 焦点在 Webview 与代码编辑器之间切换时（visible 均为 true），绝不重发，防止销毁 DOM 导致滚动条跳动
 				if (!this.lastPanelVisible && isNowVisible) {
-					this.resendAll();
+					this.resendToWebview(panel.webview);
 				}
 				this.lastPanelVisible = isNowVisible;
 			}),
 			panel.onDidDispose(() => this.handlePanelDisposed()),
 		);
-		this.subscribeBus();
+		this.ensureBusSubscribed();
 	}
 
 	private handlePanelDisposed(): void {
-		// 事件订阅与面板生命周期成对退订（防 registerAllCommands 泄漏教训）
-		for (const d of this.busDisposables) {
+		for (const d of this.panelDisposables) {
 			d.dispose();
 		}
-		this.busDisposables.length = 0;
 		this.panelDisposables.length = 0;
 		this.panel = undefined;
-		this.visibleScenes = undefined;
+		this.disposeBusIfIdle();
 	}
 
-	private debugStatus: "paused" | "running" | "terminated" = "terminated";
-	private lastPanelVisible = true;
+	private disposeBusIfIdle(): void {
+		if (!this.panel && !this.webviewView) {
+			for (const d of this.busDisposables) {
+				d.dispose();
+			}
+			this.busDisposables.length = 0;
+			this.visibleScenes = undefined;
+		}
+	}
+
+	private ensureBusSubscribed(): void {
+		if (this.busDisposables.length > 0) return;
+		this.subscribeBus();
+	}
 
 	private subscribeBus(): void {
 		this.busDisposables.push(
@@ -177,30 +242,52 @@ export class GraphCanvasController implements vscode.Disposable {
 		);
 	}
 
+	private getEffectiveWorkspaceRoot(): string {
+		if (this.workspaceRoot) {
+			return this.workspaceRoot;
+		}
+		const defaultRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (defaultRoot) {
+			this.workspaceRoot = defaultRoot;
+			return defaultRoot;
+		}
+		return "";
+	}
+
 	/** 重建快照并刷新轨迹 nodeId 解析器（id 语义单点权威）；返回新快照供调用方窄化 */
 	private refreshSnapshot(): GraphSnapshot {
-		const snapshot = this.options.loadSnapshot(this.workspaceRoot, this.visibleScenes);
+		const root = this.getEffectiveWorkspaceRoot();
+		const snapshot = this.options.loadSnapshot(root, this.visibleScenes);
 		this.snapshot = snapshot;
 		debugTraceBuffer.setNodeIdResolver(createNodeIdResolver(snapshot));
 		return snapshot;
 	}
 
-	/** 全量重发：render + 当前 tab + 轨迹回放（面板打开/重显/场景变更统一入口） */
-	private resendAll(): void {
-		if (!this.panel) return;
+	/** 全量重发：render + 当前 tab + 轨迹回放（双模宿主统一同步入口，供外部刷新命令调用） */
+	public resendAll(): void {
 		const snapshot = this.refreshSnapshot();
-		this.post({ type: "render", snapshot });
-		this.post({ type: "view", tab: this.currentTab });
-		this.post({ type: "trace-clear" });
-		for (const record of debugTraceBuffer.getRecords()) {
-			this.post({ type: "trace-append", record });
+		if (this.webviewView) {
+			this.resendToWebview(this.webviewView.webview, snapshot);
 		}
-		this.post({ type: "debug-status", status: this.debugStatus });
+		if (this.panel) {
+			this.resendToWebview(this.panel.webview, snapshot);
+		}
+	}
+
+	private resendToWebview(webview: vscode.Webview, preloadedSnapshot?: GraphSnapshot): void {
+		const snapshot = preloadedSnapshot ?? this.refreshSnapshot();
+		this.postToWebview(webview, { type: "render", snapshot });
+		this.postToWebview(webview, { type: "view", tab: this.currentTab });
+		this.postToWebview(webview, { type: "trace-clear" });
+		for (const record of debugTraceBuffer.getRecords()) {
+			this.postToWebview(webview, { type: "trace-append", record });
+		}
+		this.postToWebview(webview, { type: "debug-status", status: this.debugStatus });
 	}
 
 	/** debug:paused 双消费：执行流脉冲 + 轨迹增量（轨迹记录由 debugTraceBuffer 先行累积） */
 	private handlePaused(file: string, line: number): void {
-		if (!this.panel) return;
+		if (!this.panel && !this.webviewView) return;
 		const nodeId = this.snapshot
 			? (findNodeByLocation(this.snapshot, file, line)?.id ?? null)
 			: null;
@@ -256,6 +343,11 @@ export class GraphCanvasController implements vscode.Disposable {
 		return this.panel;
 	}
 
+	/** 获取当前激活的副侧边栏 WebviewView（供宿主生命周期检测与单测断言） */
+	public getWebviewView(): vscode.WebviewView | undefined {
+		return this.webviewView;
+	}
+
 	/** 转发/处理 Webview 消息（供测试仿真上报与协议消费） */
 	public dispatchWebviewMessage(msg: unknown): void {
 		this.handleWebviewMessage(msg);
@@ -285,7 +377,10 @@ export class GraphCanvasController implements vscode.Disposable {
 		setSourceNavigationLock(true, 400);
 
 		try {
-			const targetColumn = resolveTargetSourceColumn(this.panel?.viewColumn);
+			// 若处于 WebviewPanel 全屏模式按分栏决策；副侧边栏常驻模式源码统一在主编辑组呈现，绝对防遮挡
+			const targetColumn = this.panel
+				? resolveTargetSourceColumn(this.panel.viewColumn)
+				: vscode.ViewColumn.One;
 			const editor = await vscode.window.showTextDocument(vscode.Uri.file(absolute), {
 				viewColumn: targetColumn,
 				preserveFocus: true,
@@ -321,11 +416,20 @@ export class GraphCanvasController implements vscode.Disposable {
 	}
 
 	private post(message: HostToWebviewMessage): void {
-		if (!this.panel) return;
-		void this.panel.webview.postMessage(message);
+		if (this.webviewView) {
+			this.postToWebview(this.webviewView.webview, message);
+		}
+		if (this.panel) {
+			this.postToWebview(this.panel.webview, message);
+		}
+	}
+
+	private postToWebview(webview: vscode.Webview, message: HostToWebviewMessage): void {
+		void webview.postMessage(message);
 	}
 
 	public dispose(): void {
 		this.handlePanelDisposed();
+		this.handleWebviewViewDisposed();
 	}
 }

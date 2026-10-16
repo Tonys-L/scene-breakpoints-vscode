@@ -52,6 +52,7 @@ export interface CardHtmlOptions {
 	labels: CanvasLabels;
 	isSelected: boolean;
 	isPulsing: boolean;
+	width?: number;
 }
 
 function resolveLocation(node: GraphNode, labels?: CanvasLabels): { text: string; title: string } {
@@ -140,8 +141,9 @@ export function renderCardHtml(node: GraphNode, options: CardHtmlOptions): strin
 	const metaHtml = pills.length > 0
 		? `<div class="bp-card-meta">${pills.join("")}</div>`
 		: "";
+	const cardWidth = options.width ?? 240;
 
-	return `<div class="${cardClasses}" data-id="${escapeHtml(node.id)}" style="width:240px;box-sizing:border-box;">`
+	return `<div class="${cardClasses}" data-id="${escapeHtml(node.id)}" style="width:${cardWidth}px;box-sizing:border-box;">`
 		+ `<div class="bp-card-header">`
 		+ `<span class="bp-card-type-badge" title="${escapeHtml(typeTitle)}">${typeIcon}<span class="bp-badge-text">${typeName}</span></span>`
 		+ `<span class="bp-card-loc" title="${escapeHtml(locationTitle)}">${escapeHtml(locationText)}</span>`
@@ -162,6 +164,7 @@ export interface SceneCardHtmlOptions {
 	depth?: number;
 	breadcrumb?: string;
 	labels?: CanvasLabels;
+	width?: number;
 }
 
 export function renderSceneCardHtml(options: SceneCardHtmlOptions): string {
@@ -194,8 +197,9 @@ export function renderSceneCardHtml(options: SceneCardHtmlOptions): string {
 		isDeep ? "sc-deep-ref" : "",
 		options.isCollapsed ? "sc-collapsed" : "sc-expanded",
 	].filter(Boolean).join(" ");
+	const cardWidth = options.width ?? 240;
 
-	return `<div class="${cardClass}" data-id="${escapeHtml(options.id)}" style="width:240px;box-sizing:border-box;">`
+	return `<div class="${cardClass}" data-id="${escapeHtml(options.id)}" style="width:${cardWidth}px;box-sizing:border-box;">`
 		+ breadcrumbHtml
 		+ `<div class="sc-card-header">`
 		+ `<div class="sc-card-title-wrap">`

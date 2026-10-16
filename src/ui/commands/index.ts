@@ -9,7 +9,11 @@ import {
 } from "./sceneCommands";
 import { showMenuCommand } from "./menuCommands";
 import { captureCallStackCommand } from "./captureCallStackCommand";
-import { showGraphCommand, exportGraphMermaidCommand } from "./graphCommands";
+import {
+	showGraphCommand,
+	openGraphInEditorCommand,
+	exportGraphMermaidCommand,
+} from "./graphCommands";
 import {
 	copySceneToClipboardCommand,
 	importSceneFromClipboardCommand,
@@ -44,8 +48,9 @@ export function registerAllCommands(
 		["sceneBreakpoints.showMenu", showMenuCommand],
 		// 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
 		["sceneBreakpoints.captureCallStack", captureCallStackCommand],
-		// 场景断点可视化画布与 Mermaid 导出 (v1.3.0)
+		// 场景断点可视化画布与 Mermaid 导出 (v1.3.0 & v1.4.0)
 		["sceneBreakpoints.showGraph", showGraphCommand],
+		["sceneBreakpoints.openGraphInEditor", openGraphInEditorCommand],
 		["sceneBreakpoints.exportGraphMermaid", exportGraphMermaidCommand],
 		// 剪贴板快速流转与团队共享
 		["sceneBreakpoints.copySceneToClipboard", copySceneToClipboardCommand],

@@ -1528,5 +1528,35 @@ body {
 	overflow: hidden;
 }
 
+/* ==========================================================================
+   副侧边栏 / 窄视口响应式适配 (Secondary Side Bar Compact Mode, v1.4.0)
+   ========================================================================== */
+@media (max-width: 380px) {
+	.tabbar {
+		padding: 4px 6px;
+		gap: 4px;
+	}
+
+	.tab-buttons button {
+		padding: 3px 8px;
+		font-size: 11px;
+	}
+
+	.viewport-controls {
+		bottom: 12px;
+		right: 12px;
+		transform: scale(0.9);
+		transform-origin: bottom right;
+	}
+
+	.minimap-wrapper {
+		bottom: 12px;
+		left: 12px;
+		transform: scale(0.85);
+		transform-origin: bottom left;
+	}
+}
+
+
 
 

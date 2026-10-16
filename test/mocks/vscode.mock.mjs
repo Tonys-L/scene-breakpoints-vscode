@@ -284,6 +284,8 @@ export const window = {
 	showTextDocument: async (uri, _options) => {
 		const editor = {
 			document: { uri, fileName: uri?.fsPath ?? String(uri) },
+			viewColumn: _options?.viewColumn,
+			_options,
 			_revealCalls: [],
 			_decorationCalls: [],
 			revealRange(range, revealType) {
@@ -365,6 +367,77 @@ export const window = {
 		window._webviewPanels.push(panel);
 		window._lastWebviewPanel = panel;
 		return panel;
+	},
+	_webviewViewProviders: new Map(),
+	registerWebviewViewProvider: (viewId, provider, options) => {
+		window._webviewViewProviders.set(viewId, { provider, options });
+		return new Disposable(() => {
+			window._webviewViewProviders.delete(viewId);
+		});
+	},
+	createMockWebviewView: (viewId = "sceneBreakpointsGraphView") => {
+		const disposables = [];
+		const view = {
+			viewType: viewId,
+			webview: {
+				cspSource: "https://*.vscode-cdn.net",
+				html: "",
+				options: {},
+				_postedMessages: [],
+				_receiveCbs: [],
+				asWebviewUri: (uri) => uri,
+				postMessage: async (message) => {
+					view.webview._postedMessages.push(message);
+					return true;
+				},
+				onDidReceiveMessage: (cb) => {
+					view.webview._receiveCbs.push(cb);
+					const d = new Disposable(() => {
+						const i = view.webview._receiveCbs.indexOf(cb);
+						if (i >= 0) view.webview._receiveCbs.splice(i, 1);
+					});
+					disposables.push(d);
+					return d;
+				},
+			},
+			visible: true,
+			_disposeCbs: [],
+			_visibilityCbs: [],
+			onDidChangeVisibility: (cb) => {
+				view._visibilityCbs.push(cb);
+				const d = new Disposable(() => {
+					const i = view._visibilityCbs.indexOf(cb);
+					if (i >= 0) view._visibilityCbs.splice(i, 1);
+				});
+				disposables.push(d);
+				return d;
+			},
+			onDidDispose: (cb) => {
+				view._disposeCbs.push(cb);
+				const d = new Disposable(() => {
+					const i = view._disposeCbs.indexOf(cb);
+					if (i >= 0) view._disposeCbs.splice(i, 1);
+				});
+				disposables.push(d);
+				return d;
+			},
+			show: () => {
+				view.visible = true;
+			},
+			dispose: () => {
+				view.visible = false;
+				for (const cb of [...view._disposeCbs]) cb();
+				for (const d of disposables) d.dispose();
+			},
+			_fireMessage: (message) => {
+				for (const cb of [...view.webview._receiveCbs]) cb(message);
+			},
+			_fireVisibility: (visible) => {
+				view.visible = visible;
+				for (const cb of [...view._visibilityCbs]) cb();
+			},
+		};
+		return view;
 	},
 	withProgress: async (_options, task) => task({ report() {} }),
 	createOutputChannel: () => ({
@@ -625,7 +698,11 @@ export function __resetMockVscodeState() {
 	debug.activeDebugSession = undefined;
 	debug._trackerFactories.length = 0;
 	debug._configProviders.length = 0;
-	workspace.workspaceFolders.length = 0;
+	if (Array.isArray(workspace.workspaceFolders)) {
+		workspace.workspaceFolders.length = 0;
+	} else {
+		workspace.workspaceFolders = [];
+	}
 	workspace._lastWatcher = undefined;
 	workspace._docChangeCbs.length = 0;
 	_clipboardText = "";

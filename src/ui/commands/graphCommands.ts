@@ -22,11 +22,23 @@ export function setGraphCommandDeps(next: GraphCommandDeps): void {
 	deps = next;
 }
 
-/** 打开或聚焦场景断点画布（幂等） */
+/** 刷新场景断点画布数据（供刷新命令联动，触发快照与轨迹重载） */
+export function refreshGraphCanvas(): void {
+	deps?.controller.resendAll();
+}
+
+/** 打开或聚焦场景断点画布（优先展示副侧边栏常驻仪表盘视图） */
 export async function showGraphCommand(): Promise<void> {
 	const workspaceRoot = getWorkspaceRoot(true);
 	if (!workspaceRoot || !deps) return;
-	deps.controller.show(workspaceRoot);
+	await deps.controller.show(workspaceRoot);
+}
+
+/** 在编辑器分栏中以 WebviewPanel 全屏打开场景断点画布（全屏分析逃生门） */
+export async function openGraphInEditorCommand(): Promise<void> {
+	const workspaceRoot = getWorkspaceRoot(true);
+	if (!workspaceRoot || !deps) return;
+	deps.controller.showInEditor(workspaceRoot);
 }
 
 /** 导出画布可见范围为 Mermaid flowchart 文本并复制到剪贴板（零落盘，对齐设计 §7） */

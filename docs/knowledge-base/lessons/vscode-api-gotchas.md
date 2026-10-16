@@ -547,3 +547,29 @@
 
 **影响文件**: `src/infra/storage/echoLoopGuard.ts`, `src/infra/vscode/vscodeLineReader.ts`, `test/unit/infra/vscode/listeners/config_file_watcher_listener.test.mjs`, `test/unit/infra/vscode/vscode_line_reader.test.mjs`
 **日期**: 2026-10-11
+
+### 1.39 WebviewView 副侧边栏伴随仪表盘与 WebviewPanel 全屏双模协同架构 (WebviewView Secondary Side Bar Companion and Dual-Host Lifecycle Coordination)
+
+**问题**:
+1. 调试运行时，VS Code 在断点命中时强制在当前活动编辑器组打开源码文件，与原先处于编辑器 Tab 的画布（`WebviewPanel`）发生激烈的 Tab 竞争与遮挡，破坏“看图伴随看代码”的沉浸式体验；
+2. 若仅将画布机械改为 WebviewView，当排查复杂大规模链路需要全景横向扩展时，缺乏大屏全景分析的逃生门；
+3. 双宿主（WebviewView 与 WebviewPanel）并存时，应用事件总线（`appEventBus`）生命周期难以判定何时订阅与何时销毁，容易发生泄漏或过早退订。
+
+**原因**:
+`WebviewPanel` 始终驻留在编辑器组，编辑器内的所有文件打开行为（DAP 单步调试跳转、用户点击文件）都不可避免地与其争夺空间。而 `WebviewView` 属于独立的侧边栏或副侧边栏（Secondary Side Bar），其在物理结构上完全位于编辑器组之外，结构性消灭了 Tab 污染。
+
+**解决方案**:
+1. **双模宿主架构设计（Dual-Host Architecture）**:
+   `GraphCanvasController` 实现 `vscode.WebviewViewProvider` 契约，统一持有 `webviewView?: vscode.WebviewView` 与 `panel?: vscode.WebviewPanel`；
+2. **副侧边栏常驻伴随优先**:
+   在 `package.json` 注册 `viewsContainers.activitybar`（`sceneBreakpointsCanvasContainer`）与 `views`（`sceneBreakpointsGraphView`，`type: "webview"`），支持用户随时将画布一键拖拽至副侧边栏，作为单步调试时永不遮挡的拓扑仪表盘；
+3. **保留全屏分析逃生门**:
+   视图标题栏配置 `sceneBreakpoints.openGraphInEditor`（“在编辑器标签页中打开”），按需在分栏以 `WebviewPanel` 弹出全屏拓扑大屏；
+4. **统一分发与空闲回收机制**:
+   `post` 与 `resendAll` 统一按需广播至当前活跃的宿主（单视图或双宿主并存）；只有当 WebviewView 与 WebviewPanel 两者均被销毁（或未被挂载）时，才执行 `disposeBusIfIdle()`，杜绝事件泄漏与早退；
+5. **分栏决策解耦**:
+   副侧边栏模式跳转源码直接在主编辑器 `ViewColumn.One` 呈现；全屏模式则继续执行 `resolveTargetSourceColumn` 跨分栏防遮挡，彻底实现随处可看、永不遮挡。
+
+**影响文件**: `package.json`, `src/ui/views/graphCanvas/GraphCanvasController.ts`, `src/ui/commands/graphCommands.ts`, `src/ui/commands/index.ts`, `src/extension.ts`
+**日期**: 2026-10-16
+

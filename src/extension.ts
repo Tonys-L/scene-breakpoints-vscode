@@ -198,8 +198,15 @@ export function activate(context: vscode.ExtensionContext) {
 	// 3. 表驱动集中注册所有用户命令与树交互动作
 	registerAllCommands(context, { treeDataProvider, treeView });
 
-	// 3.1 场景断点可视化画布 (v1.3.0)：轨迹缓存先行订阅，控制器经命令依赖注入点接线
+	// 3.1 场景断点可视化画布 (v1.3.0 & v1.4.0)：挂载副侧边栏 WebviewView Provider 与命令接线
 	const graphCanvasController = setupGraphCanvas(context);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(
+			GraphCanvasController.viewType,
+			graphCanvasController,
+			{ webviewOptions: { retainContextWhenHidden: true } },
+		),
+	);
 
 	// 4. 挂载各领域协同业务服务 (Services) 与技术层提供者
 	context.subscriptions.push(

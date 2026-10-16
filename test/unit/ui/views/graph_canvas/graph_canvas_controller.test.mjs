@@ -74,16 +74,16 @@ export async function runGraphCanvasControllerTests() {
 		vscode.window._lastTextEditor = undefined;
 	}
 
-	// 1. show 创建面板：viewType/标题/localResourceRoots 锁定 media/graph，HTML 含本地脚本与 payload
+	// 1. showInEditor 创建面板：viewType/标题/localResourceRoots 锁定 media/graph，HTML 含本地脚本与 payload
 	{
 		appEventBus.clear();
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 
 		const panel = vscode.window._lastWebviewPanel;
-		assert.ok(panel, "show 必须创建 WebviewPanel");
+		assert.ok(panel, "showInEditor 必须创建 WebviewPanel");
 		assert.strictEqual(panel.viewType, "sceneBreakpointsGraphCanvas");
 		assert.strictEqual(panel.title, "Scene Graph");
 		assert.strictEqual(panel.options.localResourceRoots.length, 1);
@@ -103,7 +103,7 @@ export async function runGraphCanvasControllerTests() {
 		resetPanelState();
 		debugTraceBuffer.append("/ws/src/auth/login.ts", 10);
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		assert.strictEqual(postedMessages().length, 0, "ready 前不得提前 postMessage");
 
 		panelFireReady();
@@ -132,7 +132,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 
 		debugTraceBuffer.append("/ws/src/auth/login.ts", 10);
@@ -162,7 +162,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 
 		appEventBus.emit("debug:resumed", undefined);
@@ -184,7 +184,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const panel = vscode.window._lastWebviewPanel;
 
 		panel._fireMessage({ type: "switch-tab", tab: "trace" });
@@ -208,7 +208,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const panel = vscode.window._lastWebviewPanel;
 
 		panel._fireMessage({ type: "open-source", nodeId: "auth-flow#0" });
@@ -240,7 +240,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const panel = vscode.window._lastWebviewPanel;
 
 		let exportCommandInvoked = false;
@@ -265,11 +265,11 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 		const countAfterReady = postedMessages().length;
 
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		assert.strictEqual(vscode.window._webviewPanels.length, 1, "幂等 show 不得重复建面板");
 		assert.ok(postedMessages().length > countAfterReady, "重显必须全量重发");
 
@@ -287,7 +287,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 		const panel = vscode.window._lastWebviewPanel;
 
@@ -297,7 +297,7 @@ export async function runGraphCanvasControllerTests() {
 		appEventBus.emit("breakpoints:changed", { workspaceRoot: "/ws" });
 		assert.strictEqual(postedMessages().length, before, "面板关闭后订阅必须成对退订");
 
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		assert.strictEqual(vscode.window._webviewPanels.length, 2, "重开必须重建面板");
 		const newPanel = vscode.window._lastWebviewPanel;
 		assert.notStrictEqual(newPanel, panel);
@@ -314,7 +314,7 @@ export async function runGraphCanvasControllerTests() {
 		debugTraceBuffer.clear();
 		resetPanelState();
 		const controller = createController();
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 		const countAfterReady = postedMessages().length;
 
@@ -342,7 +342,7 @@ export async function runGraphCanvasControllerTests() {
 			loadCalls.push({ root, scenes });
 			return createSnapshotFixture();
 		});
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const panel = vscode.window._lastWebviewPanel;
 		panel._fireMessage({ type: "set-scope", scenes: ["s-a", "s-b"] });
 		await settle();
@@ -379,7 +379,7 @@ export async function runGraphCanvasControllerTests() {
 			loadCount++;
 			return createSnapshotFixture();
 		});
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		panelFireReady();
 		const baseline = loadCount;
 		const panel = vscode.window._lastWebviewPanel;
@@ -405,12 +405,12 @@ export async function runGraphCanvasControllerTests() {
 			loadCalls.push({ root, scenes });
 			return createSnapshotFixture();
 		});
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const panel = vscode.window._lastWebviewPanel;
 		panel._fireMessage({ type: "set-scope", scenes: ["s-x"] });
 		panel.dispose();
 
-		controller.show("/ws");
+		controller.showInEditor("/ws");
 		const newPanel = vscode.window._lastWebviewPanel;
 		newPanel._fireMessage({ type: "ready" });
 		const lastCall = loadCalls[loadCalls.length - 1];
@@ -454,6 +454,115 @@ export async function runGraphCanvasControllerTests() {
 			vscode.ViewColumn.One,
 			"画布处于第三方分屏时，源码依然优先跳转至左侧主屏打开",
 		);
+	}
+
+	// 14. WebviewViewProvider 副侧边栏伴随模式测试 (v1.4.0)
+	{
+		appEventBus.clear();
+		debugTraceBuffer.clear();
+		resetPanelState();
+		const controller = createController();
+		const mockView = vscode.window.createMockWebviewView();
+
+		controller.resolveWebviewView(mockView, {}, {});
+		assert.strictEqual(controller.getWebviewView(), mockView, "resolveWebviewView 必须挂载当前 webviewView");
+		assert.match(mockView.webview.html, /id="sb-payload"/, "WebviewView 必须渲染 payload HTML");
+
+		// 测试 show 优先聚焦副侧边栏，0 Tab 挤占
+		let showCalled = false;
+		mockView.show = (preserveFocus) => {
+			showCalled = true;
+		};
+		await controller.show("/ws");
+		assert.strictEqual(showCalled, true, "show 必须优先展示已挂载的 WebviewView");
+		assert.strictEqual(controller.getPanel(), undefined, "show 在 WebviewView 存在时绝不创建 WebviewPanel");
+
+		// 测试事件总线分发至 WebviewView
+		appEventBus.emit("debug:paused", { file: "src/auth/login.ts", line: 10 });
+		await settle();
+		const pulseMsg = mockView.webview._postedMessages.find((m) => m.type === "live-pulse");
+		assert.ok(pulseMsg, "WebviewView 必须收到 live-pulse 消息");
+		assert.strictEqual(pulseMsg.nodeId, "auth-flow#0");
+
+		// 测试可见性重显触发全量数据重发
+		mockView.webview._postedMessages.length = 0;
+		mockView._fireVisibility(true);
+		assert.ok(mockView.webview._postedMessages.some((m) => m.type === "render"), "WebviewView 变为可见必须触发 render 重发");
+
+		// 测试 WebviewView 模式下点击跳转源码定向至 ViewColumn.One
+		vscode.window._lastTextEditor = undefined;
+		mockView._fireMessage({ type: "open-source", nodeId: "auth-flow#0", file: "src/auth/login.ts", line: 10 });
+		await settle();
+		assert.ok(vscode.window._lastTextEditor, "点击节点必须打开文本编辑器");
+		assert.strictEqual(vscode.window._lastTextEditor.viewColumn, vscode.ViewColumn.One, "副侧边栏模式跳转源码必须在 ViewColumn.One 主屏打开，绝不遮挡副侧边栏");
+
+		// 测试全屏打开逃生门 (showInEditor)
+		controller.showInEditor("/ws");
+		const panel = controller.getPanel();
+		assert.ok(panel, "showInEditor 必须成功创建全屏 WebviewPanel");
+
+		// 测试双宿主同时接收 debug-status
+		appEventBus.emit("debug:resumed");
+		await settle();
+		assert.ok(mockView.webview._postedMessages.some((m) => m.type === "debug-status" && m.status === "running"));
+		assert.ok(panel.webview._postedMessages.some((m) => m.type === "debug-status" && m.status === "running"));
+
+		// 测试清理
+		panel.dispose();
+		mockView.dispose();
+		controller.dispose();
+		appEventBus.clear();
+	}
+
+	// 15. 当 WebviewView 尚未挂载时，show 仅触发 focus 视图命令，坚决不降级弹出 WebviewPanel
+	{
+		appEventBus.clear();
+		debugTraceBuffer.clear();
+		resetPanelState();
+		const controller = createController();
+
+		let executedCommand = null;
+		const registered = vscode.commands.registerCommand("sceneBreakpointsGraphView.focus", () => {
+			executedCommand = "sceneBreakpointsGraphView.focus";
+		});
+
+		await controller.show("/ws");
+		assert.strictEqual(executedCommand, "sceneBreakpointsGraphView.focus", "show 必须触发 sceneBreakpointsGraphView.focus 唤醒副侧边栏");
+		assert.strictEqual(vscode.window._lastWebviewPanel, undefined, "show 绝对不可创建 WebviewPanel 弹 Tab");
+		assert.strictEqual(controller.getPanel(), undefined, "show 绝对不可挂载 panel");
+
+		registered.dispose();
+		controller.dispose();
+		appEventBus.clear();
+	}
+
+	// 16. resolveWebviewView 自动兜底当前打开的 workspaceFolders，确保初次挂载即刻带工作区根加载场景快照
+	{
+		appEventBus.clear();
+		debugTraceBuffer.clear();
+		resetPanelState();
+		let loadedRoot = null;
+		const controller = createController((root) => {
+			loadedRoot = root;
+			return createSnapshotFixture();
+		});
+
+		// 模拟 VS Code 已打开项目工作区
+		vscode.workspace.workspaceFolders = [{ uri: vscode.Uri.file("/my/project") }];
+		const mockView = vscode.window.createMockWebviewView();
+		controller.resolveWebviewView(mockView, {}, {});
+
+		assert.strictEqual(loadedRoot, "/my/project", "resolveWebviewView 必须自动从 workspaceFolders 提取默认根目录并传给 loadSnapshot");
+
+		// 测试 resendAll 外部刷新广播
+		loadedRoot = null;
+		controller.resendAll();
+		assert.strictEqual(loadedRoot, "/my/project", "resendAll 刷新必须沿用已解析的工作区根");
+
+		mockView.dispose();
+		controller.dispose();
+		vscode.workspace.workspaceFolders.length = 0;
+		appEventBus.clear();
 	}
 
 	// 收尾：清理单例解析器残留，避免污染后续套件

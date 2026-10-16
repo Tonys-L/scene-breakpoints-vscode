@@ -2645,14 +2645,14 @@ function pureSha256(ascii) {
   }
   return result;
 }
-var LATEST_SKILL_VERSION = "1.3.0";
+var LATEST_SKILL_VERSION = "1.4.0";
 var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 var OFFICIAL_SKILL_HISTORY = {
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
   "be86d3a35575f137d075f49867c9a8ead61e60d7c7e43e2f05d26a13c1d21a42": "1.0.8",
   "fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.1.0",
   "05a7af959099f4dd4c45e78f2384bd0117b997ce158c20d80358e706a684c902": "1.2.0",
-  "8abab22b8137395c6452faea2e611b3b0f0a9ec196acbc12ef41d0f5351dadd5": "1.3.0"
+  "8abab22b8137395c6452faea2e611b3b0f0a9ec196acbc12ef41d0f5351dadd5": "1.4.0"
 };
 var OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 var AgentRuleAsset = class _AgentRuleAsset {
@@ -5138,10 +5138,18 @@ var deps;
 function setGraphCommandDeps(next) {
   deps = next;
 }
+function refreshGraphCanvas() {
+  deps?.controller.resendAll();
+}
 async function showGraphCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
   if (!workspaceRoot || !deps) return;
-  deps.controller.show(workspaceRoot);
+  await deps.controller.show(workspaceRoot);
+}
+async function openGraphInEditorCommand() {
+  const workspaceRoot = getWorkspaceRoot(true);
+  if (!workspaceRoot || !deps) return;
+  deps.controller.showInEditor(workspaceRoot);
 }
 async function exportGraphMermaidCommand() {
   const workspaceRoot = getWorkspaceRoot(true);
@@ -5720,6 +5728,7 @@ function registerSceneCrudCommands(treeDataProvider) {
   return [
     vscode20.commands.registerCommand("sceneBreakpoints.refreshView", () => {
       treeDataProvider.refresh();
+      refreshGraphCanvas();
     }),
     vscode20.commands.registerCommand("sceneBreakpoints.createNewScene", async () => {
       await runWithWorkspace(true, async (workspaceRoot) => {
@@ -5994,8 +6003,9 @@ function registerAllCommands(context, deps2) {
     ["sceneBreakpoints.showMenu", showMenuCommand],
     // 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
     ["sceneBreakpoints.captureCallStack", captureCallStackCommand],
-    // 场景断点可视化画布与 Mermaid 导出 (v1.3.0)
+    // 场景断点可视化画布与 Mermaid 导出 (v1.3.0 & v1.4.0)
     ["sceneBreakpoints.showGraph", showGraphCommand],
+    ["sceneBreakpoints.openGraphInEditor", openGraphInEditorCommand],
     ["sceneBreakpoints.exportGraphMermaid", exportGraphMermaidCommand],
     // 剪贴板快速流转与团队共享
     ["sceneBreakpoints.copySceneToClipboard", copySceneToClipboardCommand],
@@ -7222,6 +7232,8 @@ var GraphCanvasController = class {
     });
   }
   options;
+  static viewType = "sceneBreakpointsGraphView";
+  webviewView;
   panel;
   snapshot;
   workspaceRoot = "";
@@ -7230,13 +7242,56 @@ var GraphCanvasController = class {
   visibleScenes;
   busDisposables = [];
   panelDisposables = [];
+  viewDisposables = [];
   highlightDecoration;
-  /** 打开或聚焦画布（幂等：已开面板 reveal 并全量重发） */
-  show(workspaceRoot) {
+  debugStatus = "terminated";
+  lastPanelVisible = true;
+  /**
+   * 实现 WebviewViewProvider：宿主解析副侧边栏常驻画布仪表盘 (v1.4.0)
+   */
+  resolveWebviewView(webviewView, _context, _token) {
+    this.webviewView = webviewView;
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode30.Uri.joinPath(this.options.extensionUri, "media", "graph")]
+    };
+    const snapshot = this.refreshSnapshot();
+    webviewView.webview.html = this.buildHtml(webviewView.webview, snapshot);
+    this.viewDisposables.push(
+      webviewView.webview.onDidReceiveMessage((msg) => this.handleWebviewMessage(msg)),
+      webviewView.onDidChangeVisibility(() => {
+        if (this.webviewView?.visible) {
+          this.resendToWebview(this.webviewView.webview);
+        }
+      }),
+      webviewView.onDidDispose(() => this.handleWebviewViewDisposed())
+    );
+    this.ensureBusSubscribed();
+  }
+  handleWebviewViewDisposed() {
+    for (const d of this.viewDisposables) {
+      d.dispose();
+    }
+    this.viewDisposables.length = 0;
+    this.webviewView = void 0;
+    this.disposeBusIfIdle();
+  }
+  /** 打开或聚焦画布（展开/聚焦副侧边栏仪表盘视图，绝对杜绝自动弹编辑器 Tab） */
+  async show(workspaceRoot) {
+    this.workspaceRoot = workspaceRoot;
+    if (this.webviewView) {
+      this.webviewView.show?.(true);
+      this.resendToWebview(this.webviewView.webview);
+      return;
+    }
+    await vscode30.commands.executeCommand("sceneBreakpointsGraphView.focus");
+  }
+  /** 在编辑器分栏中以全屏 WebviewPanel 打开画布（全屏逃生门，v1.4.0） */
+  showInEditor(workspaceRoot) {
     this.workspaceRoot = workspaceRoot;
     if (this.panel) {
       this.panel.reveal();
-      this.resendAll();
+      this.resendToWebview(this.panel.webview);
       return;
     }
     this.createPanel();
@@ -7262,25 +7317,35 @@ var GraphCanvasController = class {
       panel.onDidChangeViewState((e) => {
         const isNowVisible = e.webviewPanel.visible;
         if (!this.lastPanelVisible && isNowVisible) {
-          this.resendAll();
+          this.resendToWebview(panel.webview);
         }
         this.lastPanelVisible = isNowVisible;
       }),
       panel.onDidDispose(() => this.handlePanelDisposed())
     );
-    this.subscribeBus();
+    this.ensureBusSubscribed();
   }
   handlePanelDisposed() {
-    for (const d of this.busDisposables) {
+    for (const d of this.panelDisposables) {
       d.dispose();
     }
-    this.busDisposables.length = 0;
     this.panelDisposables.length = 0;
     this.panel = void 0;
-    this.visibleScenes = void 0;
+    this.disposeBusIfIdle();
   }
-  debugStatus = "terminated";
-  lastPanelVisible = true;
+  disposeBusIfIdle() {
+    if (!this.panel && !this.webviewView) {
+      for (const d of this.busDisposables) {
+        d.dispose();
+      }
+      this.busDisposables.length = 0;
+      this.visibleScenes = void 0;
+    }
+  }
+  ensureBusSubscribed() {
+    if (this.busDisposables.length > 0) return;
+    this.subscribeBus();
+  }
   subscribeBus() {
     this.busDisposables.push(
       sceneStateManager.onDidChangeState(() => this.resendAll()),
@@ -7310,28 +7375,48 @@ var GraphCanvasController = class {
       })
     );
   }
+  getEffectiveWorkspaceRoot() {
+    if (this.workspaceRoot) {
+      return this.workspaceRoot;
+    }
+    const defaultRoot = vscode30.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (defaultRoot) {
+      this.workspaceRoot = defaultRoot;
+      return defaultRoot;
+    }
+    return "";
+  }
   /** 重建快照并刷新轨迹 nodeId 解析器（id 语义单点权威）；返回新快照供调用方窄化 */
   refreshSnapshot() {
-    const snapshot = this.options.loadSnapshot(this.workspaceRoot, this.visibleScenes);
+    const root = this.getEffectiveWorkspaceRoot();
+    const snapshot = this.options.loadSnapshot(root, this.visibleScenes);
     this.snapshot = snapshot;
     debugTraceBuffer.setNodeIdResolver(createNodeIdResolver(snapshot));
     return snapshot;
   }
-  /** 全量重发：render + 当前 tab + 轨迹回放（面板打开/重显/场景变更统一入口） */
+  /** 全量重发：render + 当前 tab + 轨迹回放（双模宿主统一同步入口，供外部刷新命令调用） */
   resendAll() {
-    if (!this.panel) return;
     const snapshot = this.refreshSnapshot();
-    this.post({ type: "render", snapshot });
-    this.post({ type: "view", tab: this.currentTab });
-    this.post({ type: "trace-clear" });
-    for (const record of debugTraceBuffer.getRecords()) {
-      this.post({ type: "trace-append", record });
+    if (this.webviewView) {
+      this.resendToWebview(this.webviewView.webview, snapshot);
     }
-    this.post({ type: "debug-status", status: this.debugStatus });
+    if (this.panel) {
+      this.resendToWebview(this.panel.webview, snapshot);
+    }
+  }
+  resendToWebview(webview, preloadedSnapshot) {
+    const snapshot = preloadedSnapshot ?? this.refreshSnapshot();
+    this.postToWebview(webview, { type: "render", snapshot });
+    this.postToWebview(webview, { type: "view", tab: this.currentTab });
+    this.postToWebview(webview, { type: "trace-clear" });
+    for (const record of debugTraceBuffer.getRecords()) {
+      this.postToWebview(webview, { type: "trace-append", record });
+    }
+    this.postToWebview(webview, { type: "debug-status", status: this.debugStatus });
   }
   /** debug:paused 双消费：执行流脉冲 + 轨迹增量（轨迹记录由 debugTraceBuffer 先行累积） */
   handlePaused(file, line) {
-    if (!this.panel) return;
+    if (!this.panel && !this.webviewView) return;
     const nodeId = this.snapshot ? findNodeByLocation(this.snapshot, file, line)?.id ?? null : null;
     if (nodeId) {
       this.post({ type: "live-pulse", nodeId });
@@ -7380,6 +7465,10 @@ var GraphCanvasController = class {
   getPanel() {
     return this.panel;
   }
+  /** 获取当前激活的副侧边栏 WebviewView（供宿主生命周期检测与单测断言） */
+  getWebviewView() {
+    return this.webviewView;
+  }
   /** 转发/处理 Webview 消息（供测试仿真上报与协议消费） */
   dispatchWebviewMessage(msg) {
     this.handleWebviewMessage(msg);
@@ -7400,7 +7489,7 @@ var GraphCanvasController = class {
     const absolute = path14.isAbsolute(targetFile) ? targetFile : path14.join(this.workspaceRoot, targetFile);
     setSourceNavigationLock(true, 400);
     try {
-      const targetColumn = resolveTargetSourceColumn(this.panel?.viewColumn);
+      const targetColumn = this.panel ? resolveTargetSourceColumn(this.panel.viewColumn) : vscode30.ViewColumn.One;
       const editor = await vscode30.window.showTextDocument(vscode30.Uri.file(absolute), {
         viewColumn: targetColumn,
         preserveFocus: true
@@ -7432,11 +7521,19 @@ var GraphCanvasController = class {
     });
   }
   post(message) {
-    if (!this.panel) return;
-    void this.panel.webview.postMessage(message);
+    if (this.webviewView) {
+      this.postToWebview(this.webviewView.webview, message);
+    }
+    if (this.panel) {
+      this.postToWebview(this.panel.webview, message);
+    }
+  }
+  postToWebview(webview, message) {
+    void webview.postMessage(message);
   }
   dispose() {
     this.handlePanelDisposed();
+    this.handleWebviewViewDisposed();
   }
 };
 
@@ -7573,6 +7670,13 @@ function activate(context) {
   });
   registerAllCommands(context, { treeDataProvider, treeView });
   const graphCanvasController = setupGraphCanvas(context);
+  context.subscriptions.push(
+    vscode31.window.registerWebviewViewProvider(
+      GraphCanvasController.viewType,
+      graphCanvasController,
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
   context.subscriptions.push(
     // 启动项三级匹配与调试配置联动服务
     registerDebugLaunchService(),

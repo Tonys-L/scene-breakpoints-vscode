@@ -35,5 +35,8 @@
   "config.autoInstallSkill": "Prompt to install AI Skill when an AI Agent workspace is detected",
   "config.inlayHintsEnabled": "Show subtle scene breakpoint annotations and ghost text at the end of editor lines",
   "view.sceneBreakpoints": "Scene Breakpoints",
-  "command.toggleSceneRef": "Toggle Scene Reference"
+  "command.toggleSceneRef": "Toggle Scene Reference",
+  "command.openGraphInEditor": "Open Scene Graph in Editor Tab",
+  "viewContainer.sceneCanvas": "Scene Graph Canvas",
+  "view.sceneBreakpointsGraph": "Scene Graph Dashboard"
 }

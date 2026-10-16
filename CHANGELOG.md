@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.4.0] - 2026-10-16
+
+### Added
+- **Permanent Secondary Side Bar Dashboard (ViewContainer & WebviewViewProvider)**: the Scene Breakpoints graph canvas is now available directly in the Secondary Side Bar (`sceneBreakpointsGraphView`) as an always-accessible dashboard, fully preventing the canvas from crowding out the primary editor tabs.
+- **Full-screen Canvas Escape Hatch**: a dedicated title-bar button (`sceneBreakpoints.openGraphInEditor`) allows expanding the canvas into an independent full-screen editor tab whenever large-scale topology analysis is required.
+- **Interactive Scene Selector Popover**: replaced static scope chips with an elegant 100% opaque dark Popover dropdown menu supporting instant search, quick select all / clear, and clean active/inactive status badges.
+- **Instant Single-Scene Activation**: when inspecting a single inactive scene on the canvas, an "Activate Scene" action immediately activates the scene and registers its breakpoints into VS Code DAP.
+
+### Improved & Fixed
+- **Seamless Viewport Auto-Resize & Zoom Healing**: resolved an issue where dragging and widening the Secondary Side Bar left the canvas clipped at the old width until a manual refresh was clicked. Dual-channel `window.resize` and `ResizeObserver` listeners now instantly scale the G6 canvas layer without clipping or threshold dropouts.
+- **Codicon & Toolbar Alignment**: unified toolbar icons to native VS Code Codicons (`$(screen-full)`, `$(export)`, `$(type-hierarchy)`), removed duplicate export buttons, and kept card widths at a clean, compact 240px.
+
+---
+
 ## [1.3.0] - 2026-10-11
 
 ### Added

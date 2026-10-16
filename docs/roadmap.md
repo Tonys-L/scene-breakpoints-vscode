@@ -42,7 +42,7 @@ timeline
     v1.1.0 (拓扑基石) : 场景内联组合 (type scene) : 递归展开与成环阻断 : 步骤流时序 100% 保真 : AI 模块地图与 Token 极简生成
     v1.2.0 (协作与固化) : 个人私有配置隔离 (*.local.json) : 杜绝临时断点污染 Git : 事故现场调用栈一键生成场景 (Capture Call Stack)
     v1.3.0 (全景视觉) : 场景断点可视化 : 全景图表与点击跳转源码 : 运行期 Live DAP 动态点亮
-    v1.4.0 (体验根治) : 画布宿主迁移副侧边栏 (WebviewView) : 结构性消灭调试期 tab 污染 : 保留编辑器全屏逃生门
+    v1.4.0 (体验根治·已交付) : 画布宿主迁移副侧边栏 (WebviewView) : 结构性消灭调试期 tab 污染 : 保留编辑器全屏逃生门
     v1.5.0 (断点可观测) : 变量监视锚点 (watch/expected) : 命中历史持久化与回放 : AI Skill 生成消费双轨
     v1.6.0 (会话对比) : 两次会话命中路径并排 diff : 差异高亮与 Markdown 报告导出
     远期演进 (标准对齐) : 跟踪 VS Code 官方工作区规范 : *.code-workspace 存放全局全链路场景 : workspaceFolder 标准跨项目寻址
@@ -244,7 +244,7 @@ timeline
 | **v1.1.0**<br>*(已交付)* | **① 场景组合与内联引用 (`type: "scene"`)**<br>**② AI 模块地图规则升级** | 消除断点冗余、时序因果 100% 保真、大幅节约 AI 生成/推理 Token | `src/domain/sceneResolver.ts`<br>`src/infra/storage/`<br>`src/infra/vscode/`<br>`skills/` |
 | **v1.2.0**<br>*(已交付 2026-10-07)* | **③ 个人私有配置隔离 (`*.local.json`)**<br>**④ 事故调用栈一键生成场景 (Capture Call Stack)** | 杜绝临时断点污染 Git 仓库、瞬态 Bug 现场一键固化沉淀 | `src/infra/storage/`<br>DAP 适配器 |
 | **v1.3.0**<br>*(已交付 2026-10-07)* | **⑤ 场景断点可视化 (Visual Graph & Map)** | 建立时空全景感知、点击节点直接跳转源码、运行期状态脉冲追踪 | VS Code Webview Provider<br>状态机与监听器 |
-| **v1.4.0**<br>*(规划中)* | **⑦ 画布体验根治：副侧边栏伴随模式 (Canvas Companion v2)** | 结构性消灭调试期 tab 污染，画布成为常驻调试仪表盘 | VS Code WebviewView<br>webview 前端复用 |
+| **v1.4.0**<br>*(已交付 2026-10-16)* | **⑦ 画布体验根治：副侧边栏伴随模式 (Canvas Companion v2)** | 结构性消灭调试期 tab 污染，画布成为常驻调试仪表盘 | VS Code WebviewView<br>双模宿主架构 |
 | **v1.5.0**<br>*(规划中)* | **⑧ 变量监视锚点 (Watch Anchors)**<br>**⑨ 命中历史持久化与回放 (Hit History)** | "期望 vs 实际"可观测、调试现场资产化、跨会话可回放 | DAP evaluate<br>领域历史存储<br>侧边栏新视图 |
 | **v1.5.x**<br>*(规划中·纯文档可提前)* | **⑪ AI Skill 质量规范 (Writer 质量标准)**<br>**⑫ 场景消费 Skill (scene-breakpoints-reader)** | 补齐"代码研读"在 AI 层的缺口，场景成为 AI 的项目导航地图 | `skills/` 各平台 shared-core |
 | **v1.6.0**<br>*(规划中)* | **⑩ 调试会话对比 (Session Diff)** | 修复效果可视化验证、Markdown 报告沉淀 | 画布 diff 渲染<br>历史数据消费 |

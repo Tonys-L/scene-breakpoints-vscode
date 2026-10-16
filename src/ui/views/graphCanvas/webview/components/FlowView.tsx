@@ -105,6 +105,7 @@ export function FlowView({
 	const g6Ref = useRef<any>(null);
 	const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 	const [collapsedCombos, setCollapsedCombos] = useState<Record<string, boolean>>({});
+	const [renderKey, setRenderKey] = useState<number>(0);
 
 	const hasLanes = snapshot.lanes.length > 0;
 
@@ -184,6 +185,7 @@ export function FlowView({
 								depth: item.depth + 1,
 								breadcrumb: item.breadcrumb,
 								labels,
+								width: CARD_WIDTH,
 							}),
 						},
 					});
@@ -243,6 +245,7 @@ export function FlowView({
 								labels,
 								isSelected,
 								isPulsing,
+								width: CARD_WIDTH,
 							}),
 						},
 					});
@@ -292,6 +295,7 @@ export function FlowView({
 						isCollapsed: false,
 						isRoot: true,
 						labels,
+						width: CARD_WIDTH,
 					}),
 				},
 			});
@@ -332,8 +336,13 @@ export function FlowView({
 		}
 
 		if (g6Ref.current) {
-			g6Ref.current.destroy?.();
+			try {
+				g6Ref.current.destroy?.();
+			} catch {}
 			g6Ref.current = null;
+		}
+		if (containerRef.current) {
+			containerRef.current.innerHTML = "";
 		}
 
 		const bodyStyle = window.getComputedStyle(document.body);
@@ -341,9 +350,15 @@ export function FlowView({
 
 		const data = buildG6Data();
 
+		const containerW = containerRef.current.clientWidth || window.innerWidth;
+		const containerH = containerRef.current.clientHeight || (window.innerHeight - 41);
+
 		try {
 			const graph = new G6.Graph({
 				container: containerRef.current,
+				width: containerW,
+				height: containerH,
+				autoResize: true,
 				data,
 				autoFit: "view",
 				behaviors: ["drag-canvas", "zoom-canvas"],
@@ -379,14 +394,71 @@ export function FlowView({
 
 			return () => {
 				if (g6Ref.current) {
-					g6Ref.current.destroy?.();
+					try {
+						g6Ref.current.destroy?.();
+					} catch {}
 					g6Ref.current = null;
 				}
 			};
 		} catch (err) {
 			console.error("[FlowView] G6 graph initialization failed:", err);
 		}
-	}, [snapshot, collapsedCombos]);
+	}, [snapshot, collapsedCombos, renderKey]);
+
+	// 监听视口尺寸变化（副侧边栏拖拽、窗口缩放、分屏变动），自动同步画布尺寸与对齐刷新行为
+	useEffect(() => {
+		let resizeTimer: any = null;
+		let lastW = containerRef.current?.clientWidth || 0;
+		let lastH = containerRef.current?.clientHeight || 0;
+
+		const handleResize = () => {
+			const container = containerRef.current;
+			if (!container) return;
+			const w = container.clientWidth || window.innerWidth;
+			const h = container.clientHeight || (window.innerHeight - 41);
+			if (w <= 0 || h <= 0) return;
+
+			// 1. 即时调用 G6 的 resize(w, h)，让底层 Canvas 视口实时扩大，防止拖拽过程中卡片被遮挡
+			if (g6Ref.current && typeof g6Ref.current.resize === "function") {
+				try {
+					g6Ref.current.resize(w, h);
+				} catch {}
+			}
+
+			// 2. 检查是否有尺寸变动，并在用户拖动停止后（防抖 150ms）对齐点击“刷新”按钮的彻底重绘逻辑
+			if (w !== lastW || h !== lastH) {
+				lastW = w;
+				lastH = h;
+				if (resizeTimer) clearTimeout(resizeTimer);
+				resizeTimer = setTimeout(() => {
+					setRenderKey((k) => k + 1);
+				}, 150);
+			}
+		};
+
+		// 监听原生窗口 resize 事件（VS Code 面板/侧边栏宽度变动时绝对触发）
+		window.addEventListener("resize", handleResize);
+
+		// 同时挂载 ResizeObserver 作为双保险
+		let ro: ResizeObserver | null = null;
+		if (typeof ResizeObserver !== "undefined") {
+			ro = new ResizeObserver(() => {
+				handleResize();
+			});
+			if (containerRef.current) {
+				ro.observe(containerRef.current);
+			}
+			if (document.body) {
+				ro.observe(document.body);
+			}
+		}
+
+		return () => {
+			window.removeEventListener("resize", handleResize);
+			if (ro) ro.disconnect();
+			if (resizeTimer) clearTimeout(resizeTimer);
+		};
+	}, []);
 
 	// 命中脉冲定位联动
 	useEffect(() => {

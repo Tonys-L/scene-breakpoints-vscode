@@ -101,7 +101,7 @@
       {
         "type": "line",
         "file": "src/ui/commands/index.ts",
-        "line": 36,
+        "line": 40,
         "enabled": true,
         "desc": "步骤 2: registerAllCommands 表驱动集中注册所有命令与 globalState 挂载",
         "contextSnippet": {
@@ -115,7 +115,7 @@
       {
         "type": "line",
         "file": "src/extension.ts",
-        "line": 205,
+        "line": 203,
         "enabled": true,
         "desc": "步骤 3: 挂载 5 大核心事件监听器、Inlay Hints 与 CodeLens 提供者",
         "contextSnippet": {
