@@ -166,16 +166,12 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 - **AI 协同话术**：命中断点后可提示用户"右键 → 固化调用栈为场景"，零手工录入；
 - 固化产物出现在 `debug-scenes.local.json`，AI 可随后读取该场景：补全 `desc` 观察意图、或将其转正（复制到主文件）沉淀为团队资产。
 
-## 可视化架构画布与 Mermaid 导出 (v1.4.0)
+## 画布与 Mermaid 导出协同 (AI 须知)
 
-插件提供只读全景画布（命令 `Scene: Show Scene Graph`，亦可经副侧边栏图标、状态栏菜单或场景右键打开）：
-- **副侧边栏常驻仪表盘**：画布默认在 VS Code 副侧边栏（Secondary Side Bar）以 `WebviewView` 常驻呈现，形成左侧代码 + 右侧架构拓扑的无缝伴随体验，彻底杜绝调试期挤占代码编辑器 Tab；
-- **全屏分析逃生门**：标题栏提供 `[ 🔲 ]`（`Scene: Open Scene Graph in Editor Tab`）逃生门，复杂大规模拓扑可一键展开至独立全屏编辑器 Tab 深入探索；
-- **执行流 DAG 与实时脉冲**：以泳道分层和嵌套分支呈现场景时序，点击节点直达源码，调试暂停时断点脉冲闪烁并记录会话级命中轨迹；
-- **一键单场景激活**：查看未激活单场景时，顶栏直观提供“激活场景”动作，快速将断点注册入 DAP 调试器；
-- **Mermaid 导出**：用户执行 `Scene: Export Scene Graph as Mermaid` 后，当前可见范围拓扑即刻转为 `flowchart TD` 复制到剪贴板，便于附入 PR 审阅与技术文档。
+- ⚠️ **只读防幻觉铁律**：全景画布、节点脉冲与命中轨迹均为运行时只读前端呈现，AI **无需且无法**在 JSON 配置中寻找或写入任何画布与轨迹字段；
+- **Mermaid 文本联动**：若需生成 PR 拓扑或链路排查报告，可引导用户执行 `Scene: Export Scene Graph as Mermaid`，将剪贴板中的 `flowchart TD` 文本粘贴给 AI 直接解读；
+- **排查协同指引**：调试暂停时，可提示用户查看副侧边栏常驻画布中的脉冲高亮节点与执行轨迹。
 
-- ⚠️ **AI 协同铁律**：画布与轨迹均为前端只读呈现，AI **无需且无法**在 JSON 配置中寻找或写入画布与轨迹字段。
 
 ## 平台护栏：写入被拒时的兜底 (Platform Write Guard)
 
