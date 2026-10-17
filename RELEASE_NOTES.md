@@ -1,14 +1,14 @@
-## What's Changed in v1.4.0
+## What's Changed in v1.4.1
 
 ### Added
-- **Permanent Secondary Side Bar Dashboard (ViewContainer & WebviewViewProvider)**: the Scene Breakpoints graph canvas is now available directly in the Secondary Side Bar (`sceneBreakpointsGraphView`) as an always-accessible dashboard, fully preventing the canvas from crowding out the primary editor tabs.
-- **Full-screen Canvas Escape Hatch**: a dedicated title-bar button (`sceneBreakpoints.openGraphInEditor`) allows expanding the canvas into an independent full-screen editor tab whenever large-scale topology analysis is required.
-- **Interactive Scene Selector Popover**: replaced static scope chips with an elegant 100% opaque dark Popover dropdown menu supporting instant search, quick select all / clear, and clean active/inactive status badges.
-- **Instant Single-Scene Activation**: when inspecting a single inactive scene on the canvas, an "Activate Scene" action immediately activates the scene and registers its breakpoints into VS Code DAP.
+- **AI Skill Dual-Track Evolution (Reader & Writer)**:
+  - **Scene Breakpoints Reader (5-Step Protocol)**: empowers AI agents to read `.vscode/debug-scenes.json` via existence probing, scene semantic matching, inline reference recursion, and physical line jump reading before investigating codebases or diagnosing bugs.
+  - **Scene Breakpoints Writer**: standardized the breakpoint description matrix to mandate troubleshooting intentions (e.g. `desc: "Observe DB hash comparison failure branch"`) rather than meaningless file copies.
+  - **Canvas & Mermaid Collaboration Contract**: introduced read-only anti-hallucination guardrails and instructions for piping `Scene: Export Scene Graph as Mermaid` clipboard output into AI PR/architecture reviews.
 
-### Improved & Fixed
-- **Seamless Viewport Auto-Resize & Zoom Healing**: resolved an issue where dragging and widening the Secondary Side Bar left the canvas clipped at the old width until a manual refresh was clicked. Dual-channel `window.resize` and `ResizeObserver` listeners now instantly scale the G6 canvas layer without clipping or threshold dropouts.
-- **Codicon & Toolbar Alignment**: unified toolbar icons to native VS Code Codicons (`$(screen-full)`, `$(export)`, `$(type-hierarchy)`), removed duplicate export buttons, and kept card widths at a clean, compact 240px.
+### Fixed & Improved
+- **E2E & Test Suite Stability**: aligned command registry bus test contracts to 31 commands and full-screen editor WebviewPanel assertions for reliable headless Linux CI runners.
+- **Official Skill Fingerprint Registry**: updated official SHA-256 fingerprint history for seamless lifecycle inspection and upgrade prompts.
 
 ---
 
@@ -16,13 +16,13 @@
 <summary><b>🇨🇳 简体中文更新说明 (点击展开)</b></summary>
 
 ### 新增 (Added)
-- **常驻副侧边栏架构画布（ViewContainer & WebviewViewProvider）**：场景断点架构图谱全面入驻 VS Code 副侧边栏（`sceneBreakpointsGraphView`）常驻呈现，告别挤占主代码编辑区的痛点，形成左侧源码、右侧拓扑的双屏伴随视图。
-- **全屏独立编辑器逃生门**：标题栏新增全屏切换按钮（`sceneBreakpoints.openGraphInEditor`），复杂场景一键展开为独立全屏编辑器 Tab 深入探索。
-- **场景选择下拉交互 Popover**：重构场景范围选择器，由静态标签升级为 100% 暗色不透明 Popover 浮层面板，支持实时输入检索过滤、全选/清空快捷操作及激活状态指示。
-- **未激活单场景一键快速激活**：当画布处于单个未激活场景分析时，顶栏直观呈现“激活场景”按钮，一键快速将其断点注册入 VS Code DAP 调试会话。
+- **AI Skill 双轨协同演进 (读图 Reader 与制图 Writer)**：
+  - **读图五步法 (Scene Breakpoints Reader)**：指导 AI 在代码研读、排查诊断时优先按图索骥——执行前置廉价探测、场景语义匹配、内联引用递归展开与物理行号精准跳读，以最低 Token 消耗建立工程空间感。
+  - **规范制图标准 (Scene Breakpoints Writer)**：确立意图标注编写指引矩阵，强制断点描述聚焦排查动机（如“观察密码校验比对失败分支”），杜绝无意义代码复述。
+  - **画布与 Mermaid 协同契约**：明确只读防幻觉铁律（禁止在 JSON 中生造画布字段），并打通 `Scene: Export Scene Graph as Mermaid` 剪贴板文本与 AI 架构审阅链路。
 
 ### 优化与修复 (Improved & Fixed)
-- **副侧边栏自适应视口自愈与无缝缩放**：彻底根治拉宽副侧边栏时画布视口未自适应导致缩放卡片被旧视口截断遮挡的缺陷。引入原生 `window.resize` 与 `document.body`/容器双向 `ResizeObserver`，拖动瞬间实时驱动 G6 图层撑满视口，松手后对齐刷新行为无感重绘。
-- **原生 Codicon 统一与卡片精致排版**：标题栏动作按钮全量对齐原生 Codicon（`$(screen-full)`、`$(export)`、`$(type-hierarchy)`），去除重复 Mermaid 导出入口，断点卡片保持 240px 紧凑精致规范。
+- **E2E 自动化测试契约对齐**：调整全量 31 大命令总线就绪与全屏独立编辑器 WebviewPanel 契约断言，保障多平台无头 CI 环境 100% 稳定通过。
+- **官方技能指纹史表登记**：完成新版 Skill 官方 SHA-256 指纹登记，支持存量纯净版平滑升级感知。
 
 </details>

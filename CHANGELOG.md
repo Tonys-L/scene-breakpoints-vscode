@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.4.1] - 2026-10-17
+
+### Added
+- **AI Skill Dual-Track Evolution (Reader & Writer)**:
+  - **Scene Breakpoints Reader (5-Step Protocol)**: empowers AI agents to read `.vscode/debug-scenes.json` via existence probing, scene semantic matching, inline reference recursion, and physical line jump reading before investigating codebases or diagnosing bugs.
+  - **Scene Breakpoints Writer**: standardized the breakpoint description matrix to mandate troubleshooting intentions (e.g. `desc: "Observe DB hash comparison failure branch"`) rather than meaningless file copies.
+  - **Canvas & Mermaid Collaboration Contract**: introduced read-only anti-hallucination guardrails and instructions for piping `Scene: Export Scene Graph as Mermaid` clipboard output into AI PR/architecture reviews.
+
+### Fixed & Improved
+- **E2E & Test Suite Stability**: aligned command registry bus test contracts to 31 commands and full-screen editor WebviewPanel assertions for reliable headless Linux CI runners.
+- **Official Skill Fingerprint Registry**: updated official SHA-256 fingerprint history for seamless lifecycle inspection and upgrade prompts.
+
+---
+
 ## [1.4.0] - 2026-10-16
 
 ### Added
