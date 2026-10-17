@@ -1,9 +1,20 @@
 export type BreakpointType = "line" | "condition" | "hitCount" | "logpoint" | "function";
 
+export interface WatchEvaluationResult {
+	expression: string;
+	value: string;
+	type?: string;
+	expected?: any;
+	isMatched?: boolean; // 当声明了 expected 时对比结果
+	error?: string;
+}
+
 export interface BaseBreakpoint {
 	type: BreakpointType;
 	enabled?: boolean; // 是否启用断点，缺省默认为 true
 	desc?: string;
+	watch?: string[]; // 断点命中时自动求值并监视的表达式列表
+	expected?: Record<string, any>; // 表达式与期望值的比对照
 }
 
 export interface ContextSnippet {

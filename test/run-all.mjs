@@ -42,6 +42,7 @@ import { runFileLineReaderTests } from "./unit/infra/storage/file_line_reader.te
 import { runBreakpointBridgeTests } from "./unit/infra/vscode/vscode_breakpoint_bridge.test.mjs";
 import { runDapBridgeTests } from "./unit/infra/vscode/dap_echo_guard.test.mjs";
 import { runVsCodeLineReaderTests } from "./unit/infra/vscode/vscode_line_reader.test.mjs";
+import { runDapWatchEvaluatorTests } from "./unit/infra/vscode/dapWatchEvaluator.test.mjs";
 import { runConfigFileWatcherListenerTests } from "./unit/infra/vscode/listeners/config_file_watcher_listener.test.mjs";
 import { runListenersRegistryTests } from "./unit/infra/vscode/listeners/listeners_registry.test.mjs";
 
@@ -165,6 +166,8 @@ try {
 	await runDapBridgeTests();
 	console.log("");
 	await runVsCodeLineReaderTests();
+	console.log("");
+	await runDapWatchEvaluatorTests();
 	console.log("");
 	await runConfigFileWatcherListenerTests();
 	console.log("");

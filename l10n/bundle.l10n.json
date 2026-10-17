@@ -281,5 +281,10 @@
   "Collapse Minimap": "Collapse Minimap",
   "Minimap": "Minimap",
   "Minimap Navigation": "Minimap Navigation",
-  " and {0} other locations": " and {0} other locations"
+  " and {0} other locations": " and {0} other locations",
+  "Watch Anchors": "Watch Anchors",
+  "Expression": "Expression",
+  "Value": "Value",
+  "Expected": "Expected",
+  "Status": "Status"
 }

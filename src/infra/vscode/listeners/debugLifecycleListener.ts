@@ -8,7 +8,10 @@ import {
 	setCapturablePauseContext,
 	isInternalOrVirtualFramePath,
 	isSourceNavigationLocked,
+	setLatestWatchResults,
+	clearLatestWatchResults,
 } from "#src/application/debugPauseContext";
+import { evaluateBreakpointWatches } from "#src/infra/vscode/dapWatchEvaluator";
 import { getWorkspaceRoot } from "#src/infra/vscode/workspaceRoot";
 import { handleExternalScenesFileChange } from "./configFileWatcherListener";
 
@@ -89,6 +92,7 @@ function createRevealAndClearCallbacks() {
 }
 
 interface DapStackFrame {
+	id?: number;
 	line?: number;
 	source?: { path?: string };
 }
@@ -130,6 +134,37 @@ export function selectBestUserSourceFrame(
 	return userFrames[0];
 }
 
+function handleWatchEvaluationOnFrameHit(
+	session: vscode.DebugSession,
+	targetFrame: DapStackFrame,
+	wsRoot: string,
+): void {
+	const matchedBp = activeBreakpointIndex.findActiveBreakpoint(targetFrame.source!.path!, targetFrame.line!, wsRoot);
+	if (!matchedBp?.breakpoint?.watch || matchedBp.breakpoint.watch.length === 0) {
+		return;
+	}
+	const frameId = typeof targetFrame.id === "number" ? targetFrame.id : undefined;
+	const bpPath = targetFrame.source!.path!;
+	const bpLine = targetFrame.line!;
+
+	void evaluateBreakpointWatches(
+		session,
+		frameId,
+		matchedBp.breakpoint.watch,
+		matchedBp.breakpoint.expected,
+	).then((results) => {
+		const key = `${bpPath}:${bpLine}`;
+		setLatestWatchResults(key, results);
+		appEventBus.emit("debug:watch-evaluated", {
+			file: bpPath,
+			line: bpLine,
+			results,
+		});
+	}).catch(() => {
+		// 静默容灾 (INV-033)
+	});
+}
+
 function createDapTrackerFactory(
 	revealPausedBreakpoint: (file: string, line: number) => Promise<void>,
 	clearPausedBreakpoint: () => void,
@@ -141,31 +176,22 @@ function createDapTrackerFactory(
 
 			return {
 				onDidSendMessage(msg: DapMessagePayload) {
-					if (
-						msg?.type === "response" &&
-						msg.command === "stackTrace" &&
-						msg.body?.stackFrames &&
-						msg.body.stackFrames.length > 0
-					) {
-						if (hasCapturedThisPause) {
-							return;
+					if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames?.length) {
+						if (hasCapturedThisPause || sessionPausedThreadId === undefined) return;
+						const wsRoot = getWorkspaceRoot();
+						if (wsRoot && (activeBreakpointIndex.getNeedsSync() || activeBreakpointIndex.getAllIndexedBreakpoints().length === 0)) {
+							try {
+								activeBreakpointIndex.syncFromConfig(wsRoot, loadScenesConfig(wsRoot));
+							} catch {
+								// ignore
+							}
 						}
-						if (sessionPausedThreadId !== undefined) {
-							const wsRoot = getWorkspaceRoot();
-							if (wsRoot && (activeBreakpointIndex.getNeedsSync() || activeBreakpointIndex.getAllIndexedBreakpoints().length === 0)) {
-								try {
-									const cfg = loadScenesConfig(wsRoot);
-									activeBreakpointIndex.syncFromConfig(wsRoot, cfg);
-								} catch {
-									// ignore
-								}
-							}
-							const targetFrame = selectBestUserSourceFrame(msg.body.stackFrames, wsRoot);
-							if (targetFrame?.source?.path && typeof targetFrame.line === "number") {
-								hasCapturedThisPause = true;
-								isCurrentPauseCapturedByDap = true;
-								void revealPausedBreakpoint(targetFrame.source.path, targetFrame.line);
-							}
+						const targetFrame = selectBestUserSourceFrame(msg.body.stackFrames, wsRoot);
+						if (targetFrame?.source?.path && typeof targetFrame.line === "number") {
+							hasCapturedThisPause = true;
+							isCurrentPauseCapturedByDap = true;
+							void revealPausedBreakpoint(targetFrame.source.path, targetFrame.line);
+							if (wsRoot) handleWatchEvaluationOnFrameHit(session, targetFrame, wsRoot);
 						}
 					} else if (msg?.type === "event") {
 						if (msg.event === "stopped") {
@@ -173,25 +199,19 @@ function createDapTrackerFactory(
 							isCurrentPauseCapturedByDap = false;
 							if (typeof msg.body?.threadId === "number") {
 								sessionPausedThreadId = msg.body.threadId;
-								// v1.2.0：登记可捕获暂停上下文，供 captureCallStack 命令固化调用栈
 								setCapturablePauseContext({ session, threadId: msg.body.threadId });
 							}
-						} else if (msg.event === "continued") {
-							const continuedThreadId = msg.body?.threadId;
-							const allContinued = msg.body?.allThreadsContinued === true;
-							if (allContinued || (sessionPausedThreadId !== undefined && continuedThreadId === sessionPausedThreadId)) {
+						} else if (msg.event === "continued" || msg.event === "terminated") {
+							const contId = msg.body?.threadId;
+							const isAll = msg.body?.allThreadsContinued === true;
+							if (isAll || contId === undefined || contId === sessionPausedThreadId || msg.event === "terminated") {
 								sessionPausedThreadId = undefined;
 								hasCapturedThisPause = false;
 								isCurrentPauseCapturedByDap = false;
 								setCapturablePauseContext(undefined);
+								clearLatestWatchResults();
 								clearPausedBreakpoint();
 							}
-						} else if (msg.event === "terminated") {
-							sessionPausedThreadId = undefined;
-							hasCapturedThisPause = false;
-							isCurrentPauseCapturedByDap = false;
-							setCapturablePauseContext(undefined);
-							clearPausedBreakpoint();
 						}
 					}
 				},

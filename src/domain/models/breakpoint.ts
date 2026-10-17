@@ -20,6 +20,8 @@ export interface RawBreakpointInput {
 	functionName?: string;
 	desc?: string;
 	contextSnippet?: ContextSnippet;
+	watch?: string[];
+	expected?: Record<string, any>;
 }
 
 /**
@@ -38,6 +40,8 @@ export class Breakpoint implements SceneStep {
 	public logMessage?: string;
 	public functionName?: string;
 	public desc?: string;
+	public watch?: string[];
+	public expected?: Record<string, any>;
 	private fingerprint?: Fingerprint;
 
 	constructor(data: SceneBreakpoint | RawBreakpointInput) {
@@ -47,6 +51,12 @@ export class Breakpoint implements SceneStep {
 		this.desc = raw.desc;
 		this.condition = raw.condition;
 		this.hitCondition = raw.hitCondition;
+		if (Array.isArray(raw.watch)) {
+			this.watch = [...raw.watch];
+		}
+		if (raw.expected && typeof raw.expected === "object") {
+			this.expected = { ...raw.expected };
+		}
 
 		if (raw.contextSnippet) {
 			this.fingerprint = Fingerprint.fromSnippet(raw.contextSnippet);
@@ -233,6 +243,8 @@ export class Breakpoint implements SceneStep {
 			if (this.condition) res.condition = this.condition;
 			if (this.hitCondition) res.hitCondition = this.hitCondition;
 			if (this.desc) res.desc = this.desc;
+			if (this.watch && this.watch.length > 0) res.watch = [...this.watch];
+			if (this.expected && Object.keys(this.expected).length > 0) res.expected = { ...this.expected };
 			return res;
 		}
 
@@ -246,6 +258,8 @@ export class Breakpoint implements SceneStep {
 		if (this.hitCondition) res.hitCondition = this.hitCondition;
 		if (this.logMessage) res.logMessage = this.logMessage;
 		if (this.desc) res.desc = this.desc;
+		if (this.watch && this.watch.length > 0) res.watch = [...this.watch];
+		if (this.expected && Object.keys(this.expected).length > 0) res.expected = { ...this.expected };
 		if (this.fingerprint && this.fingerprint.isValid()) {
 			res.contextSnippet = this.fingerprint.toJSON();
 		}

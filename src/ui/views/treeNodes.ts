@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { sceneStateManager } from "#src/application/sceneStateManager";
+import { getLatestWatchResults } from "#src/application/debugPauseContext";
 import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
 import { isSameFsPath, isFilePathMatch } from "#src/shared/utils/pathUtils";
 
@@ -265,6 +266,12 @@ export class BreakpointNode extends vscode.TreeItem {
 			else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
 			else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
 		}
+		const hasWatches = Array.isArray(srcBp.watch) && srcBp.watch.length > 0;
+		if (hasWatches) {
+			const watchTag = `[👁️ ${srcBp.watch!.length}]`;
+			extra = extra ? `${extra}  ${watchTag}` : watchTag;
+		}
+
 		if (isUnmatched) {
 			const unmatchTag = `[${vscode.l10n.t("Unmatched")}]`;
 			extra = extra ? `${unmatchTag}  •  ${extra}` : unmatchTag;
@@ -284,6 +291,35 @@ export class BreakpointNode extends vscode.TreeItem {
 		}
 		md.appendMarkdown(`\`${srcBp.file}:${srcBp.line}\``);
 		if (srcBp.desc) md.appendMarkdown(`\n\n${srcBp.desc}`);
+
+		// v1.5.0 变量监视锚点 (Watch Anchors) 呈现
+		if (hasWatches) {
+			md.appendMarkdown(`\n\n---\n**👁️ ${vscode.l10n.t("Watch Anchors")}**\n`);
+			const watchKey = `${srcBp.file}:${srcBp.line}`;
+			const latestResults = getLatestWatchResults(watchKey);
+
+			if (latestResults && latestResults.length > 0) {
+				md.appendMarkdown(`\n| ${vscode.l10n.t("Expression")} | ${vscode.l10n.t("Value")} | ${vscode.l10n.t("Expected")} | ${vscode.l10n.t("Status")} |`);
+				md.appendMarkdown(`\n| :--- | :--- | :--- | :--- |`);
+				for (const r of latestResults) {
+					let statusText = "⚪";
+					if (r.isMatched === true) statusText = "✅";
+					else if (r.isMatched === false) statusText = "❌ Mismatch";
+					else if (r.error) statusText = "⚠️ Error";
+
+					const valDisplay = r.value ? `\`${r.value.replace(/\|/g, "\\|")}\`` : "-";
+					const expDisplay = r.expected !== undefined ? `\`${JSON.stringify(r.expected)}\`` : "-";
+					md.appendMarkdown(`\n| \`${r.expression}\` | ${valDisplay} | ${expDisplay} | ${statusText} |`);
+				}
+			} else {
+				for (const w of srcBp.watch!) {
+					const exp = srcBp.expected ? srcBp.expected[w] : undefined;
+					const expStr = exp !== undefined ? ` *(expected: \`${JSON.stringify(exp)}\`)*` : "";
+					md.appendMarkdown(`\n- \`${w}\`${expStr}`);
+				}
+			}
+		}
+
 		md.appendMarkdown(`\n\n---\n*💡 ${hintText}*`);
 		this.tooltip = md;
 	}

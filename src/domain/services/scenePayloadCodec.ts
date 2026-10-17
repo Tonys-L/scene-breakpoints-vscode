@@ -105,6 +105,16 @@ function sanitizeSceneRefItem(item: any): SceneRefItem | undefined {
 
 /** 断点条目清洗（file/line 或 functionName 合法性校验） */
 function sanitizeBreakpointEntry(item: any): SceneBreakpoint | undefined {
+	const watch = Array.isArray(item.watch)
+		? item.watch
+				.filter((w: any) => typeof w === "string" && w.trim())
+				.map((w: string) => w.trim())
+		: undefined;
+	const expected =
+		item.expected && typeof item.expected === "object" && !Array.isArray(item.expected)
+			? { ...item.expected }
+			: undefined;
+
 	if (item.type === "function") {
 		if (typeof item.functionName === "string" && item.functionName.trim()) {
 			return {
@@ -114,6 +124,8 @@ function sanitizeBreakpointEntry(item: any): SceneBreakpoint | undefined {
 				hitCondition: item.hitCondition?.trim() || undefined,
 				enabled: typeof item.enabled === "boolean" ? item.enabled : true,
 				desc: item.desc?.trim() || undefined,
+				watch: watch && watch.length > 0 ? watch : undefined,
+				expected: expected && Object.keys(expected).length > 0 ? expected : undefined,
 			};
 		}
 		return undefined;
@@ -131,6 +143,8 @@ function sanitizeBreakpointEntry(item: any): SceneBreakpoint | undefined {
 			enabled: typeof item.enabled === "boolean" ? item.enabled : true,
 			desc: item.desc?.trim() || undefined,
 			contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : undefined,
+			watch: watch && watch.length > 0 ? watch : undefined,
+			expected: expected && Object.keys(expected).length > 0 ? expected : undefined,
 		};
 	}
 	return undefined;

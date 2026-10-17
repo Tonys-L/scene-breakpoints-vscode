@@ -151,6 +151,18 @@
                   "type": "string",
                   "description": "Lexical fingerprint of the succeeding line used by the self-healing engine"
                 },
+                "watch": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "List of variable or expression strings to automatically evaluate when the breakpoint hits"
+                },
+                "expected": {
+                  "type": "object",
+                  "description": "Key-value map of expected values against evaluated watch expressions",
+                  "additionalProperties": true
+                },
                 "contextSnippet": {
                   "type": "object",
                   "description": "Contextual lexical fingerprint used by the self-healing engine to detect line drift",

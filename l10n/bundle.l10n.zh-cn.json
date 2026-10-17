@@ -281,5 +281,10 @@
   "Collapse Minimap": "收起鹰眼小地图",
   "Minimap": "鹰眼",
   "Minimap Navigation": "鹰眼导航",
-  " and {0} other locations": " 等 {0} 处"
+  " and {0} other locations": " 等 {0} 处",
+  "Watch Anchors": "变量监视锚点",
+  "Expression": "表达式",
+  "Value": "当前值",
+  "Expected": "期望值",
+  "Status": "状态"
 }

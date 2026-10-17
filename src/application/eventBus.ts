@@ -4,6 +4,7 @@
  */
 
 import type { ResolveWarning } from "#src/domain/services/sceneResolver";
+import type { WatchEvaluationResult } from "#src/domain/types";
 
 export type ApplicationEventType =
 	| "scenes:changed"
@@ -12,6 +13,7 @@ export type ApplicationEventType =
 	| "breakpoints:changed"
 	| "debug:started"
 	| "debug:paused"
+	| "debug:watch-evaluated"
 	| "debug:resumed"
 	| "debug:terminated";
 
@@ -22,6 +24,12 @@ export interface ApplicationEventPayloads {
 	"breakpoints:changed": { workspaceRoot: string; sceneName?: string };
 	"debug:started": undefined;
 	"debug:paused": { file: string; line: number };
+	"debug:watch-evaluated": {
+		file: string;
+		line: number;
+		functionName?: string;
+		results: WatchEvaluationResult[];
+	};
 	"debug:resumed": { reason?: string } | undefined;
 	"debug:terminated": undefined;
 }

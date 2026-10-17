@@ -3,6 +3,7 @@ import { getWorkspaceRoot } from "#src/ui/utils/commandRunner";
 import { sceneManager, breakpointManager, appEventBus, activeBreakpointIndex } from "#src/application";
 
 import { sceneStateManager } from "#src/application/sceneStateManager";
+import type { SourceSceneBreakpoint } from "#src/domain/types";
 import { BreakpointNode, PlaceholderNode, SceneNode, SceneRefTreeItem, treeViewState, type SceneTreeItem } from "./treeNodes";
 import { projectRefChildNodes, projectSceneStepNodes, type SceneStepNode } from "./sceneRefProjection";
 
@@ -47,6 +48,18 @@ export class SceneTreeDataProvider
 			appEventBus.on("breakpoints:changed", () => this.refresh()),
 			appEventBus.on("debug:paused", async ({ file, line }) => {
 				await this.revealPausedLocation(file, line);
+			}),
+			appEventBus.on("debug:watch-evaluated", ({ file: _file, line }) => {
+				// 监视结果到达时，就地刷新对应断点节点 Tooltip 与外观（0 闪烁）
+				for (const node of this._activeBreakpointNodes) {
+					if (node.breakpoint.type !== "function") {
+						const src = node.breakpoint as SourceSceneBreakpoint;
+						if (Number(src.line) === line) {
+							node.updateAppearance();
+							this._onDidChangeTreeData.fire(node);
+						}
+					}
+				}
 			}),
 			appEventBus.on("debug:resumed", () => {
 				this.clearPausedLocation();

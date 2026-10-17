@@ -1,3 +1,5 @@
+import type { WatchEvaluationResult } from "#src/domain/types";
+
 /**
  * 调试暂停态捕获上下文 (v1.2.0 Capture Call Stack)
  * 会话在断点命中/单步暂停期间登记活动会话与暂停线程，供调用栈固化命令查询；
@@ -57,3 +59,20 @@ export function setSourceNavigationLock(active: boolean, autoReleaseMs = 350): v
 export function isSourceNavigationLocked(): boolean {
 	return isNavigatingSourceLocked;
 }
+
+/** 断点最近一次命中求值结果缓存（以 `${file}:${line}` 或 `function:${functionName}` 为键） */
+const latestWatchResultsMap = new Map<string, WatchEvaluationResult[]>();
+
+export function setLatestWatchResults(key: string, results: WatchEvaluationResult[]): void {
+	latestWatchResultsMap.set(key, results);
+}
+
+export function getLatestWatchResults(key: string): WatchEvaluationResult[] | undefined {
+	return latestWatchResultsMap.get(key);
+}
+
+export function clearLatestWatchResults(): void {
+	latestWatchResultsMap.clear();
+}
+
+
