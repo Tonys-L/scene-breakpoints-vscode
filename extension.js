@@ -748,6 +748,8 @@ var Breakpoint = class _Breakpoint {
   logMessage;
   functionName;
   desc;
+  watch;
+  expected;
   fingerprint;
   constructor(data) {
     const raw = data;
@@ -756,6 +758,12 @@ var Breakpoint = class _Breakpoint {
     this.desc = raw.desc;
     this.condition = raw.condition;
     this.hitCondition = raw.hitCondition;
+    if (Array.isArray(raw.watch)) {
+      this.watch = [...raw.watch];
+    }
+    if (raw.expected && typeof raw.expected === "object") {
+      this.expected = { ...raw.expected };
+    }
     if (raw.contextSnippet) {
       this.fingerprint = Fingerprint.fromSnippet(raw.contextSnippet);
     }
@@ -911,6 +919,8 @@ var Breakpoint = class _Breakpoint {
       if (this.condition) res2.condition = this.condition;
       if (this.hitCondition) res2.hitCondition = this.hitCondition;
       if (this.desc) res2.desc = this.desc;
+      if (this.watch && this.watch.length > 0) res2.watch = [...this.watch];
+      if (this.expected && Object.keys(this.expected).length > 0) res2.expected = { ...this.expected };
       return res2;
     }
     const res = {
@@ -923,6 +933,8 @@ var Breakpoint = class _Breakpoint {
     if (this.hitCondition) res.hitCondition = this.hitCondition;
     if (this.logMessage) res.logMessage = this.logMessage;
     if (this.desc) res.desc = this.desc;
+    if (this.watch && this.watch.length > 0) res.watch = [...this.watch];
+    if (this.expected && Object.keys(this.expected).length > 0) res.expected = { ...this.expected };
     if (this.fingerprint && this.fingerprint.isValid()) {
       res.contextSnippet = this.fingerprint.toJSON();
     }
@@ -2645,7 +2657,7 @@ function pureSha256(ascii) {
   }
   return result;
 }
-var LATEST_SKILL_VERSION = "1.4.0";
+var LATEST_SKILL_VERSION = "1.4.1";
 var LATEST_RULE_VERSION = LATEST_SKILL_VERSION;
 var OFFICIAL_SKILL_HISTORY = {
   "f026e091703950315e7b7ca2e55a3650af729c2a9512e49bd82e5e695be5ffea": "1.0.3",
@@ -2653,7 +2665,8 @@ var OFFICIAL_SKILL_HISTORY = {
   "fa60dde5fac4cf2ca521867909765ed653e41148de1cea824758274753bc39d5": "1.1.0",
   "05a7af959099f4dd4c45e78f2384bd0117b997ce158c20d80358e706a684c902": "1.2.0",
   "8abab22b8137395c6452faea2e611b3b0f0a9ec196acbc12ef41d0f5351dadd5": "1.3.0",
-  "23a0faf4462db1707cba6b80544ef4d02f7c64c1698d5c3c3f9c22703a24b4b4": "1.4.0"
+  "ed24e457faa9290ce8669901248f353d42c927d29c196a824c5b274283bf5ff7": "1.4.1",
+  "07a2796626d9c7ed2f44c74eebe6355326a6b7c4e832f14d4677221de98200ab": "1.4.1"
 };
 var OFFICIAL_RULE_HISTORY = OFFICIAL_SKILL_HISTORY;
 var AgentRuleAsset = class _AgentRuleAsset {
@@ -3199,6 +3212,54 @@ async function runWithActiveEditor(handler) {
 // src/ui/views/treeNodes.ts
 var path4 = __toESM(require("node:path"));
 var vscode2 = __toESM(require("vscode"));
+
+// src/application/debugPauseContext.ts
+var capturablePause;
+function setCapturablePauseContext(context) {
+  capturablePause = context;
+}
+function getCapturablePauseContext() {
+  return capturablePause;
+}
+function isInternalOrVirtualFramePath(filePath) {
+  if (!filePath) return true;
+  const norm = filePath.replace(/\\/g, "/");
+  if (norm.includes("<node_internals>") || norm.startsWith("node:") || norm.includes("/internal/modules/")) {
+    return true;
+  }
+  return false;
+}
+var isNavigatingSourceLocked = false;
+var navigationLockTimer;
+function setSourceNavigationLock(active, autoReleaseMs = 350) {
+  if (navigationLockTimer) {
+    clearTimeout(navigationLockTimer);
+    navigationLockTimer = void 0;
+  }
+  isNavigatingSourceLocked = active;
+  if (active && autoReleaseMs > 0) {
+    navigationLockTimer = setTimeout(() => {
+      isNavigatingSourceLocked = false;
+      navigationLockTimer = void 0;
+    }, autoReleaseMs);
+    navigationLockTimer.unref?.();
+  }
+}
+function isSourceNavigationLocked() {
+  return isNavigatingSourceLocked;
+}
+var latestWatchResultsMap = /* @__PURE__ */ new Map();
+function setLatestWatchResults(key, results) {
+  latestWatchResultsMap.set(key, results);
+}
+function getLatestWatchResults(key) {
+  return latestWatchResultsMap.get(key);
+}
+function clearLatestWatchResults() {
+  latestWatchResultsMap.clear();
+}
+
+// src/ui/views/treeNodes.ts
 var TreeViewState = class {
   expandedScenes = /* @__PURE__ */ new Set();
   markExpanded(sceneName) {
@@ -3391,6 +3452,11 @@ ${funcBp.desc}`);
       else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
       else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
     }
+    const hasWatches = Array.isArray(srcBp.watch) && srcBp.watch.length > 0;
+    if (hasWatches) {
+      const watchTag = `[\u{1F441}\uFE0F ${srcBp.watch.length}]`;
+      extra = extra ? `${extra}  ${watchTag}` : watchTag;
+    }
     if (isUnmatched) {
       const unmatchTag = `[${vscode2.l10n.t("Unmatched")}]`;
       extra = extra ? `${unmatchTag}  \u2022  ${extra}` : unmatchTag;
@@ -3415,6 +3481,38 @@ ${funcBp.desc}`);
     if (srcBp.desc) md.appendMarkdown(`
 
 ${srcBp.desc}`);
+    if (hasWatches) {
+      md.appendMarkdown(`
+
+---
+**\u{1F441}\uFE0F ${vscode2.l10n.t("Watch Anchors")}**
+`);
+      const watchKey = `${srcBp.file}:${srcBp.line}`;
+      const latestResults = getLatestWatchResults(watchKey);
+      if (latestResults && latestResults.length > 0) {
+        md.appendMarkdown(`
+| ${vscode2.l10n.t("Expression")} | ${vscode2.l10n.t("Value")} | ${vscode2.l10n.t("Expected")} | ${vscode2.l10n.t("Status")} |`);
+        md.appendMarkdown(`
+| :--- | :--- | :--- | :--- |`);
+        for (const r of latestResults) {
+          let statusText = "\u26AA";
+          if (r.isMatched === true) statusText = "\u2705";
+          else if (r.isMatched === false) statusText = "\u274C Mismatch";
+          else if (r.error) statusText = "\u26A0\uFE0F Error";
+          const valDisplay = r.value ? `\`${r.value.replace(/\|/g, "\\|")}\`` : "-";
+          const expDisplay = r.expected !== void 0 ? `\`${JSON.stringify(r.expected)}\`` : "-";
+          md.appendMarkdown(`
+| \`${r.expression}\` | ${valDisplay} | ${expDisplay} | ${statusText} |`);
+        }
+      } else {
+        for (const w of srcBp.watch) {
+          const exp = srcBp.expected ? srcBp.expected[w] : void 0;
+          const expStr = exp !== void 0 ? ` *(expected: \`${JSON.stringify(exp)}\`)*` : "";
+          md.appendMarkdown(`
+- \`${w}\`${expStr}`);
+        }
+      }
+    }
     md.appendMarkdown(`
 
 ---
@@ -3551,6 +3649,17 @@ var SceneTreeDataProvider = class {
       appEventBus.on("breakpoints:changed", () => this.refresh()),
       appEventBus.on("debug:paused", async ({ file, line }) => {
         await this.revealPausedLocation(file, line);
+      }),
+      appEventBus.on("debug:watch-evaluated", ({ file: _file, line }) => {
+        for (const node of this._activeBreakpointNodes) {
+          if (node.breakpoint.type !== "function") {
+            const src = node.breakpoint;
+            if (Number(src.line) === line) {
+              node.updateAppearance();
+              this._onDidChangeTreeData.fire(node);
+            }
+          }
+        }
       }),
       appEventBus.on("debug:resumed", () => {
         this.clearPausedLocation();
@@ -4282,6 +4391,8 @@ function sanitizeSceneRefItem(item) {
   return out;
 }
 function sanitizeBreakpointEntry(item) {
+  const watch = Array.isArray(item.watch) ? item.watch.filter((w) => typeof w === "string" && w.trim()).map((w) => w.trim()) : void 0;
+  const expected = item.expected && typeof item.expected === "object" && !Array.isArray(item.expected) ? { ...item.expected } : void 0;
   if (item.type === "function") {
     if (typeof item.functionName === "string" && item.functionName.trim()) {
       return {
@@ -4290,7 +4401,9 @@ function sanitizeBreakpointEntry(item) {
         condition: item.condition?.trim() || void 0,
         hitCondition: item.hitCondition?.trim() || void 0,
         enabled: typeof item.enabled === "boolean" ? item.enabled : true,
-        desc: item.desc?.trim() || void 0
+        desc: item.desc?.trim() || void 0,
+        watch: watch && watch.length > 0 ? watch : void 0,
+        expected: expected && Object.keys(expected).length > 0 ? expected : void 0
       };
     }
     return void 0;
@@ -4306,7 +4419,9 @@ function sanitizeBreakpointEntry(item) {
       logMessage: item.logMessage?.trim() || void 0,
       enabled: typeof item.enabled === "boolean" ? item.enabled : true,
       desc: item.desc?.trim() || void 0,
-      contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0
+      contextSnippet: item.contextSnippet && typeof item.contextSnippet === "object" ? item.contextSnippet : void 0,
+      watch: watch && watch.length > 0 ? watch : void 0,
+      expected: expected && Object.keys(expected).length > 0 ? expected : void 0
     };
   }
   return void 0;
@@ -5302,44 +5417,6 @@ async function showMenuCommand() {
 // src/ui/commands/captureCallStackCommand.ts
 var path7 = __toESM(require("node:path"));
 var vscode15 = __toESM(require("vscode"));
-
-// src/application/debugPauseContext.ts
-var capturablePause;
-function setCapturablePauseContext(context) {
-  capturablePause = context;
-}
-function getCapturablePauseContext() {
-  return capturablePause;
-}
-function isInternalOrVirtualFramePath(filePath) {
-  if (!filePath) return true;
-  const norm = filePath.replace(/\\/g, "/");
-  if (norm.includes("<node_internals>") || norm.startsWith("node:") || norm.includes("/internal/modules/")) {
-    return true;
-  }
-  return false;
-}
-var isNavigatingSourceLocked = false;
-var navigationLockTimer;
-function setSourceNavigationLock(active, autoReleaseMs = 350) {
-  if (navigationLockTimer) {
-    clearTimeout(navigationLockTimer);
-    navigationLockTimer = void 0;
-  }
-  isNavigatingSourceLocked = active;
-  if (active && autoReleaseMs > 0) {
-    navigationLockTimer = setTimeout(() => {
-      isNavigatingSourceLocked = false;
-      navigationLockTimer = void 0;
-    }, autoReleaseMs);
-    navigationLockTimer.unref?.();
-  }
-}
-function isSourceNavigationLocked() {
-  return isNavigatingSourceLocked;
-}
-
-// src/ui/commands/captureCallStackCommand.ts
 var CAPTURE_MAX_FRAMES = 20;
 function isInsideWorkspace(absolutePath, workspaceRoot) {
   const rel = path7.relative(workspaceRoot, absolutePath);
@@ -6796,6 +6873,78 @@ var LaunchBindingResolver = class {
   static resolveScenes = resolveLaunchBoundScenes;
 };
 
+// src/infra/vscode/dapWatchEvaluator.ts
+async function evaluateBreakpointWatches(session, frameId, watches, expectedMap, options) {
+  if (!watches || watches.length === 0) {
+    return [];
+  }
+  const timeoutMs = options?.timeoutMs ?? 300;
+  const tasks = watches.map(async (expr) => {
+    const expected = expectedMap ? expectedMap[expr] : void 0;
+    let timer;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`Timeout (${timeoutMs}ms)`));
+      }, timeoutMs);
+    });
+    try {
+      const evalPromise = session.customRequest("evaluate", {
+        expression: expr,
+        frameId,
+        context: "watch"
+      });
+      const res = await Promise.race([evalPromise, timeoutPromise]);
+      clearTimeout(timer);
+      const actualValue = res.result;
+      let isMatched = void 0;
+      if (expected !== void 0) {
+        isMatched = compareActualWithExpected(actualValue, expected);
+      }
+      return {
+        expression: expr,
+        value: actualValue,
+        type: res.type,
+        expected,
+        isMatched
+      };
+    } catch (err) {
+      clearTimeout(timer);
+      const errorMsg = err?.message || String(err);
+      return {
+        expression: expr,
+        value: "<error>",
+        expected,
+        isMatched: expected !== void 0 ? false : void 0,
+        error: errorMsg
+      };
+    }
+  });
+  return Promise.all(tasks);
+}
+function compareActualWithExpected(actualStr, expected) {
+  if (expected === null && (actualStr === "null" || actualStr === "None")) {
+    return true;
+  }
+  if (expected === void 0 && (actualStr === "undefined" || actualStr === "None")) {
+    return true;
+  }
+  if (typeof expected === "boolean") {
+    return actualStr.toLowerCase() === String(expected);
+  }
+  if (typeof expected === "number") {
+    const parsed = Number(actualStr);
+    if (!isNaN(parsed)) {
+      return parsed === expected;
+    }
+  }
+  const expStr = typeof expected === "object" ? JSON.stringify(expected) : String(expected);
+  if (actualStr.startsWith('"') && actualStr.endsWith('"') && actualStr.length >= 2) {
+    const unquoted = actualStr.slice(1, -1);
+    if (unquoted === expStr) return true;
+  }
+  return actualStr === expStr;
+}
+
 // src/infra/vscode/workspaceRoot.ts
 var vscode24 = __toESM(require("vscode"));
 function getWorkspaceRoot2() {
@@ -6951,6 +7100,30 @@ function selectBestUserSourceFrame(frames, workspaceRoot) {
   }
   return userFrames[0];
 }
+function handleWatchEvaluationOnFrameHit(session, targetFrame, wsRoot) {
+  const matchedBp = activeBreakpointIndex.findActiveBreakpoint(targetFrame.source.path, targetFrame.line, wsRoot);
+  if (!matchedBp?.breakpoint?.watch || matchedBp.breakpoint.watch.length === 0) {
+    return;
+  }
+  const frameId = typeof targetFrame.id === "number" ? targetFrame.id : void 0;
+  const bpPath = targetFrame.source.path;
+  const bpLine = targetFrame.line;
+  void evaluateBreakpointWatches(
+    session,
+    frameId,
+    matchedBp.breakpoint.watch,
+    matchedBp.breakpoint.expected
+  ).then((results) => {
+    const key = `${bpPath}:${bpLine}`;
+    setLatestWatchResults(key, results);
+    appEventBus.emit("debug:watch-evaluated", {
+      file: bpPath,
+      line: bpLine,
+      results
+    });
+  }).catch(() => {
+  });
+}
 function createDapTrackerFactory(revealPausedBreakpoint, clearPausedBreakpoint) {
   return vscode27.debug.registerDebugAdapterTrackerFactory("*", {
     createDebugAdapterTracker(session) {
@@ -6958,25 +7131,21 @@ function createDapTrackerFactory(revealPausedBreakpoint, clearPausedBreakpoint) 
       let hasCapturedThisPause = false;
       return {
         onDidSendMessage(msg) {
-          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames && msg.body.stackFrames.length > 0) {
-            if (hasCapturedThisPause) {
-              return;
+          if (msg?.type === "response" && msg.command === "stackTrace" && msg.body?.stackFrames?.length) {
+            if (hasCapturedThisPause || sessionPausedThreadId === void 0) return;
+            const wsRoot = getWorkspaceRoot2();
+            if (wsRoot && (activeBreakpointIndex.getNeedsSync() || activeBreakpointIndex.getAllIndexedBreakpoints().length === 0)) {
+              try {
+                activeBreakpointIndex.syncFromConfig(wsRoot, loadScenesConfig(wsRoot));
+              } catch {
+              }
             }
-            if (sessionPausedThreadId !== void 0) {
-              const wsRoot = getWorkspaceRoot2();
-              if (wsRoot && (activeBreakpointIndex.getNeedsSync() || activeBreakpointIndex.getAllIndexedBreakpoints().length === 0)) {
-                try {
-                  const cfg = loadScenesConfig(wsRoot);
-                  activeBreakpointIndex.syncFromConfig(wsRoot, cfg);
-                } catch {
-                }
-              }
-              const targetFrame = selectBestUserSourceFrame(msg.body.stackFrames, wsRoot);
-              if (targetFrame?.source?.path && typeof targetFrame.line === "number") {
-                hasCapturedThisPause = true;
-                isCurrentPauseCapturedByDap = true;
-                void revealPausedBreakpoint(targetFrame.source.path, targetFrame.line);
-              }
+            const targetFrame = selectBestUserSourceFrame(msg.body.stackFrames, wsRoot);
+            if (targetFrame?.source?.path && typeof targetFrame.line === "number") {
+              hasCapturedThisPause = true;
+              isCurrentPauseCapturedByDap = true;
+              void revealPausedBreakpoint(targetFrame.source.path, targetFrame.line);
+              if (wsRoot) handleWatchEvaluationOnFrameHit(session, targetFrame, wsRoot);
             }
           } else if (msg?.type === "event") {
             if (msg.event === "stopped") {
@@ -6986,22 +7155,17 @@ function createDapTrackerFactory(revealPausedBreakpoint, clearPausedBreakpoint) 
                 sessionPausedThreadId = msg.body.threadId;
                 setCapturablePauseContext({ session, threadId: msg.body.threadId });
               }
-            } else if (msg.event === "continued") {
-              const continuedThreadId = msg.body?.threadId;
-              const allContinued = msg.body?.allThreadsContinued === true;
-              if (allContinued || sessionPausedThreadId !== void 0 && continuedThreadId === sessionPausedThreadId) {
+            } else if (msg.event === "continued" || msg.event === "terminated") {
+              const contId = msg.body?.threadId;
+              const isAll = msg.body?.allThreadsContinued === true;
+              if (isAll || contId === void 0 || contId === sessionPausedThreadId || msg.event === "terminated") {
                 sessionPausedThreadId = void 0;
                 hasCapturedThisPause = false;
                 isCurrentPauseCapturedByDap = false;
                 setCapturablePauseContext(void 0);
+                clearLatestWatchResults();
                 clearPausedBreakpoint();
               }
-            } else if (msg.event === "terminated") {
-              sessionPausedThreadId = void 0;
-              hasCapturedThisPause = false;
-              isCurrentPauseCapturedByDap = false;
-              setCapturablePauseContext(void 0);
-              clearPausedBreakpoint();
             }
           }
         }

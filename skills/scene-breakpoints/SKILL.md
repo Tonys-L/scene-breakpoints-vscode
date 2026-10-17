@@ -47,6 +47,17 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 | `logpoint` | `file`, `line`, `logMessage` | `{ "type": "logpoint", "logMessage": "用户登录: {user.name}" }` | 日志断点（控制台输出，不暂停） |
 | `function` | `functionName` | `{ "type": "function", "functionName": "verifyPassword" }` | 跨文件函数入口拦截断点 |
 
+### 通用可观测性增强：变量监视锚点 (Watch Anchors · v1.5.0)
+
+任何类型的断点（`line`、`condition`、`hitCount` 等）均可附带以下可选监视属性：
+
+| 可选属性 | 类型 | 语法示例 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `watch` | `string[]` | `"watch": ["user.id", "order.status"]` | 断点命中时，插件通过 DAP 自动只读求值这些变量（免手动输入 Watch 窗口） |
+| `expected` | `object` | `"expected": { "order.status": "PAID" }` | 键值对照期望值。命中时插件自动比对并高亮结果（✅ 匹配、❌ Mismatch） |
+
+- **AI 制图指引**：当排查“某个状态值为什么不对”或“期望返回值是否符合预期”时，**优先声明 `watch` 与 `expected`**。人类在断点暂停时无需手动往 Watch 面板敲变量，侧边栏与悬浮卡片中一览无余。
+
 ### 断点物理行选定铁律（避坑必读 ⚠️）
 
 > ❌ **严禁打在纯函数声明/签名行**：例如 `function foo(...) {`、`export async function bar(...) {` 或 `const baz = (...) => {`。  
@@ -259,7 +270,11 @@ AI 静态分析代码后写入 `.vscode/debug-scenes.json`（展示了场景组�
         "file": "src/payment.ts",
         "line": 88,
         "condition": "amount > 1000",
-        "desc": "步骤 3: 触发大额支付风控与二次安全审核分支"
+        "desc": "步骤 3: 触发大额支付风控与二次安全审核分支",
+        "watch": ["order.userId", "order.riskScore", "order.status"],
+        "expected": {
+          "order.status": "PENDING_REVIEW"
+        }
       },
       {
         "type": "hitCount",
