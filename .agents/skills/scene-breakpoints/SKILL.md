@@ -112,7 +112,7 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 
 ## 场景消费工作流：读图五步法 (Scene Breakpoints Reader)
 
-当用户提出**代码研读、流程梳理或 Bug 根因分析**时，AI Agent 必须优先遵循“读图四步法”，按图索骥精准定位，严禁一开始就盲目全盘扫描代码库：
+当用户提出**代码研读、流程梳理或 Bug 根因分析**时，AI Agent 必须优先遵循“读图五步法”，按图索骥精准定位，严禁一开始就盲目全盘扫描代码库：
 
 1. **【第一步：前置廉价探测 (Existence Probe)】**：
    - 检查工作区是否存在 `.vscode/debug-scenes.json`（或 `.vscode/debug-scenes.local.json`）；
@@ -166,13 +166,16 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 - **AI 协同话术**：命中断点后可提示用户"右键 → 固化调用栈为场景"，零手工录入；
 - 固化产物出现在 `debug-scenes.local.json`，AI 可随后读取该场景：补全 `desc` 观察意图、或将其转正（复制到主文件）沉淀为团队资产。
 
-## 可视化画布与 Mermaid 导出 (v1.3.0)
+## 可视化架构画布与 Mermaid 导出 (v1.4.0)
 
-插件提供只读全景画布（命令 `Scene: Show Scene Graph`，亦可经状态栏菜单或场景右键打开）：以执行流 DAG 呈现激活场景的展开态（泳道 = 场景分层、引用嵌套分组），点击节点直达源码，调试暂停时节点脉冲点亮并累积会话级命中轨迹时间线。
+插件提供只读全景画布（命令 `Scene: Show Scene Graph`，亦可经副侧边栏图标、状态栏菜单或场景右键打开）：
+- **副侧边栏常驻仪表盘**：画布默认在 VS Code 副侧边栏（Secondary Side Bar）以 `WebviewView` 常驻呈现，形成左侧代码 + 右侧架构拓扑的无缝伴随体验，彻底杜绝调试期挤占代码编辑器 Tab；
+- **全屏分析逃生门**：标题栏提供 `[ 🔲 ]`（`Scene: Open Scene Graph in Editor Tab`）逃生门，复杂大规模拓扑可一键展开至独立全屏编辑器 Tab 深入探索；
+- **执行流 DAG 与实时脉冲**：以泳道分层和嵌套分支呈现场景时序，点击节点直达源码，调试暂停时断点脉冲闪烁并记录会话级命中轨迹；
+- **一键单场景激活**：查看未激活单场景时，顶栏直观提供“激活场景”动作，快速将断点注册入 DAP 调试器；
+- **Mermaid 导出**：用户执行 `Scene: Export Scene Graph as Mermaid` 后，当前可见范围拓扑即刻转为 `flowchart TD` 复制到剪贴板，便于附入 PR 审阅与技术文档。
 
-- **AI 协同要点**：画布与轨迹均为运行时只读视图，AI **无需且无法**通过配置文件控制它（零配置项、零持久化）；
-- **Mermaid 导出**：用户执行 `Scene: Export Scene Graph as Mermaid`（命令面板/画布内按钮）后，可渲染的 `flowchart TD` 文本已复制到剪贴板——AI 可引导用户将其粘贴到 PR 描述、技术文档或让 AI 直接读取粘贴内容解读链路结构；
-- **排查协同话术**：调试暂停后可提示用户"打开 Scene Graph 查看当前命中位置与执行轨迹"；轨迹为会话级易失数据，调试终止即清空，严禁引导用户在 JSON 中寻找轨迹字段。
+- ⚠️ **AI 协同铁律**：画布与轨迹均为前端只读呈现，AI **无需且无法**在 JSON 配置中寻找或写入画布与轨迹字段。
 
 ## 平台护栏：写入被拒时的兜底 (Platform Write Guard)
 
@@ -193,14 +196,14 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 - **操作方式**：检查 `launch.json`，获取启动项配置名称（如 `"Launch Program"`），在 `debug-scenes.json` 的 `bindings` 中配置映射：
   ```json
   "bindings": {
-    "Launch Program": ["auth-login-flow"]
+    "Launch Program": ["payment-flow"]
   }
   ```
 - **核心优势**：**完全无需额外配置权限**！用户一按 F5，插件在调试器启动瞬间全自动加载对应场景断点并清理杂散断点，开箱即用。
 
 ### 途径 2：声明式即时自动激活（AI 静默打点 ⭐⭐）
 - **适用场景**：AI 刚生成完场景，希望用户一保存文件，编辑器中的代码行就能立刻看到打上的红点。
-- **操作方式**：在 `debug-scenes.json` 根级写入 `"activeScenes": ["auth-login-flow"]`。
+- **操作方式**：在 `debug-scenes.json` 根级写入 `"activeScenes": ["payment-flow"]`。
 - **前置前提**：插件设有安全防误触守卫，需确保工作区 `.vscode/settings.json` 中开启了权限：
   ```json
   {
@@ -211,57 +214,70 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 
 ### 途径 3：侧边栏视觉手动切换（通用兜底 ⭐）
 - **适用场景**：用户习惯在界面上点选，或工作区未配置自动激活权限时。
-- **引导话术**：告知用户“已为您生成场景 `auth-login-flow`，您可以在 VS Code 左侧【运行与调试】面板展开【Scene Breakpoints】，点击该场景后面的 **▶（激活）** 按钮即可生效”。
+- **引导话术**：告知用户“已为您生成场景 `payment-flow`，您可以在 VS Code 左侧【运行与调试】面板展开【Scene Breakpoints】，点击该场景后面的 **▶（激活）** 按钮即可生效”。
 
 ---
 
 ## 完整示例
 
-用户请求：“帮我排查登录时密码校验失败的问题”
+用户请求：“帮我排查支付链路中大额订单密码比对与风控失败的问题”
 
-AI 静态分析代码后写入 `.vscode/debug-scenes.json`：
+AI 静态分析代码后写入 `.vscode/debug-scenes.json`（展示了场景组合与各类断点高质量意图描述）：
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
   "bindings": {
-    "Launch App": ["login-debug"]
+    "Launch App": ["payment-flow"]
   },
-  "activeScenes": ["login-debug"],
+  "activeScenes": ["payment-flow"],
   "scenes": {
-    "login-debug": [
+    "auth-core": [
       {
         "type": "line",
         "file": "src/auth.ts",
         "line": 45,
         "enabled": true,
-        "desc": "检查 user 实体是否为 null"
-      },
-      {
-        "type": "condition",
-        "file": "src/auth.ts",
-        "line": 52,
-        "condition": "retryCount > 3",
-        "desc": "观察重试超限分支"
-      },
-      {
-        "type": "hitCount",
-        "file": "src/auth.ts",
-        "line": 58,
-        "hitCondition": ">3",
-        "desc": "仅在第 4 次及以后的重试才暂停"
-      },
-      {
-        "type": "logpoint",
-        "file": "src/token.ts",
-        "line": 88,
-        "logMessage": "Token 生成成功, payload: {payload.sub}",
-        "desc": "观测生成 Token 载荷"
+        "desc": "检查 Token 解密后 user 实体合法性，防未登录穿透"
       },
       {
         "type": "function",
         "functionName": "verifyPassword",
-        "desc": "拦截密码校验函数入口，观察明文与哈希比对过程"
+        "desc": "拦截密码校验函数入口，观察明文与数据库哈希比对结果"
+      }
+    ],
+    "payment-flow": [
+      {
+        "type": "scene",
+        "name": "auth-core",
+        "desc": "步骤 1: 支付前置身份鉴权与密码安全验证"
+      },
+      {
+        "type": "line",
+        "file": "src/payment.ts",
+        "line": 40,
+        "desc": "步骤 2: 订单入参解析与幂等性 Key 校验"
+      },
+      {
+        "type": "condition",
+        "file": "src/payment.ts",
+        "line": 88,
+        "condition": "amount > 1000",
+        "desc": "步骤 3: 触发大额支付风控与二次安全审核分支"
+      },
+      {
+        "type": "hitCount",
+        "file": "src/payment.ts",
+        "line": 120,
+        "hitCondition": ">3",
+        "desc": "步骤 4: 仅在扣款重试达到第 4 次及以上时暂停排查超时"
+      },
+      {
+        "type": "logpoint",
+        "file": "src/notify.ts",
+        "line": 32,
+        "logMessage": "支付完成，订单号: {order.id}, 状态: {order.status}",
+        "desc": "步骤 5: 控制台非侵入式打印支付成功通知日志"
       }
     ]
   }
