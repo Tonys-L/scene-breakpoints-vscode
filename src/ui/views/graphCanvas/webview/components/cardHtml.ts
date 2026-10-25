@@ -100,6 +100,11 @@ function buildMetaPills(node: GraphNode, labels?: CanvasLabels): string[] {
 		pills.push(`<span class="bp-pill" title="${escapeHtml(logTitle)}">${TYPE_ICONS.logpoint}<span>${escapeHtml(node.logMessage)}</span></span>`);
 	}
 
+	if (Array.isArray(node.watch) && node.watch.length > 0) {
+		const watchTitle = `Watch Anchors: ${node.watch.join(", ")}`;
+		pills.push(`<span class="bp-pill bp-pill-watch" title="${escapeHtml(watchTitle)}">👁️ <span>${node.watch.length}</span></span>`);
+	}
+
 	if (node.status === "unmatched") {
 		const unmatchedText = labels?.unmatchedBadge || "Unmatched";
 		const warnTitle = labels?.codeDriftWarning || "Code drift exceeds safety threshold";

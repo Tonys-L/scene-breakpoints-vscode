@@ -12,6 +12,8 @@ import {
 	checkAndPromptSkillUpdates,
 	SceneCodeLensProvider,
 	SceneInlayHintsProvider,
+	SceneHoverProvider,
+	SceneEvaluatableExpressionProvider,
 	SceneTreeDataProvider,
 	TemplateContentProvider,
 	templateContentProvider,
@@ -25,6 +27,7 @@ import {
 	registerDebugLaunchService,
 	registerDebugPauseService,
 	registerSessionLifecycleService,
+	registerDebugTracePersistenceService,
 	getWorkspaceRoot,
 	jsonFileSceneRepository,
 	seedEchoLoopBaselineFromDisk,
@@ -222,6 +225,8 @@ export function activate(context: vscode.ExtensionContext) {
 		registerDebugPauseService(),
 		// 调试会话终止生命周期与拓扑补发服务
 		registerSessionLifecycleService(),
+		// 调试运行时轨迹与 Watch 断言结果自动落盘服务 (.vscode/debug-trace.local.json)
+		registerDebugTracePersistenceService(),
 		// AI Agent Chat Skill 动态注入服务
 		registerChatSkillService(context),
 		// 场景一键激活 CodeLens 透镜按钮（v1.2.0：覆盖 team 主文件与 local 私有文件）
@@ -235,6 +240,16 @@ export function activate(context: vscode.ExtensionContext) {
 			inlayHintsProvider,
 		),
 		inlayHintsProvider,
+		// 编辑器场景断点全行悬停提供者 (Hover Provider，阻断原生 undefined 抢焦)
+		vscode.languages.registerHoverProvider(
+			[{ scheme: "file" }],
+			new SceneHoverProvider(),
+		),
+		// 调试暂停态悬停求值表达式提供者 (阻断行首空白/关键字/未执行左值触发原生 undefined 浮窗)
+		vscode.languages.registerEvaluatableExpressionProvider(
+			[{ scheme: "file" }],
+			new SceneEvaluatableExpressionProvider(),
+		),
 		// Skill 官方模版虚拟文档比对提供者
 		vscode.workspace.registerTextDocumentContentProvider(
 			TemplateContentProvider.scheme,

@@ -13,9 +13,11 @@ import {
 	PlaceholderNode,
 } from "#src/ui/views/sceneTreeProvider.ts";
 import { sceneStateManager } from "#src/application/sceneStateManager.ts";
+import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex.ts";
 import { configureDependencies } from "#src/application/dependencies.ts";
 import { saveScenesConfig, loadScenesConfig, jsonFileSceneRepository } from "#src/infra/storage/jsonFileSceneRepository.ts";
 import { findBreakpointLineInJson } from "#src/ui/locators/sceneJsonLocator.ts";
+import { setLatestWatchResults, clearLatestWatchResults } from "#src/application/debugPauseContext.ts";
 
 export async function runTreeViewTests() {
 	console.log("  ▶ [TreeView] 运行调试面板树视图与节点领域模型测试套件（直连生产源码）...");
@@ -503,6 +505,43 @@ export async function runTreeViewTests() {
 		provider.clearPausedLocation();
 		assert.strictEqual(provider.getPausedLocation(), null);
 
+		// C. 并发 revealPausedLocation 异步展开竞态防护（旧调用恢复时绝不可将选中节点拉回旧位置）
+		saveScenesConfig(tmpWs, {
+			scenes: {
+				"active-flow": [
+					{ type: "line", file: "src/cli.ts", line: 27, enabled: true },
+					{ type: "line", file: "src/main.ts", line: 997, enabled: true },
+				],
+			},
+			activeScenes: ["active-flow"],
+		});
+		activeBreakpointIndex.clear();
+		sceneStateManager.setActiveScenes(["active-flow"], 2);
+
+		const providerRace = new SceneTreeDataProvider("/mock/ext");
+		const selectedNodes = [];
+		let slowExpandResolve = null;
+		const slowMockTreeView = {
+			reveal: async (target, opts) => {
+				if (opts?.expand && !slowExpandResolve) {
+					await new Promise((r) => {
+						slowExpandResolve = r;
+					});
+				}
+				if (opts?.select) {
+					selectedNodes.push(target);
+				}
+			},
+		};
+
+		const p1 = providerRace.revealPausedLocation(slowMockTreeView, path.join(tmpWs, "src/cli.ts"), 27);
+		const p2 = providerRace.revealPausedLocation(slowMockTreeView, path.join(tmpWs, "src/main.ts"), 997);
+		if (slowExpandResolve) slowExpandResolve();
+		await Promise.all([p1, p2]);
+
+		assert.strictEqual(selectedNodes.length, 1, "过期异步展开必须被 _revealSeq 拦截，仅最新断点可执行选中");
+		assert.strictEqual(selectedNodes[0].breakpoint.line, 997, "最终选中的节点必须是最新暂停的 main.ts:997，绝不可跳回 cli.ts:27");
+
 		fs.rmSync(tmpWs, { recursive: true, force: true });
 		console.log("    ✔ revealPausedLocation 自动展开定位与高亮复位测试通过");
 	}
@@ -676,9 +715,60 @@ export async function runTreeViewTests() {
 		console.log("    ✔ 批次4引用交互（单击展开语义/拖拽排除/缓存过滤防护）测试通过");
 	}
 
+	// ============================================================================
+	// Case 16: 变量监视锚点 (Watch Anchors) 前置标签与 Tooltip 求值表格渲染 (直连 BreakpointNode)
+	// ============================================================================
+	{
+		clearLatestWatchResults();
+		const wsRoot = "d:/test-workspace";
+		const bpWithLongDesc = {
+			type: "line",
+			file: "packages/agent/src/agent-loop.ts",
+			line: 164,
+			desc: "这是一个非常长非常长的中文业务描述，在狭窄的树视图侧边栏会被宿主截断并加上省略号",
+			watch: ["currentContext.messages.length", "config.model.id"],
+			expected: {
+				"currentContext.messages.length": 5,
+				"config.model.id": "claude-3-5",
+			},
+		};
+
+		// 未暂停态节点：watchTag [👁️ 2] 必须位于 description 前部，绝不在末尾被截断
+		const nodeNormal = new BreakpointNode("test-scene", 0, bpWithLongDesc, wsRoot, "/mock/ext");
+		assert.ok(
+			nodeNormal.description.startsWith("[👁️ 2]"),
+			`未暂停时 description 必须以 [👁️ 2] 前置开头，当前为: ${nodeNormal.description}`,
+		);
+
+		// 模拟断点命中并由 DAP 存入求值结果（DAP 存入绝对物理路径带盘符反斜杠）
+		const absPath = "D:\\test-workspace\\packages\\agent\\src\\agent-loop.ts";
+		setLatestWatchResults(absPath, 164, [
+			{ expression: "currentContext.messages.length", value: "5", expected: 5, isMatched: true },
+			{ expression: "config.model.id", value: '"gpt-4o"', expected: "claude-3-5", isMatched: false },
+		]);
+
+		// 暂停态节点：▶ [PAUSED] 在前，[👁️ 2] 紧随其后
+		nodeNormal.setPausedLocation({ file: absPath, line: 164 });
+		assert.ok(
+			nodeNormal.description.includes("▶ [PAUSED]  •  [👁️ 2]"),
+			`暂停态 description 必须保持 ▶ [PAUSED] 与 [👁️ 2] 前置，当前为: ${nodeNormal.description}`,
+		);
+
+		// Tooltip 必须成功命中缓存并渲染求值结果 Markdown 表格
+		const tooltipStr = nodeNormal.tooltip.value;
+		assert.ok(tooltipStr.includes("👁️ Watch Anchors"), "Tooltip 必须包含 Watch Anchors 标题");
+		assert.ok(tooltipStr.includes("| Expression | Value | Expected | Status |"), "Tooltip 必须渲染 Markdown 表格头部");
+		assert.ok(tooltipStr.includes("`currentContext.messages.length` | `5` | `5` | ✅"), "必须展示匹配成功的状态 ✅");
+		assert.ok(tooltipStr.includes("`config.model.id` | `\"gpt-4o\"` | `\"claude-3-5\"` | ❌ Mismatch"), "必须展示不匹配的状态 ❌ Mismatch");
+
+		clearLatestWatchResults();
+		console.log("    ✔ 变量监视锚点前置标签与 Tooltip 求值表格渲染测试通过");
+	}
+
 	console.log("  ✅ [TreeView] 调试侧边栏树视图与节点领域模型测试套件（直连生产源码）全部通过！");
 }
 
 if (process.argv[1]?.endsWith("scene_tree_provider.test.mjs")) {
 	runTreeViewTests();
 }
+

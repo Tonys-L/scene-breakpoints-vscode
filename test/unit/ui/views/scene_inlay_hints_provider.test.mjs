@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { SceneInlayHintsProvider } from "#src/ui/views/sceneInlayHintsProvider";
 import { sceneStateManager } from "#src/application/sceneStateManager";
 import { appEventBus } from "#src/application/eventBus";
+import { setLatestWatchResults, clearLatestWatchResults } from "#src/application/debugPauseContext";
 import { __resetMockVscodeState } from "#test/mocks/vscode.mock.mjs";
 
 export async function runInlayHintsProviderTests() {
@@ -365,5 +366,92 @@ export async function runInlayHintsProviderTests() {
 		provider.dispose();
 	}
 
+	// 14. 变量监视锚点 (Watch Anchors) 在 InlayHints 行末标签与悬停 Tooltip 呈现
+	{
+		clearLatestWatchResults();
+		const watchConfig = {
+			scenes: {
+				"watch-scene": [
+					{
+						type: "line",
+						file: "src/watch.ts",
+						line: 15,
+						desc: "检查处理状态",
+						watch: ["status", "count"],
+						expected: {
+							status: "APPROVED",
+							count: 5,
+						},
+					},
+				],
+			},
+		};
+
+		const provider = new SceneInlayHintsProvider(
+			() => watchConfig,
+			() => mockWorkspaceRoot,
+			() => true,
+		);
+		sceneStateManager.setActiveScenes(["watch-scene"], 1);
+
+		const doc = createMockDoc("src/watch.ts", [
+			"// line 1",
+			"// line 2",
+			"// line 3",
+			"// line 4",
+			"// line 5",
+			"// line 6",
+			"// line 7",
+			"// line 8",
+			"// line 9",
+			"// line 10",
+			"// line 11",
+			"// line 12",
+			"// line 13",
+			"// line 14",
+			"const state = doSomething();", // line 15
+		]);
+
+		// 未求值时：提示末尾附带 [👁️ 2]
+		const initialHints = provider.provideInlayHints(doc);
+		assert.strictEqual(initialHints.length, 1);
+		assert.ok(initialHints[0].label.includes("[👁️ 2]"), `未求值时应包含待监视计数，当前为: ${initialHints[0].label}`);
+
+		// 存入求值结果
+		setLatestWatchResults("d:/test-project/src/watch.ts", 15, [
+			{ expression: "status", value: '"REJECTED"', expected: "APPROVED", isMatched: false },
+			{ expression: "count", value: "5", expected: 5, isMatched: true },
+			{ expression: "errVar", value: "<error>", error: "ReferenceError: errVar is not defined" },
+		]);
+
+		// 求值后：行末标签直接呈现变量结果与状态图标
+		const evaluatedHints = provider.provideInlayHints(doc);
+		assert.strictEqual(evaluatedHints.length, 1);
+		assert.ok(
+			evaluatedHints[0].label.includes('status="REJECTED" ❌') && evaluatedHints[0].label.includes("count=5 ✅"),
+			`求值后标签应包含变量状态摘要，当前为: ${evaluatedHints[0].label}`,
+		);
+		assert.ok(
+			evaluatedHints[0].label.includes("errVar=<error: ReferenceError: errVar is not defined> ⚠️"),
+			`报错项应在标签中显示具体首行错误，当前为: ${evaluatedHints[0].label}`,
+		);
+
+		// Tooltip 包含完整 Markdown 表格
+		const tooltip = evaluatedHints[0].tooltip.value;
+		assert.ok(tooltip.includes("👁️ Watch Anchors"), "InlayHint Tooltip 必须包含 Watch Anchors");
+		assert.ok(tooltip.includes("| Expression | Value | Expected | Status |"), "Tooltip 必须包含求值表格");
+		assert.ok(tooltip.includes("`status` | `\"REJECTED\"` | `\"APPROVED\"` | ❌ Mismatch"), "Tooltip 必须包含不匹配项");
+		assert.ok(tooltip.includes("`count` | `5` | `5` | ✅"), "Tooltip 必须包含匹配项");
+		assert.ok(tooltip.includes("`errVar` | `<error: ReferenceError: errVar is not defined>` | - | ⚠️ Error"), "Tooltip 必须包含具体错误");
+
+		clearLatestWatchResults();
+		provider.dispose();
+	}
+
 	console.log("  ✅ [Inlay Hints Provider] SceneInlayHintsProvider 单元测试全部通过！");
 }
+
+if (process.argv[1]?.endsWith("scene_inlay_hints_provider.test.mjs")) {
+	runInlayHintsProviderTests();
+}
+

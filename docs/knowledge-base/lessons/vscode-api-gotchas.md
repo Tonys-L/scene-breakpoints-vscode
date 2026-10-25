@@ -573,3 +573,121 @@
 **影响文件**: `package.json`, `src/ui/views/graphCanvas/GraphCanvasController.ts`, `src/ui/commands/graphCommands.ts`, `src/ui/commands/index.ts`, `src/extension.ts`
 **日期**: 2026-10-16
 
+### 1.40 树视图关键标记前置布局与 DAP 绝对物理路径 vs 相对路径归一化匹配 (TreeItem Front-loading and Path-Tolerant Watch Cache Matching)
+
+**问题**:
+1. **关键标记末尾截断陷阱**：断点配置了变量监视锚点（`[👁️ n]`），原先将标记拼接在用户描述文字末尾。在 VS Code 狭窄的侧边栏中，一旦用户描述较长，宿主会在末尾直接打出省略号（`...`）并紧邻内联操作按钮，导致关键的眼睛监视图标被完全遮挡截断；
+2. **调试命中求值缓存脱靶**：运行时断点暂停时，DAP 栈帧（`stackFrame.source.path`）返回的是带盘符的大写/小写绝对物理路径（如 `D:\project\...`），而场景配置中记录的是相对路径（如 `packages/agent/...`）。树视图与 InlayHints 用相对路径直接作为 Map 字符串键去取求值结果，产生脱靶（返回 `undefined`），导致树视图 Tooltip 降级显示未求值的静态列表，未能弹出求值结果表格。
+
+**原因**:
+1. VS Code 树视图原生 `TreeItem.description` 在可用空间不足时，采用 CSS `text-overflow: ellipsis` 强制截断右侧文本；
+2. 跨平台（Windows 反斜杠 vs POSIX 正斜杠、盘符大小写）及工作区相对/绝对路径形态不同，直接通过字符串全等匹配必然失效。
+
+**解决方案**:
+1. **语义标记绝对前置协议 (Front-Loaded Semantic Badges)**：
+   在 `treeNodes.ts` 中组装 `description` 时，将状态标签（`▶ [PAUSED]`、`[Unmatched]`、`[👁️ n]`）统一部署在前排最左侧，用户自定义长文本描述退居后排。当容器宽度受限时，优先牺牲长文本末尾（省略号），确保核心状态与监视标记 100% 显眼可见；
+2. **智能路径归一化匹配缓存 (Path-Tolerant Cache Matching)**：
+   在 `debugPauseContext.ts` 中引入多态存储与查询机制，查询时通过 `pathUtils.isFilePathMatch(cachedPath, queryPath, workspaceRoot)` 进行跨平台（大小写、反斜杠、绝对/相对、Monorepo 跨子目录）模糊归一化匹配，彻底解决 DAP 绝对路径与配置相对路径的错位脱靶；
+3. **编辑器行末（Inlay Hints）同步呈现**：
+   在 `SceneInlayHintsProvider` 监听 `debug:watch-evaluated` 事件，在代码断点行末即时打出 `| 👁️ count=5 ✅, status="REJECTED" ❌`，并在编辑器悬停 Tooltip 呈现完整 Markdown 评估表格，无需将视线切回侧边栏即可获取追踪结果。
+
+**影响文件**: `src/application/debugPauseContext.ts`, `src/ui/views/treeNodes.ts`, `src/ui/views/sceneInlayHintsProvider.ts`
+**日期**: 2026-10-17
+
+### 1.41 原生调试悬停抢焦与全行 HoverProvider 兜底治理 (Native Debug Hover Preemption and Whole-Line HoverProvider Guard)
+
+**问题**:
+1. **行首/行内悬停原生 `undefined` 抢焦**：调试模式下，VS Code 宿主内置了调试悬停特性（Debug Hover），当鼠标悬停在断点行首或未初始化的变量/语法 token 上时，VS Code 会自动对其求值并在浮窗中显示原生 `undefined`，覆盖或干扰了插件 Inlay Hint 提示卡片，导致用户感觉“只有光标在当前行、小心翼翼去行末瞄准 InlayHint 时才显示，稍一偏离就显示 undefined”；
+2. **DAP 变量监视错误黑盒**：求值发生错误（如 `ReferenceError: text is not defined`）时，表格与行末只粗暴显示 `<error>`，隐藏了具体报错原因；
+3. **单步调试（Step Over）栈帧漏捕获**：原先采用一次性布尔值 `hasCapturedThisPause`，单步调试进入下一行断点时，因处于同一暂停生命周期被提前忽略，导致第 296 行未能触发监视求值。
+
+**原因**:
+1. Inlay Hint 只作为行末虚拟文本存在，命中热区极其狭小；
+2. 调试器暂停状态在连续单步时不会频繁收发 `continued`，单纯布尔标志位无法感知行号已变更。
+
+**解决方案**:
+1. **编辑器全行原生 HoverProvider 覆盖**：
+   实现 `SceneHoverProvider` 并向宿主注册全量文件方案（`{ scheme: "file" }`）。只要当前物理行命中了已激活场景断点，将 Hover 的 `range` 显式声明为整行范围（`0` 到 `lineLength`）。无论鼠标悬停在行首、行中还是变量上，**宿主均优先弹出场景断点富文本卡片**，彻底消灭原生 `undefined` 抢焦困扰；
+2. **错误明细透视 (Transparent Error Reporting)**：
+   提取报错的第一行错误信息（如 `<error: ReferenceError: xxx is not defined>`）透传展示到 Tooltip 表格与行末 Inlay Hint 摘要中，一眼看清报错原因；
+3. **连续单步动态位置键 (Location Key Tracking)**：
+   采用 `lastCapturedLocation = "${file}:${line}"` 替代布尔标志，单步调试跳转到新行断点时即刻触发变量求值；并在用户光标选中断点行时增加缺失求值自动补测。
+
+**影响文件**: `src/ui/views/sceneHoverProvider.ts`, `src/ui/views/breakpointTooltipFormatter.ts`, `src/ui/views/sceneInlayHintsProvider.ts`, `src/ui/views/treeNodes.ts`, `src/infra/vscode/listeners/debugLifecycleListener.ts`
+**日期**: 2026-10-18
+### 1.42 DAP 分页调用栈 (Pagination) Caller 帧回弹与防抖单测假绿陷阱 (DAP StackTrace Pagination Caller Rebound and Anti-False-Positive Test Guard)
+
+**问题**: 用户命中断点暂停时，界面原本正确跳到了目标断点行（如 `main.ts:997`），但瞬间又倒挂跳回了外层调用者断点（如 `cli.ts:27`），断点高亮与定位严重漂移。
+**原因**:
+1. **DAP 调用栈分页加载导致二次覆盖**：VS Code 在断点命中时，会分批发起 `stackTrace` 请求。第 1 次获取栈顶帧（`main.ts:997`），第 2 次分页请求外层调用栈（`cli.ts:27`，`startFrame: 1`）。若调试监听器移除了单次暂停锁 `hasCapturedThisPause`，第 2 次响应携带外层 Caller 帧再次进入选择器，直接抹杀了真正的栈顶；
+2. **堆栈选择器违背第一性原理**：原 `selectBestUserSourceFrame` 在堆栈中向下循环搜寻“属于当前激活场景的断点”。当栈顶为普通代码或其它场景断点、而外层 Caller 恰好在激活场景中时，算法错误越级将 Caller 选为暂停点，造成断点倒挂；
+3. **单测数据同质化产生“假绿”**：原有防抖单测在模拟重复 `stackTrace` 时，前后两次输入的帧数据完全相同（都是 `cli.ts:20`）。因此即便删除了单次暂停锁、改用位置对比，单测依然全部通过，未能暴露异帧 Caller 分页回弹的真实缺陷。
+
+**解决方案**:
+1. **栈顶物理帧作为唯一准绳 (SSOT Topmost Only)**：
+   `selectBestUserSourceFrame` 严格以过滤内部虚拟模块后的首个用户物理帧 `userFrames[0]` 作为当前暂停位置，物理禁止向下遍历 Caller 帧，杜绝断点倒挂；
+2. **恢复单次暂停原子锁 (`hasCapturedThisPause`)**：
+   在单次 `stopped` 周期内只允许首次有效栈顶派发，物理阻断后续分页 stackTrace 请求对栈顶的篡改；
+3. **测试防假绿对抗性断言**：
+   单元测试在第 2 次 `stackTrace` 中刻意注入不同的 Caller 帧数据，并针对 Callee/Caller 嵌套调用栈进行反倒挂硬断言，确保即使面对真实 VS Code 分页与复杂多层调用栈也坚如磐石。
+
+**影响文件**: `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/ui/views/sceneTreeProvider.ts`, `test/unit/infra/vscode/listeners/listeners_registry.test.mjs`
+**日期**: 2026-10-18
+
+### 1.43 Node.js 多会话 (Parent-Child Session) 并发冲刷与全局活跃会话主权锁实践 (Multi-Session Launcher Race and Active Pause Authority Guard)
+
+**问题**: 用户使用 `node --import tsx packages/coding-agent/src/cli.ts -p 你好` 调试代码时，断点命中在 `main.ts:997`，但侧边栏树视图依然错位停在 `cli.ts:27 [PAUSED]`；即使单测强化了单会话防 Caller 倒挂，现场依然发生“先跳到正确位置又跳回 `cli.ts:27`”。
+
+**原因**:
+1. **多调试会话并发到达 (Parent-Child Multi-Session Race)**：
+   在 VS Code 中调试 Node 脚本时，通常存在父会话（启动包装进程，停在 `cli.ts:27` 等待子任务）与子会话（实际执行子进程，停在 `main.ts:997`）。
+   `createDebugAdapterTracker` 针对所有会话分别创建 Tracker，子会话命中栈顶 `main.ts:997` 后，父会话的 `stackTrace` 紧随其后到达（只含入口 `cli.ts:27`），由于缺乏全局会话主权约束，父会话发出的事件在 50ms 内覆写了子会话的断点位置；
+2. **旁路监听器伪触发**：
+   `createEditorCheckListener` 与 `stackItemListener` 在编辑器切换或调用栈帧变更时被触发，在没有权威暂停锁定的情况下误发伪 `debug:paused` 广播；
+3. **File URI 前缀未清洗**：
+   在某些 Node.js ESM 调试器下，返回路径带有 `file:///` 前缀，导致路径规范化算法误判为跨盘符不匹配。
+
+**解决方案**:
+1. **全局活跃会话主权锁 (Active Pause Authority Guard)**：
+   在应用层 `debugPauseContext.ts` 引入 `ActivePauseAuthority`，记录当前处于真正断点暂停态的 `sessionId` 与 `threadId`；其余会话（如父包装会话、Worker 线程）发来的 `stackTrace` 一律被阻断，严禁覆写；
+2. **旁路监听器防御式降级**：
+   在已有 DAP 权威暂停或主权锁定时，完全屏蔽 `checkEditor` 与 `stackItemListener` 的伪触发；
+3. **路径标准化剥离 `file://` / `file:///` 协议头**：
+   `pathUtils.normalizeFsPath` 自动清洗 URI 前缀，确保 100% 精准匹配。
+
+**影响文件**: `src/application/debugPauseContext.ts`, `src/infra/vscode/listeners/debugLifecycleListener.ts`, `src/shared/utils/pathUtils.ts`, `test/unit/infra/vscode/listeners/listeners_registry.test.mjs`, `test/unit/shared/utils/path_utils.test.mjs`
+**日期**: 2026-10-18
+
+### 1.44 调试暂停态下 `DebugHoverWidget` 抢占 `HoverProvider` 与行首 `undefined` 根因治理 (DebugHoverWidget Preemption and EvaluatableExpressionProvider Fallback)
+
+**问题**: 在调试暂停态（`Stopped`）下，即便已经注册了覆盖整行的 `SceneHoverProvider`，当鼠标移入断点行行首（如缩进空白、`let`/`const` 关键字或本行尚未执行的声明左值变量）时，行首第 1 列（Column 1）上方依然会抢先弹出一个原生的 `undefined` 调试小浮窗，并死死屏蔽掉 `SceneHoverProvider` 的场景断点卡片。
+
+**原因**:
+1. **VS Code 调试悬停优先级高于普通 `HoverProvider`**：
+   在 `DebugEditorContribution.showHover` 中，只要当前处于调试暂停态，宿主会首先调用 `this.preventDefaultEditorHover()` 锁死普通 `HoverProvider`，随后调用 `hoverWidget.showAt`；仅当 `showAt` 返回 `1`（`NOT_AVAILABLE`）时，才会回退调用 `this.showEditorHover` 展示 `SceneHoverProvider`；
+2. **无 `EvaluatableExpressionProvider` 时宿主的 `{ start: 0, end: 0 }` 钳位漏洞**：
+   在 VS Code 内核 `getEvaluatableExpressionAtPosition`（`WEa`）中，当 `evaluatableExpressionProvider.has(model)` 为 `false`（TS/JS 默认未注册提供者）时，进入 `else` 分支调用词法提取器 `Jeh`。当鼠标停在行首缩进空白、`=`、`;` 等位置时，`Jeh` 返回 `{ start: 0, end: 0 }`，而 `new Range(lineNumber, 0, lineNumber, 0)` 会将列号钳位为 `Column 1`，返回非空 `{ matchingExpression: "", range: (line, 1, line, 1) }`！随后 `js-debug` 在第 1 列对 `let` 声明语句或空表达式求值返回 `undefined`，导致 `DebugHoverWidget` 在行首第 1 列弹出 `undefined` 并阻止 `SceneHoverProvider` 回退。
+
+**解决方案**:
+1. **注册 `SceneEvaluatableExpressionProvider` 接管求值提取闭环**：
+   向 `vscode.languages.registerEvaluatableExpressionProvider([{ scheme: "file" }], ...)` 注册提供者，使 `evaluatableExpressionProvider.has(model)` 为 `true`，彻底绕开宿主 `else` 分支的 `{ start: 0, end: 0 }` 钳位缺陷；
+2. **行首空白、关键字、未执行左值与已监视变量返回 `undefined` 触发原生回退**：
+   当鼠标位于行首空白、语言关键字（`let`/`const`/`async`/`await`/`return` 等）、注释、赋值等号 `=` 左侧的声明左值/TS 类型注解，或断点行上的函数调用名/已纳入 `watch` 表格的变量时，`provideEvaluatableExpression` 严格返回 `undefined`。此时宿主 `WEa` 返回 `null` → `showAt` 返回 `1` (`NOT_AVAILABLE`) → 自动无缝触发 `showEditorHover` 弹出 `SceneHoverProvider` 场景断点卡片与 Watch 追踪表格。
+
+**影响文件**: `src/ui/views/sceneHoverProvider.ts`, `src/extension.ts`, `test/unit/ui/views/scene_hover_provider.test.mjs`
+**日期**: 2026-10-25
+
+### 1.45 树视图 `revealPausedLocation` 异步展开序列号守卫与宿主已安装扩展目录同步 (Async Reveal Sequence Guard and Installed Extension Sync)
+
+**问题**:
+1. 当多次 `revealPausedLocation` 并发触发且涉及未展开场景节点的 `await treeView.reveal(parentNode, { expand: true })` 时，早期慢速异步展开恢复后可能执行 `treeView.reveal(oldPausedNode, { select: true })`，将树视图选中高亮拉回旧断点；
+2. 在本地直接用宿主 IDE 主窗口（而非 F5 Extension Development Host）验证时，宿主加载的是用户目录下的已安装扩展包（如 `~/.antigravity-ide/extensions/tony-l.scene-breakpoints-vscode-x.y.z/extension.js`），若仅构建源码仓产物而未同步覆盖至已安装扩展目录，修改在宿主中不会生效。
+
+**解决方案**:
+1. **异步定位序列号守卫 (`_revealSeq`)**：
+   在 `SceneTreeDataProvider` 中维护递增序列号 `_revealSeq`，每次 `revealPausedLocation` 或 `clearPausedLocation` 时递增；在每个 `await` 恢复点校验 `seq === this._revealSeq`，一旦过期立即中止，物理杜绝异步展开竞态导致的高亮跳回；
+2. **宿主已安装扩展目录同步核验**：
+   本地构建验证时，除编译源码仓 `extension.js` 外，需检查并同步更新宿主实际加载的扩展目录产物，提醒重载窗口（`Developer: Reload Window`）以确保新代码真正生效。
+
+**影响文件**: `src/ui/views/sceneTreeProvider.ts`, `test/unit/ui/views/scene_tree_provider.test.mjs`
+**日期**: 2026-10-25

@@ -34,6 +34,7 @@
   "config.allowAiFileActivation": "Allow AI Agent to declaratively activate and switch scenes by modifying activeScenes in debug-scenes.json",
   "config.autoInstallSkill": "Prompt to install AI Skill when an AI Agent workspace is detected",
   "config.inlayHintsEnabled": "Show subtle scene breakpoint annotations and ghost text at the end of editor lines",
+  "config.autoContinueMode": "Automatically continue execution after evaluating scene breakpoint watches (onPass: auto-continue when assertions pass and stop on mismatch/error; always: always auto-continue; off: stay paused)",
   "view.sceneBreakpoints": "Scene Breakpoints",
   "command.toggleSceneRef": "Toggle Scene Reference",
   "command.openGraphInEditor": "Open Scene Graph in Editor Tab",

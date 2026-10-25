@@ -33,6 +33,7 @@ import { runAgentSkillServiceTests } from "./unit/application/agent_skill_servic
 import { runAgentSyncServiceTests } from "./unit/application/agent_sync_service.test.mjs";
 import { runSceneGraphProjectionTests } from "./unit/application/scene_graph_projection.test.mjs";
 import { runDebugTraceBufferTests } from "./unit/application/debug_trace_buffer.test.mjs";
+import { runDebugPauseContextTests } from "./unit/application/debug_pause_context.test.mjs";
 
 // Infra Layer Unit Tests (storage, bridge & listeners)
 import { runEchoLoopGuardTests } from "./unit/infra/storage/echo_loop_guard.test.mjs";
@@ -50,6 +51,7 @@ import { runListenersRegistryTests } from "./unit/infra/vscode/listeners/listene
 import { runSceneJsonLocatorTests } from "./unit/ui/locators/scene_json_locator.test.mjs";
 import { runCodeLensProviderTests } from "./unit/ui/views/scene_code_lens_provider.test.mjs";
 import { runInlayHintsProviderTests } from "./unit/ui/views/scene_inlay_hints_provider.test.mjs";
+import { runSceneHoverProviderTests } from "./unit/ui/views/scene_hover_provider.test.mjs";
 import { runInlayHintsCoordinatorTests } from "./unit/ui/views/inlay_hints_coordinator.test.mjs";
 import { runStatusBarViewTests } from "./unit/ui/views/status_bar_view.test.mjs";
 import { runTreeViewTests } from "./unit/ui/views/scene_tree_provider.test.mjs";
@@ -151,6 +153,8 @@ try {
 	console.log("");
 	await runDebugTraceBufferTests();
 	console.log("");
+	await runDebugPauseContextTests();
+	console.log("");
 
 	// 4. 基础设施存储与原生桥接测试 (Infra Storage & VSCode 1:1 镜像)
 	await runEchoLoopGuardTests();
@@ -180,6 +184,8 @@ try {
 	await runCodeLensProviderTests();
 	console.log("");
 	await runInlayHintsProviderTests();
+	console.log("");
+	await runSceneHoverProviderTests();
 	console.log("");
 	await runInlayHintsCoordinatorTests();
 	console.log("");

@@ -169,7 +169,10 @@ VS Code 原生语言提示特性。当场景激活时，在涉及断点的代码
 ### W
 
 #### 变量监视锚点 (Watch Anchors)
-v1.5.0 新增的可观测性断点能力：允许开发者在断点配置中声明需观测的变量表达式列表（`watch: string[]`）及键值对期望值（`expected`）。当调试器命中断点暂停时，插件通过 DAP 只读求值（`context: "watch"`）异步读取最新值，自动与期望值比对并在树视图/悬浮卡片中直观呈现匹配状态（✅ 匹配、❌ Mismatch、⚠️ 异常）。求值具备 300ms 熔断保护，字段不参与上下文指纹计算。见 INV-033。
+v1.5.0 新增的可观测性断点能力：允许开发者在断点配置中声明需观测的变量表达式列表（`watch: string[]`）及键值对期望值（`expected`）。当调试器命中断点暂停时，插件通过 DAP 只读求值（`context: "watch"`）异步读取最新值，自动与期望值比对并在树视图/悬浮卡片中直观呈现匹配状态（✅ 匹配、❌ Mismatch、🟢 Observed、⚠️ 异常）。求值具备 300ms 熔断保护，字段不参与上下文指纹计算。见 INV-033。
+
+#### 零提示词自动回传 / 调试轨迹实时落盘 (Zero-Prompt Auto-Inspect / Debug Trace Persistence)
+v1.5.0 调试结果回传机制：调试会话运行期间，`debugTracePersistenceListener` 监听 `debug:started` / `debug:paused` / `debug:watch-evaluated` / `debug:resumed` / `debug:terminated` 事件，将当前会话状态、命中步骤轨迹与 `watches` 求值比对结果实时写入 `.vscode/debug-trace.local.json`（自动幂等写入 `.gitignore`）。AI Agent 在布置断点引导用户按 F5 后，通过后台监听该文件并在 `status === "terminated"` 或 `hasMismatchOrError === true` 时自动唤醒读取，实现无需用户打字输入“看下调试结果”的全自动诊断闭环。
 
 ---
 

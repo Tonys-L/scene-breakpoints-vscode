@@ -229,6 +229,12 @@ export class GraphCanvasController implements vscode.WebviewViewProvider, vscode
 				this.handlePaused(file, line);
 				this.post({ type: "debug-status", status: "paused" });
 			}),
+			appEventBus.on("debug:watch-evaluated", () => {
+				this.post({
+					type: "trace-records",
+					records: debugTraceBuffer.getRecords(),
+				});
+			}),
 			appEventBus.on("debug:resumed", () => {
 				this.debugStatus = "running";
 				this.post({ type: "live-clear" });

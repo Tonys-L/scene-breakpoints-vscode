@@ -24,6 +24,15 @@ export function runPathUtilsTests() {
 			normalizeFsPath("src/a/../b/foo.ts"),
 			"src/b/foo.ts",
 		);
+		// 校验 file:/// 与 file:// URI Schema 协议头剥离
+		assert.strictEqual(
+			normalizeFsPath("file:///D:/Project/MyRepo/src/main.ts"),
+			"d:/project/myrepo/src/main.ts",
+		);
+		assert.strictEqual(
+			normalizeFsPath("file://D:/Project/MyRepo/src/main.ts"),
+			"d:/project/myrepo/src/main.ts",
+		);
 	}
 
 	// 2. isSameFsPath 跨平台等价性测试

@@ -16,6 +16,7 @@ export type HostToWebviewMessage =
 	| { type: "live-pulse"; nodeId: string }
 	| { type: "live-clear" }
 	| { type: "trace-append"; record: TraceRecord }
+	| { type: "trace-records"; records: readonly TraceRecord[] }
 	| { type: "trace-clear" }
 	| { type: "debug-status"; status: "paused" | "running" | "terminated" };
 

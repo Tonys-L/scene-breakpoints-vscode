@@ -26,6 +26,7 @@ export class SceneTreeDataProvider
 	private _sceneNodesMap = new Map<string, SceneNode>();
 	private _activeBreakpointNodes: BreakpointNode[] = [];
 	private _boundTreeView?: vscode.TreeView<SceneTreeItem>;
+	private _revealSeq = 0;
 	private readonly _expandedSceneNames = new Set<string>();
 	private readonly _busDisposables: { dispose(): void }[] = [];
 
@@ -144,6 +145,7 @@ export class SceneTreeDataProvider
 	}
 
 	public clearPausedLocation(): void {
+		this._revealSeq++;
 		if (this._pausedLocation) {
 			this._pausedLocation = null;
 			for (const node of this._activeBreakpointNodes) {
@@ -285,35 +287,50 @@ export class SceneTreeDataProvider
 
 		const activeBp = activeBreakpointIndex.findActiveBreakpoint(file, line, workspaceRoot);
 
-		// 核心守卫：若当前位置不属于任何已激活的场景断点，绝不冲刷既有断点高亮
+		// 核心守卫：若当前位置不属于任何已激活的场景断点，清空旧高亮（防止旧断点一直钉在界面上）
 		if (!activeBp) {
+			this.clearPausedLocation();
 			return;
 		}
 
+		const seq = ++this._revealSeq;
 		const hitSceneName = activeBp.sceneName;
 		this.setPausedLocation(file, line);
 
+		await this.expandAndSelectPausedNode(treeView, workspaceRoot, hitSceneName, seq);
+	}
+
+	private async expandAndSelectPausedNode(
+		treeView: vscode.TreeView<SceneTreeItem> | undefined,
+		workspaceRoot: string,
+		hitSceneName: string,
+		seq: number,
+	): Promise<void> {
+		if (!treeView) return;
+
 		let pausedNode = this.findPausedBreakpointNode();
-		if (!pausedNode && hitSceneName && treeView) {
+		if (!pausedNode && hitSceneName) {
 			// 若当前所属场景尚未展开，主动触发展开
 			const config = sceneManager.loadScenesConfig(workspaceRoot);
 			const bps = config.scenes[hitSceneName] || [];
-			const parentNode = new SceneNode(hitSceneName, bps.length, true, false);
+			const isActive = sceneStateManager.isSceneActive(hitSceneName);
+			const parentNode = this._sceneNodesMap.get(hitSceneName) ?? new SceneNode(hitSceneName, bps.length, isActive, false);
 			try {
 				await treeView.reveal(parentNode, { expand: true });
+				if (seq !== this._revealSeq) return;
 				await this.getChildren(parentNode);
+				if (seq !== this._revealSeq) return;
 				pausedNode = this.findPausedBreakpointNode();
 			} catch {
 				// 容错忽略展开异常
 			}
 		}
 
-		if (pausedNode && treeView) {
-			try {
-				await treeView.reveal(pausedNode, { select: true, focus: false });
-			} catch {
-				// 树项未完全载入时安全降级
-			}
+		if (seq !== this._revealSeq || !pausedNode) return;
+		try {
+			await treeView.reveal(pausedNode, { select: true, focus: false });
+		} catch {
+			// 树项未完全载入时安全降级
 		}
 	}
 

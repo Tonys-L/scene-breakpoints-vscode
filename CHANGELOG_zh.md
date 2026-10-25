@@ -8,6 +8,26 @@
 
 ---
 
+## [1.5.0] - 2026-10-26
+
+### 新增 (Added)
+- **断点命中自动巡航放行 (`sceneBreakpoints.autoContinueMode`)**：
+  - 新增配置项 `sceneBreakpoints.autoContinueMode`（支持 `"onPass"` 默认、`"always"`、`"off"` 三档策略）：按一次 `F5` 即可全自动跑完整个场景断点链路并采集所有 `watch` 变量与 `expected` 断言。
+  - 在默认的 `"onPass"` 模式下，断言全部通过（或未配置 `watch`）的断点自动放行继续执行；一旦发现任何 `Mismatch`（实际值与期望值不符）或求值 `<error>`，立即自动急刹并定格在出错断点现场。
+  - 内置单调递增暂停代次守卫（`pauseSeq`，彻底解决 `const x = await fn()` 同行双暂停点 0.1ms 竞态）与 DAP `stackTrace` 栈顶请求过滤（`startFrame === 0`，防止分页 Caller 帧抢占捕获导致卡顿）。
+- **调试结果实时落盘与 AI 零提示词闭环 (`.vscode/debug-trace.local.json`)**：
+  - 新增 `DebugTracePersistenceListener`：在断点暂停、Watch 求值完成、恢复运行与会话结束时，将完整调试轨迹与断言结果实时原子写入 `.vscode/debug-trace.local.json`（激活时自动幂等加入 `.gitignore`）。
+  - 升级内置 AI Skill（`Zero-Prompt Auto-Inspect`）：跑完 F5 后无需手动复制任何变量，只需对 AI 说一句“跑完了/看下结果”，AI 自动读取 `.vscode/debug-trace.local.json` 完成根因定位。
+- **编辑器断点整行悬浮透视卡片与智能求值防抢焦 (`SceneHoverProvider`)**：
+  - 鼠标悬停在激活场景断点所在代码行的任意位置，即可弹出包含步骤意图、`watch` 实时求值、期望值与校验状态（`✅` / `❌ Mismatch` / `⚠️ Error`）的 Markdown 表格卡片。
+  - 配合 `SceneEvaluatableExpressionProvider` 智能拦截断点行行首空白、关键字、TS 类型注解与尚未执行的赋值左值，彻底消除原生调试器在行首弹出无意义 `undefined` 浮窗的干扰。
+
+### 优化与修复 (Improved & Fixed)
+- **跨平台路径归一化与单双引号智能比对**：修复 Windows 大小写盘符导致的缓存未命中，并支持 `js-debug` 返回的单引号包裹字符串（如 `'stop'`）与 JSON 期望值 `"stop"` 无缝匹配。
+- **多会话栈顶权威暂停锁 (`ActivePauseAuthority`)**：严格隔离 `tsx` 父包装进程与子工作线程的并发 `stackTrace` 干扰，确保侧边栏、行末注解与画布脉冲 100% 锁定真实物理栈顶帧。
+
+---
+
 ## [1.4.1] - 2026-10-17
 
 ### 新增 (Added)

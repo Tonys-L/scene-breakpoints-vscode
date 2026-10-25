@@ -62,9 +62,14 @@ export class Position {
 }
 
 export class Range {
-	constructor(start, end) {
-		this.start = start;
-		this.end = end;
+	constructor(startLineOrPos, startColOrPos, endLine, endCol) {
+		if (typeof startLineOrPos === "number") {
+			this.start = new Position(startLineOrPos, startColOrPos);
+			this.end = new Position(endLine, endCol);
+		} else {
+			this.start = startLineOrPos;
+			this.end = startColOrPos;
+		}
 	}
 }
 
@@ -629,9 +634,25 @@ export class InlayHint {
 	}
 }
 
+export class Hover {
+	constructor(contents, range) {
+		this.contents = contents;
+		this.range = range;
+	}
+}
+
+export class EvaluatableExpression {
+	constructor(range, expression) {
+		this.range = range;
+		this.expression = expression;
+	}
+}
+
 export const languages = {
 	registerCodeLensProvider: () => new Disposable(() => {}),
 	registerInlayHintsProvider: () => new Disposable(() => {}),
+	registerHoverProvider: () => new Disposable(() => {}),
+	registerEvaluatableExpressionProvider: () => new Disposable(() => {}),
 };
 
 export class CancellationTokenSource {

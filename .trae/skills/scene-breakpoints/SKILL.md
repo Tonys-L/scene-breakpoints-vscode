@@ -33,7 +33,8 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 
 ## 文件路径
 
-工作区根目录：`.vscode/debug-scenes.json`
+- 场景断点定义（工作区根目录）：`.vscode/debug-scenes.json`（及个人层 `.vscode/debug-scenes.local.json`）
+- **调试运行结果快照（插件实时自动落盘，自动入 `.gitignore`）**：`.vscode/debug-trace.local.json`
 
 ## 数据格式与断点类型规范
 
@@ -131,7 +132,8 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 
 1. **【第一步：前置廉价探测 (Existence Probe)】**：
    - 检查工作区是否存在 `.vscode/debug-scenes.json`（或 `.vscode/debug-scenes.local.json`）；
-   - 若文件不存在或当前问题与执行流程完全无关，立即静默放弃，杜绝无意义的 Token 开销与过度触发。
+   - 若存在 `.vscode/debug-trace.local.json`，同步读取最近一次调试运行采集的真实轨迹与 `watches` 求值快照；
+   - 若文件均不存在或当前问题与执行流程完全无关，立即静默放弃，杜绝无意义的 Token 开销与过度触发。
 2. **【第二步：场景语义匹配 (Relevance Match)】**：
    - 读取配置中的 `scenes` 字典键名、各断点的 `desc` 说明以及 `watch`/`expected` 监视变量定义；
    - 快速比对用户诉求是否命中已有业务场景或特定变量排查假设（如 `auth:login`、`order:create` 或变量 `status` 状态流转）。
@@ -158,12 +160,72 @@ description: Orchestrate and declare breakpoint scenes in .vscode/debug-scenes.j
 3. **意图标注撰写**：每个断点必须撰写清晰的 `desc` 业务意图，杜绝物理描述；
 4. **变量追踪与期望值锚定 (Watch Anchors 关键步 ⭐)**：
    - 只要涉及**数据计算、状态转移、入参校验或返回值**，AI **必须主动挂载 `watch` 变量列表**（如 `"watch": ["user.id", "order.status"]`）；
-   - 若当前排查针对特定 Bug（如“状态应为 SUCCESS”），**主动挂载 `expected` 期望对照**（如 `"expected": { "order.status": "SUCCESS" }`）；
+   - **确定性不变量主动断言铁律 (`expected` 必填规范 ⭐)**：无论是排查特定 Bug 还是生成架构/流程导览场景，只要被监视表达式具有**确定性的业务预期值或契约不变量**（如运行模式 `"print"`、消息角色 `"assistant"`、正常结束原因 `"stop"`、初始队列长度 `0` 或 `1` 等），AI **必须同步声明 `expected` 期望对照**（如 `"expected": { "message.stopReason": "stop", "messages.length": 1 }`），使人类在调试时直接看到直观的 `✅` 或 `❌ Mismatch`；仅将动态不确定值（如随机 ID、耗时、可能未传的可选参数）留空作为 `🟢 Observed`；
+   - ⚠️ **变量作用域前置铁律 (Pre-declaration Invariant ⭐)**：
+     - 断点在当前行执行**之前**暂停。因此 `watch` 表达式**必须且只能是当前行之前已经声明并在作用域内的变量**（如函数输入形参、前文已赋值的局部变量、`this` 实例属性、外层闭包）；
+     - ❌ **绝对严禁 Watch 当前行才刚刚用 `const / let` 声明的新变量**（在当前行执行完毕前，该变量处于 V8 引擎暂时性死区 TDZ，求值必定报 `ReferenceError`）；若需观察其赋值，应 Watch 其等号右侧依赖的已就绪输入表达式，或将断点打在下一行；
+   - ⚠️ **属性真实性核验与可选链防崩铁律 (Anti-Hallucination & Optional Chaining ⭐)**：
+     - ❌ **严禁凭命名惯例脑补未核实的私有字段**（如未查源码就猜测 `this._state`，而源码实际暴露的是 getter `this.state`，会导致运行时抛出 `TypeError: Cannot read properties of undefined`）；编写 `this.xxx` 或对象属性链前，**必须从已读取的源码类/接口定义中核实真实属性或 getter 名称**；
+     - ✅ **对可能为 `undefined` 的可选参数或深层嵌套属性，一律使用可选链 `?.`**（如 `options?.expandPromptTemplates`、`this.state.model?.id`、`initialImages?.length`），确保缺省时平滑显示 `undefined` 而非崩溃报错；
    - 人类在 F5 调试命中断点时，插件自动只读求值并直观高亮异常比对（0 手工输入）；
 5. **写入场景配置**：
    - 根据场景性质选择目标文件（团队资产写主文件，临时测试写 local 层）；
    - ⚠️ **严格禁止手动填写指纹**：切勿添加 `contextSnippet` 字段，保持缺省以触发插件首次激活时的自动化拓扑提取与持久化；
-6. **场景激活策略**：根据环境通过 `launch.json` 联动、`activeScenes` 声明式激活或引导用户在调试面板 ▶ 激活。
+6. **场景激活策略**：根据环境通过 `launch.json` 联动、`activeScenes` 声明式激活或引导用户在调试面板 ▶ 激活；
+7. **零提示词自动监听调试结果 (Zero-Prompt Auto-Inspect ⭐)**：引导用户按 F5 后，立即按下方【调试结果自动回传闭环】启动后台等待任务监听 `.vscode/debug-trace.local.json`，**无需用户手动输入“看下调试结果”**，在调试触发断言异常或跑完时自动读取快照并输出分析结论。
+
+## 调试结果自动回传闭环 (Zero-Prompt Auto-Inspect ⭐)
+
+在调试会话运行期间，插件会自动将命中的断点轨迹与 `watch` / `expected` 求值比对结果实时持久化至工作区 `.vscode/debug-trace.local.json`（已自动加入 `.gitignore`）。
+
+### 1. 快照文件结构 (`.vscode/debug-trace.local.json`)
+
+```json
+{
+  "status": "terminated",
+  "updatedAt": "2026-10-26T00:00:12.000Z",
+  "activeScenes": ["cli-print-mode-flow"],
+  "hasMismatchOrError": false,
+  "currentPause": null,
+  "steps": [
+    {
+      "seq": 1,
+      "scene": "cli-print-mode-flow",
+      "stepIndex": 0,
+      "file": "packages/coding-agent/src/cli/args.ts",
+      "line": 225,
+      "desc": "解析 CLI 启动参数",
+      "ts": 1792946000000,
+      "watches": [
+        {
+          "expression": "args.length",
+          "value": "1",
+          "expected": "1",
+          "status": "matched"
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `status`：`"running"` | `"paused"` | `"terminated"`
+- `hasMismatchOrError`：当任一断点的 `watches` 出现 `"mismatch"`（实际值与 `expected` 不符）或 `"error"`（求值异常）时为 `true`
+- `watches[].status`：`"matched"`（✅ 符合预期）| `"mismatch"`（❌ 断言失败）| `"error"`（⚠️ 求值报错）| `"observed"`（🟢 无断言纯观测）
+
+### 2. AI 零提示词自动回传协议（免用户手动输入“看下调试结果”）
+
+当 AI 为用户布置或更新完 `.vscode/debug-scenes.json` 并引导用户按 **F5** 启动调试后，**严禁直接结束回合干等用户回来打字说“看下调试结果”**！AI 必须遵循以下自动闭环协议：
+
+1. **直接读取已有快照**：若用户在对话中询问刚才的调试情况，AI 直接读取 `.vscode/debug-trace.local.json` 即可获得完整命中步骤与每个变量的实际求值结果，**严禁向用户索要截图或复制粘贴变量值**；
+2. **后台监听自动唤醒（Zero-Prompt Wait Loop）**：在布置好断点请用户按 F5 的同一回合，AI 应立即调用后台终端命令（如 `run_command` 设置 `WaitMsBeforeAsync: 500` 后台运行）执行单行 Node 监听脚本，等待 `.vscode/debug-trace.local.json` 产生新结果：
+   ```bash
+   node -e "const fs=require('fs'),f='.vscode/debug-trace.local.json',t0=fs.existsSync(f)?fs.statSync(f).mtimeMs:0,end=Date.now()+300000;const i=setInterval(()=>{if(Date.now()>end)process.exit(0);if(!fs.existsSync(f))return;const st=fs.statSync(f);if(st.mtimeMs<=t0)return;try{const d=JSON.parse(fs.readFileSync(f,'utf8'));if(d.steps&&d.steps.length>0&&(d.status==='terminated'||d.hasMismatchOrError)){console.log(JSON.stringify(d,null,2));clearInterval(i);process.exit(0);}}catch{}},500);"
+   ```
+3. **自动唤醒并输出诊断报告**：当用户按 F5 跑完流程（`status === "terminated"`）或中途触发断言不匹配（`hasMismatchOrError === true`）时，后台监听进程立即打印 JSON 并退出，系统自动唤醒 AI。AI 随即直接向用户输出：
+   - 命中的完整执行链路与次数（`steps`）；
+   - 所有 `watch` 变量的实际求值结果与 `expected` 比对状态（高亮指出哪一步出现了 `mismatch` 或 `error`）；
+   - 根因定位结论与下一步代码修复或断点调整建议。
 
 ## 配置分层与调用栈固化 (v1.2.0)
 

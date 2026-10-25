@@ -1,3 +1,5 @@
+import type { WatchEvaluationResult } from "#src/domain/types";
+import { isFilePathMatch } from "#src/shared/utils/pathUtils";
 import { appEventBus, type IDisposable } from "./eventBus";
 
 /**
@@ -5,6 +7,7 @@ import { appEventBus, type IDisposable } from "./eventBus";
  * 职责：会话级累积 debug:paused 命中记录，供画布命中轨迹时间线呈现。
  * 生命周期（会话级易失，不落盘不入 debug-scenes.json）：
  * - debug:paused → 追加 TraceRecord（seq 单调递增，nodeId 经注入解析器匹配）
+ * - debug:watch-evaluated → 富化对应断点步的变量监视快照 (watches)
  * - debug:resumed → 保留（轨迹跨多次暂停累积，故不订阅该事件）
  * - debug:terminated → 全量清空
  * 对齐 debugPauseContext 先例：应用层小状态实体，事件驱动写入/清除，UI 只读消费。
@@ -21,6 +24,8 @@ export interface TraceRecord {
 	readonly ts: number;
 	/** 绝对壁钟时间戳（Date.now() 毫秒），便于与控制台及服务端日志对齐 */
 	readonly wallTime?: number;
+	/** 变量追踪求值结果快照 (v1.5.0) */
+	readonly watches?: readonly WatchEvaluationResult[];
 }
 
 /** nodeId 解析器：由画布快照派生（sceneGraphProjection.createNodeIdResolver），保证 id 语义单点权威 */
@@ -55,11 +60,28 @@ export class DebugTraceBuffer {
 			appEventBus.on("debug:paused", ({ file, line }) => {
 				this.append(file, line);
 			}),
+			appEventBus.on("debug:watch-evaluated", ({ file, line, results }) => {
+				this.updateLatestWatches(file, line, results);
+			}),
 			appEventBus.on("debug:terminated", () => {
 				// 会话终止保留轨迹供复盘；标记新会话就绪，下次命中时自动重置
 				this.needsSessionReset = true;
 			}),
 		);
+	}
+
+	/** 更新最近一条命中记录的变量求值快照 */
+	public updateLatestWatches(file: string, line: number, watches: WatchEvaluationResult[]): void {
+		for (let i = this.records.length - 1; i >= 0; i--) {
+			const r = this.records[i];
+			if (r.line === line && isFilePathMatch(r.file, file)) {
+				this.records[i] = {
+					...r,
+					watches: [...watches],
+				};
+				break;
+			}
+		}
 	}
 
 	/** 追加一条命中记录（seq 递增；ts 相对会话首次命中） */

@@ -10,8 +10,16 @@ import {
 	registerConfigFileWatcherService,
 	registerDebugLaunchService,
 	registerDebugPauseService,
+	registerDebugTracePersistenceService,
 	registerSessionLifecycleService,
 } from "#src/infra/vscode/listeners/index";
+import {
+	buildPersistedTraceStep,
+	getDebugTraceFilePath,
+	mapWatchToPersistedItem,
+	resolveWatchStatus,
+	writeDebugTraceSnapshotToDisk,
+} from "#src/infra/vscode/listeners/debugTracePersistenceListener";
 import { selectBestUserSourceFrame } from "#src/infra/vscode/listeners/debugLifecycleListener";
 import { setSourceNavigationLock, isInternalOrVirtualFramePath } from "#src/application/debugPauseContext";
 import { sceneStateManager } from "#src/application/sceneStateManager";
@@ -272,16 +280,16 @@ export async function runListenersRegistryTests() {
 
 		assert.strictEqual(pauseEmitCount, 1, "首个有效 stackTrace 必须触发 debug:paused");
 
-		// 步骤 A2: 同一次暂停期间，调试器再次发来 stackTrace 响应（如更新变量或作用域），必须被 hasCapturedThisPause 彻底拦截
+		// 步骤 A2: 同一次暂停期间，调试器再次发来 stackTrace 响应（如分页加载外层 Caller 帧），必须被 hasCapturedThisPause 彻底拦截
 		tracker.onDidSendMessage({
 			type: "response",
 			command: "stackTrace",
 			body: {
-				stackFrames: [{ source: { path: "X:/mock-workspace/project/src/cli.ts" }, line: 20 }],
+				stackFrames: [{ source: { path: "X:/mock-workspace/project/src/other-caller.ts" }, line: 99 }],
 			},
 		});
 
-		assert.strictEqual(pauseEmitCount, 1, "同一次暂停期间多余的 stackTrace 响应绝不可重复触发 debug:paused！");
+		assert.strictEqual(pauseEmitCount, 1, "同一次暂停期间多余的 stackTrace 响应（即使携带不同 Caller 帧）绝不可重复触发 debug:paused！");
 		pauseListener.dispose();
 
 		assert.deepStrictEqual(
@@ -317,6 +325,22 @@ export async function runListenersRegistryTests() {
 			customTreeProvider.getPausedLocation(),
 			{ file: "X:/mock-workspace/project/src/cli.ts", line: 20 },
 			"后台 Worker 线程的 continued 事件绝不可清除主线程断点高亮！",
+		);
+
+		// 步骤 B3: 父包装会话 (Parent Launcher Session，如 tsx 启动包装器) 并发发来堆栈响应（只包含外层入口 cli.ts:27）
+		const trackerParent = factory.createDebugAdapterTracker({ id: "parent-launcher-session" });
+		trackerParent.onDidSendMessage({
+			type: "response",
+			command: "stackTrace",
+			body: {
+				stackFrames: [{ source: { path: "X:/mock-workspace/project/src/cli.ts" }, line: 27 }],
+			},
+		});
+
+		assert.deepStrictEqual(
+			customTreeProvider.getPausedLocation(),
+			{ file: "X:/mock-workspace/project/src/cli.ts", line: 20 },
+			"父包装会话并发发来的 stackTrace 响应绝对不可冲刷当前权威子会话已锁定的栈顶断点位置！",
 		);
 
 		// 步骤 C: 主线程 (Thread 1) 真正继续运行 (continued)
@@ -537,9 +561,266 @@ export async function runListenersRegistryTests() {
 		assert.strictEqual(stepChosen.source.path, path.join(tmpWs6, "src", "main.ts"));
 		assert.strictEqual(stepChosen.line, 1086);
 
+		// D. 核心防倒挂回归测试：多层物理用户帧嵌套 (Callee 栈顶 main.ts:997，Caller 外层 cli.ts:27 且 Caller 也是场景断点)
+		// 坚守第一性原理：物理暂停点必须是栈顶 Callee，绝对不可倒挂回溯外层 Caller！
+		const nestedFrames = [
+			{ line: 997, source: { path: path.join(tmpWs6, "src", "main.ts") } },
+			{ line: 27, source: { path: path.join(tmpWs6, "src", "cli.ts") } },
+		];
+		const nestedChosen = selectBestUserSourceFrame(nestedFrames, tmpWs6);
+		assert.ok(nestedChosen, "多层调用栈必须返回栈顶物理帧");
+		assert.strictEqual(nestedChosen.source.path, path.join(tmpWs6, "src", "main.ts"));
+		assert.strictEqual(nestedChosen.line, 997, "即使外层 Caller 属于场景断点，当前物理暂停点也绝不可倒挂回溯！");
+
 		// 清理场景态
 		sceneStateManager.setActiveScenes([]);
 		activeBreakpointIndex.clear();
+	}
+
+	// 11. registerDebugTracePersistenceService 调试轨迹与 Watch 结果自动落盘测试
+	{
+		const tmpTraceWs = fs.mkdtempSync(path.join(os.tmpdir(), "sb-trace-persist-"));
+		vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpTraceWs } }];
+
+		assert.strictEqual(
+			resolveWatchStatus({ expression: "a", value: "1", isMatched: true }),
+			"matched",
+		);
+		assert.strictEqual(
+			resolveWatchStatus({ expression: "a", value: "2", expected: "1", isMatched: false }),
+			"mismatch",
+		);
+		assert.strictEqual(
+			resolveWatchStatus({ expression: "a", value: "", error: "ReferenceError" }),
+			"error",
+		);
+		assert.strictEqual(
+			resolveWatchStatus({ expression: "a", value: "10" }),
+			"observed",
+		);
+
+		const mappedItem = mapWatchToPersistedItem({
+			expression: "x",
+			value: "99",
+			expected: "100",
+			isMatched: false,
+			error: "EvalErr",
+		});
+		assert.strictEqual(mappedItem.status, "error");
+		assert.strictEqual(mappedItem.expected, "100");
+		assert.strictEqual(mappedItem.error, "EvalErr");
+
+		sceneStateManager.setActiveScenes(["trace-scene"], 1);
+		activeBreakpointIndex.sync(
+			tmpTraceWs,
+			{
+				"trace-scene": [
+					{ file: "src/app.ts", line: 10, type: "line", enabled: true, desc: "验证入口参数" },
+				],
+			},
+			["trace-scene"],
+		);
+
+		const traceDisposable = registerDebugTracePersistenceService();
+		try {
+			const hitFile = path.join(tmpTraceWs, "src", "app.ts");
+			appEventBus.emit("debug:started", undefined);
+			appEventBus.emit("debug:paused", { file: hitFile, line: 10 });
+			appEventBus.emit("debug:watch-evaluated", {
+				file: hitFile,
+				line: 10,
+				results: [
+					{ expression: "arg", value: "'ok'", expected: "ok", isMatched: true },
+					{ expression: "bad", value: "0", expected: "1", isMatched: false },
+				],
+			});
+
+			const traceFile = getDebugTraceFilePath(tmpTraceWs);
+			assert.ok(fs.existsSync(traceFile), "暂停与 Watch 求值后必须自动写入 .vscode/debug-trace.local.json");
+			const pausedSnap = JSON.parse(fs.readFileSync(traceFile, "utf-8"));
+			assert.strictEqual(pausedSnap.status, "paused");
+			assert.strictEqual(pausedSnap.hasMismatchOrError, true);
+			assert.strictEqual(pausedSnap.steps.length, 1);
+			assert.strictEqual(pausedSnap.steps[0].scene, "trace-scene");
+			assert.strictEqual(pausedSnap.steps[0].desc, "验证入口参数");
+			assert.strictEqual(pausedSnap.steps[0].watches.length, 2);
+
+			appEventBus.emit("debug:resumed", undefined);
+			const resumedSnap = JSON.parse(fs.readFileSync(traceFile, "utf-8"));
+			assert.strictEqual(resumedSnap.status, "running");
+			assert.strictEqual(resumedSnap.currentPause, null);
+
+			appEventBus.emit("debug:terminated", undefined);
+			const termSnap = JSON.parse(fs.readFileSync(traceFile, "utf-8"));
+			assert.strictEqual(termSnap.status, "terminated");
+			assert.strictEqual(termSnap.steps.length, 1, "调试结束时必须保留本次会话完整命中步骤快照供 AI 读取");
+		} finally {
+			traceDisposable.dispose();
+			sceneStateManager.setActiveScenes([]);
+			activeBreakpointIndex.clear();
+			fs.rmSync(tmpTraceWs, { recursive: true, force: true });
+		}
+	}
+
+	// 12. registerDebugPauseService 断点命中求值后自动放行 (Auto-Continue onPass) 与 Mismatch 定格验证
+	{
+		__resetMockVscodeState();
+		const tmpAutoWs = fs.mkdtempSync(path.join(os.tmpdir(), "sb-autocont-"));
+		vscode.workspace.workspaceFolders = [{ uri: { fsPath: tmpAutoWs } }];
+
+		sceneStateManager.setActiveScenes(["cruise-scene"], 1);
+		activeBreakpointIndex.sync(
+			tmpAutoWs,
+			{
+				"cruise-scene": [
+					{
+						file: "src/step0.ts",
+						line: 5,
+						type: "line",
+						enabled: true,
+					},
+					{
+						file: "src/step1.ts",
+						line: 10,
+						type: "line",
+						enabled: true,
+						watch: ["status"],
+						expected: { status: "ok" },
+					},
+					{
+						file: "src/step2.ts",
+						line: 20,
+						type: "line",
+						enabled: true,
+						watch: ["status"],
+						expected: { status: "ok" },
+					},
+				],
+			},
+			["cruise-scene"],
+		);
+
+		const pauseDisp = registerDebugPauseService();
+		const factory = debug._trackerFactories[0];
+		const continuedThreads = [];
+		let mockStatusValue = "'ok'";
+		let triggerImmediateNextStop = false;
+		let tracker = null;
+
+		const mockSession = {
+			id: "cruise-session-1",
+			customRequest: async (cmd, args) => {
+				if (cmd === "evaluate" && args.expression === "status") {
+					return { result: mockStatusValue, type: "string" };
+				}
+				if (cmd === "continue") {
+					continuedThreads.push(args.threadId);
+					if (triggerImmediateNextStop && tracker) {
+						triggerImmediateNextStop = false;
+						// 模拟 V8 同行双暂停点 (如 const x = await foo()) 或相邻同步断点：
+						// 在第一次 continue Promise 尚未 resolve 前，下一个 stopped + stackTrace 已经同步到达
+						tracker.onDidSendMessage({
+							type: "event",
+							event: "stopped",
+							body: { reason: "breakpoint", threadId: args.threadId },
+						});
+						tracker.onDidSendMessage({
+							type: "response",
+							command: "stackTrace",
+							body: {
+								stackFrames: [{ id: 103, source: { path: path.join(tmpAutoWs, "src", "step0.ts") }, line: 5 }],
+							},
+						});
+					}
+					return { allThreadsContinued: true };
+				}
+				return {};
+			},
+		};
+
+		tracker = factory.createDebugAdapterTracker(mockSession);
+
+		try {
+			// A0. 命中无 watch 的激活场景断点 step0 (如 cli.ts:27) -> 记录轨迹后自动放行
+			tracker.onDidSendMessage({
+				type: "event",
+				event: "stopped",
+				body: { reason: "breakpoint", threadId: 7 },
+			});
+			tracker.onDidSendMessage({
+				type: "response",
+				command: "stackTrace",
+				body: {
+					stackFrames: [{ id: 100, source: { path: path.join(tmpAutoWs, "src", "step0.ts") }, line: 5 }],
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 60));
+			assert.deepStrictEqual(continuedThreads, [7], "无 watch 的激活场景断点在 onPass 模式下记录轨迹后必须自动放行");
+
+			// A. 命中 step1，watch 期望 "ok"，实际 "'ok'" (匹配通过) -> 自动调用 customRequest("continue", { threadId: 7 })
+			tracker.onDidSendMessage({
+				type: "event",
+				event: "stopped",
+				body: { reason: "breakpoint", threadId: 7 },
+			});
+			tracker.onDidSendMessage({
+				type: "response",
+				command: "stackTrace",
+				body: {
+					stackFrames: [{ id: 101, source: { path: path.join(tmpAutoWs, "src", "step1.ts") }, line: 10 }],
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 60));
+			assert.deepStrictEqual(continuedThreads, [7, 7], "Watch 断言通过时必须自动发送 DAP continue 请求放行当前线程");
+
+			// B. 命中 step2，watch 期望 "ok"，实际 "'failed'" (Mismatch) -> 绝不调用 continue，定格错误现场
+			mockStatusValue = "'failed'";
+			tracker.onDidSendMessage({
+				type: "event",
+				event: "stopped",
+				body: { reason: "breakpoint", threadId: 7 },
+			});
+			tracker.onDidSendMessage({
+				type: "response",
+				command: "stackTrace",
+				body: {
+					stackFrames: [{ id: 102, source: { path: path.join(tmpAutoWs, "src", "step2.ts") }, line: 20 }],
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 60));
+			assert.deepStrictEqual(continuedThreads, [7, 7], "Watch 出现 Mismatch 时必须停止自动放行并定格在错误现场");
+
+			// C. 模拟 V8 同行双暂停点 (const exitCode = await runPrintMode) 0.1ms 竞态：
+			// 第一次 continue 尚未完成 .then() 时第 2 次 stopped 立即到达，pauseSeq 守卫必须确保第 2 次暂停不被误清且继续自动放行
+			triggerImmediateNextStop = true;
+			tracker.onDidSendMessage({
+				type: "event",
+				event: "stopped",
+				body: { reason: "breakpoint", threadId: 7 },
+			});
+			tracker.onDidSendMessage({
+				type: "response",
+				command: "stackTrace",
+				body: {
+					stackFrames: [{ id: 104, source: { path: path.join(tmpAutoWs, "src", "step0.ts") }, line: 5 }],
+				},
+			});
+
+			await new Promise((r) => setTimeout(r, 90));
+			assert.deepStrictEqual(
+				continuedThreads,
+				[7, 7, 7, 7],
+				"同行双暂停点或极速相邻断点在第一次 continue .then() 之前触发时，两次暂停都必须成功自动放行！",
+			);
+		} finally {
+			pauseDisp.dispose();
+			sceneStateManager.setActiveScenes([]);
+			activeBreakpointIndex.clear();
+			fs.rmSync(tmpAutoWs, { recursive: true, force: true });
+		}
 	}
 
 	console.log("  ✅ [Listeners Registry] 5 大核心事件监听与生命周期单元测试全部通过！");

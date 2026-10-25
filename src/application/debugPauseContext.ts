@@ -1,4 +1,5 @@
 import type { WatchEvaluationResult } from "#src/domain/types";
+import { isFilePathMatch } from "#src/shared/utils/pathUtils";
 
 /**
  * 调试暂停态捕获上下文 (v1.2.0 Capture Call Stack)
@@ -9,7 +10,7 @@ import type { WatchEvaluationResult } from "#src/domain/types";
 
 /** DAP 会话最小契约：仅需通过 customRequest 读取堆栈，避免应用层依赖宿主类型 */
 export interface CapturablePauseContext {
-	session: { customRequest: (command: string, args: unknown) => PromiseLike<unknown> };
+	session: { id?: string; customRequest: (command: string, args: unknown) => PromiseLike<unknown> };
 	threadId: number;
 }
 
@@ -21,6 +22,31 @@ export function setCapturablePauseContext(context: CapturablePauseContext | unde
 
 export function getCapturablePauseContext(): CapturablePauseContext | undefined {
 	return capturablePause;
+}
+
+/**
+ * 权威暂停会话主权实体 (Active Pause Authority)
+ * 记录当前正处于断点暂停态的权威会话与线程信息，防止多会话/Worker 堆栈冲刷栈顶断点
+ */
+export interface ActivePauseAuthority {
+	sessionId: string;
+	threadId: number;
+	filePath?: string;
+	line?: number;
+}
+
+let activePauseAuthority: ActivePauseAuthority | undefined;
+
+export function setActivePauseAuthority(authority: ActivePauseAuthority | undefined): void {
+	activePauseAuthority = authority;
+}
+
+export function getActivePauseAuthority(): ActivePauseAuthority | undefined {
+	return activePauseAuthority;
+}
+
+export function clearActivePauseAuthority(): void {
+	activePauseAuthority = undefined;
 }
 
 /** 判断是否为内部虚拟帧（如 Node.js internal 或虚拟模块） */
@@ -60,19 +86,88 @@ export function isSourceNavigationLocked(): boolean {
 	return isNavigatingSourceLocked;
 }
 
-/** 断点最近一次命中求值结果缓存（以 `${file}:${line}` 或 `function:${functionName}` 为键） */
-const latestWatchResultsMap = new Map<string, WatchEvaluationResult[]>();
-
-export function setLatestWatchResults(key: string, results: WatchEvaluationResult[]): void {
-	latestWatchResultsMap.set(key, results);
+interface CachedWatchEntry {
+	filePath: string;
+	line: number;
+	results: WatchEvaluationResult[];
 }
 
-export function getLatestWatchResults(key: string): WatchEvaluationResult[] | undefined {
-	return latestWatchResultsMap.get(key);
+/** 断点最近一次命中求值结果缓存（以 `${file}:${line}` 或 `function:${functionName}` 为键） */
+const latestWatchResultsMap = new Map<string, WatchEvaluationResult[]>();
+const latestWatchEntries: CachedWatchEntry[] = [];
+
+export function setLatestWatchResults(
+	keyOrFilePath: string,
+	lineOrResults: number | WatchEvaluationResult[],
+	maybeResults?: WatchEvaluationResult[],
+): void {
+	if (typeof lineOrResults === "number" && Array.isArray(maybeResults)) {
+		const filePath = keyOrFilePath;
+		const line = lineOrResults;
+		const results = maybeResults;
+		latestWatchResultsMap.set(`${filePath}:${line}`, results);
+		const existingIdx = latestWatchEntries.findIndex(
+			(e) => e.line === line && isFilePathMatch(e.filePath, filePath),
+		);
+		if (existingIdx >= 0) {
+			latestWatchEntries[existingIdx] = { filePath, line, results };
+		} else {
+			latestWatchEntries.push({ filePath, line, results });
+		}
+	} else if (Array.isArray(lineOrResults)) {
+		const key = keyOrFilePath;
+		const results = lineOrResults;
+		latestWatchResultsMap.set(key, results);
+		const colonIdx = key.lastIndexOf(":");
+		if (colonIdx > 0) {
+			const filePath = key.substring(0, colonIdx);
+			const line = parseInt(key.substring(colonIdx + 1), 10);
+			if (!Number.isNaN(line)) {
+				const existingIdx = latestWatchEntries.findIndex(
+					(e) => e.line === line && isFilePathMatch(e.filePath, filePath),
+				);
+				if (existingIdx >= 0) {
+					latestWatchEntries[existingIdx] = { filePath, line, results };
+				} else {
+					latestWatchEntries.push({ filePath, line, results });
+				}
+			}
+		}
+	}
+}
+
+export function getLatestWatchResults(
+	keyOrFilePath: string,
+	line?: number,
+	workspaceRoot?: string,
+): WatchEvaluationResult[] | undefined {
+	if (typeof line === "number") {
+		const found = latestWatchEntries.find(
+			(e) => e.line === line && isFilePathMatch(e.filePath, keyOrFilePath, workspaceRoot),
+		);
+		if (found) return found.results;
+		return latestWatchResultsMap.get(`${keyOrFilePath}:${line}`);
+	}
+	const direct = latestWatchResultsMap.get(keyOrFilePath);
+	if (direct) return direct;
+	const colonIdx = keyOrFilePath.lastIndexOf(":");
+	if (colonIdx > 0) {
+		const filePath = keyOrFilePath.substring(0, colonIdx);
+		const parsedLine = parseInt(keyOrFilePath.substring(colonIdx + 1), 10);
+		if (!Number.isNaN(parsedLine)) {
+			const found = latestWatchEntries.find(
+				(e) => e.line === parsedLine && isFilePathMatch(e.filePath, filePath, workspaceRoot),
+			);
+			if (found) return found.results;
+		}
+	}
+	return undefined;
 }
 
 export function clearLatestWatchResults(): void {
 	latestWatchResultsMap.clear();
+	latestWatchEntries.length = 0;
 }
+
 
 

@@ -1240,6 +1240,50 @@ body {
 	opacity: 0.85;
 }
 
+/* 变量监视结果药丸 */
+.trace-watches-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin-top: 6px;
+	padding-top: 5px;
+	border-top: 1px dashed var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.2));
+}
+
+.trace-watch-pill {
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 10px;
+	background: var(--vscode-badge-background, rgba(128, 128, 128, 0.15));
+	color: var(--vscode-badge-foreground, var(--vscode-foreground));
+	padding: 1px 6px;
+	border-radius: 3px;
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	border: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.trace-watch-pill.mismatch {
+	border-color: #f85149;
+	color: #f85149;
+	background: rgba(248, 81, 73, 0.1);
+}
+
+.trace-watch-pill.error {
+	border-color: #e3b341;
+	color: #e3b341;
+	background: rgba(227, 179, 65, 0.1);
+}
+
+.trace-watch-expr {
+	color: var(--vscode-textPreformat-foreground, #79c0ff);
+	font-weight: 500;
+}
+
+.trace-watch-val {
+	color: var(--vscode-editor-foreground, #c9d1d9);
+}
+
 /* 循环折叠块 (Loop Chunk) */
 .trace-loop-block {
 	background: var(--vscode-editorWidget-background, #252526);

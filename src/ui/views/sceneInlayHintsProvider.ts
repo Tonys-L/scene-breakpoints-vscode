@@ -3,8 +3,10 @@ import { sceneStateManager } from "#src/application/sceneStateManager";
 import { sceneManager } from "#src/application/sceneManager";
 import { appEventBus } from "#src/application/eventBus";
 import { activeBreakpointIndex } from "#src/application/activeBreakpointIndex";
+import { getLatestWatchResults } from "#src/application/debugPauseContext";
 import type { ScenesConfig, SourceSceneBreakpoint } from "#src/domain/types";
 import { getWorkspaceRoot } from "#src/ui/utils/commandRunner";
+import { formatBreakpointTooltipMarkdown } from "./breakpointTooltipFormatter";
 
 
 interface BreakpointStepItem {
@@ -54,6 +56,12 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 				if (sceneStateManager.getActiveScenes().length > 0) {
 					this.refresh();
 				}
+			}),
+			appEventBus.on("debug:watch-evaluated", () => {
+				this.refresh();
+			}),
+			appEventBus.on("debug:resumed", () => {
+				this.refresh();
 			}),
 		);
 
@@ -185,30 +193,8 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 	 * 构建断点步骤的丰富悬停 Markdown 信息
 	 */
 	private buildHintTooltip(stepItems: BreakpointStepItem[]): vscode.MarkdownString {
-		const tooltipMarkdown = new vscode.MarkdownString("", true);
-		tooltipMarkdown.isTrusted = true;
-
-		for (let i = 0; i < stepItems.length; i++) {
-			const item = stepItems[i];
-			const bp = item.breakpoint;
-			const isUnmatched = sceneStateManager.isBreakpointUnmatched(bp.file, bp.line);
-
-			if (i > 0) {
-				tooltipMarkdown.appendMarkdown("\n\n---\n\n");
-			}
-
-			tooltipMarkdown.appendMarkdown(`### 💡 ${vscode.l10n.t("Scene Breakpoint: {0}", item.sceneName)}\n\n`);
-			tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Step")}**: #${item.stepIndex}\n`);
-			tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Type")}**: \`${bp.type}\`\n`);
-
-			if (bp.desc) tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Description")}**: ${bp.desc}\n`);
-			if (bp.condition) tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Condition")}**: \`${bp.condition}\`\n`);
-			if (bp.hitCondition) tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Hit Condition")}**: \`${bp.hitCondition}\`\n`);
-			if (bp.logMessage) tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Log Message")}**: \`${bp.logMessage}\`\n`);
-			if (isUnmatched) tooltipMarkdown.appendMarkdown(`- **${vscode.l10n.t("Status")}**: ⚠️ ${vscode.l10n.t("Unmatched (Code Drift Detected)")}\n`);
-		}
-
-		return tooltipMarkdown;
+		const wsRoot = this.workspaceRootGetter();
+		return formatBreakpointTooltipMarkdown(stepItems, wsRoot);
 	}
 
 	/**
@@ -224,11 +210,32 @@ export class SceneInlayHintsProvider implements vscode.InlayHintsProvider, vscod
 
 		const lineLength = document.lineAt(zeroBasedLine).text.length;
 		const position = new vscode.Position(zeroBasedLine, lineLength);
+		const wsRoot = this.workspaceRootGetter();
 
 		const labelParts = stepItems.map((item) => {
 			const base = `[${item.sceneName} #${item.stepIndex}]`;
 			const desc = item.breakpoint.desc?.trim();
-			return desc ? `${base} ${desc}` : base;
+			let part = desc ? `${base} ${desc}` : base;
+
+			const bp = item.breakpoint;
+			if (Array.isArray(bp.watch) && bp.watch.length > 0) {
+				const latestResults = getLatestWatchResults(bp.file, bp.line, wsRoot);
+				if (latestResults && latestResults.length > 0) {
+					const summaries = latestResults.map((r) => {
+						const icon = r.isMatched === true ? "✅" : r.isMatched === false ? "❌" : r.error ? "⚠️" : "⚪";
+						let valDisplay = r.value ?? "-";
+						if (r.error) {
+							const firstLine = r.error.split("\n")[0].trim();
+							valDisplay = `<error: ${firstLine}>`;
+						}
+						return `${r.expression}=${valDisplay} ${icon}`;
+					});
+					part += `  •  👁️ ${summaries.join(", ")}`;
+				} else {
+					part += `  •  [👁️ ${bp.watch.length}]`;
+				}
+			}
+			return part;
 		});
 
 		const hint = new vscode.InlayHint(position, `💡 ${labelParts.join(" | ")}`);

@@ -253,16 +253,22 @@ export function isDiskContentModifiedSinceLastSaved(workspaceRoot: string): bool
  */
 export function ensureLocalScenesGitignore(workspaceRoot: string): boolean {
 	const LOCAL_ENTRY = "debug-scenes.local.json";
+	const TRACE_ENTRY = "debug-trace.local.json";
 	try {
 		const gitignorePath = path.join(workspaceRoot, ".gitignore");
 		const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : "";
-		const alreadyIgnored = existing
-			.split(/\r?\n/)
-			.some((line) => line.trim() === LOCAL_ENTRY || line.trim() === `.vscode/${LOCAL_ENTRY}`);
-		if (alreadyIgnored) return false;
+		const lines = existing.split(/\r?\n/).map((l) => l.trim());
+		const hasLocal = lines.includes(LOCAL_ENTRY) || lines.includes(`.vscode/${LOCAL_ENTRY}`);
+		const hasTrace = lines.includes(TRACE_ENTRY) || lines.includes(`.vscode/${TRACE_ENTRY}`);
+		if (hasLocal && hasTrace) return false;
+
+		const additions: string[] = [];
+		if (!hasLocal) additions.push(`.vscode/${LOCAL_ENTRY}`);
+		if (!hasTrace) additions.push(`.vscode/${TRACE_ENTRY}`);
 
 		const separator = existing && !existing.endsWith("\n") ? "\n" : "";
-		fs.writeFileSync(gitignorePath, `${existing}${separator}# Scene Breakpoints personal scenes\n.vscode/${LOCAL_ENTRY}\n`, "utf-8");
+		const header = !hasLocal ? "# Scene Breakpoints personal scenes\n" : "";
+		fs.writeFileSync(gitignorePath, `${existing}${separator}${header}${additions.join("\n")}\n`, "utf-8");
 		return true;
 	} catch (e) {
 		console.warn("[SceneStorage] Failed to update .gitignore for local scenes:", e);

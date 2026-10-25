@@ -5,7 +5,13 @@ import * as path from "node:path";
  */
 export function normalizeFsPath(filePath: string): string {
 	if (!filePath) return "";
-	return path.normalize(filePath).replace(/\\/g, "/").toLowerCase();
+	let clean = filePath;
+	if (clean.startsWith("file:///")) {
+		clean = clean.slice(8);
+	} else if (clean.startsWith("file://")) {
+		clean = clean.slice(7);
+	}
+	return path.normalize(clean).replace(/\\/g, "/").toLowerCase();
 }
 
 /**

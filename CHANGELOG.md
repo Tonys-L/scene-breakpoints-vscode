@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.5.0] - 2026-10-26
+
+### Added
+- **Auto-Continue Cruise Mode (`sceneBreakpoints.autoContinueMode`)**:
+  - Automatically evaluates breakpoint `watch` expressions and `expected` assertions on hit and resumes execution (`"onPass"` by default, `"always"`, or `"off"`).
+  - In `"onPass"` mode, breakpoints with passing assertions (or no `watch` expressions) automatically continue, while any `Mismatch` (`isMatched === false`) or evaluation `Error` immediately brakes and freezes at the exact failing breakpoint.
+  - Built-in monotonic `pauseSeq` generation guard (handles same-line dual pause points such as `const x = await fn()`) and DAP `stackTrace` request sequence filtering (`startFrame === 0` top-frame lock) to prevent paginated caller frames from hijacking pause capture.
+- **Zero-Prompt AI Debug Trace Persistence (`.vscode/debug-trace.local.json`)**:
+  - Real-time atomic persistence of active debug session state (`running` / `paused` / `terminated`), `hasMismatchOrError` flag, current pause location, and ordered hit steps with evaluated `watch` values into `.vscode/debug-trace.local.json` (idempotently added to `.gitignore`).
+  - Updated official `scene-breakpoints` AI Skill with the **Zero-Prompt Auto-Inspect** workflow so AI agents automatically read `.vscode/debug-trace.local.json` when users say "done" or "check the result".
+- **Full-Line Breakpoint Hover Card & Smart Evaluatable Expression Guard (`SceneHoverProvider`)**:
+  - Hovering anywhere on an active scene breakpoint line in the editor renders a rich Markdown table displaying step metadata, `watch` actual values, `expected` assertions, and first-line error details.
+  - Integrated `SceneEvaluatableExpressionProvider` to suppress native VS Code `undefined` popups on leading whitespace, keywords, type annotations, and uninitialized LHS declarations on breakpoint lines.
+
+### Improved & Fixed
+- **Cross-Platform Path & Quote Matching**: normalized Windows drive letters (`normalizeFilePath`) and outer quote stripping (`'stop'` vs `"stop"`) for accurate `expected` assertion matching across `js-debug` and Python debuggers.
+- **Authoritative Top-Frame Pause Locking (`ActivePauseAuthority`)**: isolated multi-session (e.g. `tsx` parent launcher vs child worker) and internal Node virtual frames so UI highlights and trace buffers strictly reflect the physical top user frame.
+
+---
+
 ## [1.4.1] - 2026-10-17
 
 ### Added

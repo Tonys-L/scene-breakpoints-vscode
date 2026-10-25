@@ -6,7 +6,7 @@ import {
 } from "#src/domain/services/sceneResolver";
 import type { SceneCatalog } from "#src/domain/models/sceneCatalog";
 import type { SceneLayerOrigin } from "#src/domain/ports/sceneRepository";
-import type { BreakpointType } from "#src/domain/types";
+import type { BreakpointType, SourceSceneBreakpoint } from "#src/domain/types";
 import { isFilePathMatch } from "#src/shared/utils/pathUtils";
 
 /**
@@ -44,6 +44,10 @@ export interface GraphNode {
 	readonly status: GraphNodeStatus;
 	/** 所属场景是否已登记激活（ownerScene ∈ activeScenes，纯推导标注，webview 据此渲染未激活态） */
 	readonly registered: boolean;
+	/** 变量追踪监视表达式列表 (v1.5.0) */
+	readonly watch?: readonly string[];
+	/** 变量预期值字典 (v1.5.0) */
+	readonly expected?: Record<string, any>;
 }
 
 /** 执行流泳道：一个可见根场景的展开态节点流 */
@@ -134,6 +138,8 @@ function buildBreakpointNode(
 		condition: bp.condition,
 		hitCondition: bp.hitCondition,
 		logMessage: bp.logMessage,
+		watch: !isFunction && Array.isArray((bp as SourceSceneBreakpoint).watch) ? [...(bp as SourceSceneBreakpoint).watch!] : undefined,
+		expected: !isFunction && (bp as SourceSceneBreakpoint).expected ? { ...(bp as SourceSceneBreakpoint).expected } : undefined,
 		enabled: bp.enabled,
 		status: isUnmatched?.(file, line) ? "unmatched" : "idle",
 		registered,

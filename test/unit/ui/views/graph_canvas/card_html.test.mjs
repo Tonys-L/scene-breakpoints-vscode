@@ -275,6 +275,26 @@ export async function runCardHtmlTests() {
 		assert.match(deepHtml, /deep-loop/);
 	}
 
+	// 7. 断点卡片 Watch 观测胶囊 (bp-pill-watch) 渲染
+	{
+		const staticWatchNode = {
+			id: "sceneW#0",
+			kind: "breakpoint",
+			ownerScene: "sceneW",
+			refPath: ["sceneW"],
+			file: "src/watch.ts",
+			line: 20,
+			bpType: "line",
+			enabled: true,
+			registered: true,
+			status: "idle",
+			watch: ["order.id", "order.status"],
+		};
+		const staticHtml = renderCardHtml(staticWatchNode, { labels, isSelected: false, isPulsing: false });
+		assert.match(staticHtml, /bp-pill-watch/);
+		assert.match(staticHtml, /Watch Anchors: order\.id, order\.status/);
+	}
+
 	console.log("  ✅ [CardHtml] 卡片 HTML 渲染器测试全部通过！\n");
 }
 

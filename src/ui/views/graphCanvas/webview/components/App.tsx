@@ -47,6 +47,11 @@ export function App({ payload, vscode }: AppProps) {
 						setRecords((prev) => [...prev, msg.record]);
 					}
 					break;
+				case "trace-records":
+					if (Array.isArray(msg.records)) {
+						setRecords(msg.records);
+					}
+					break;
 				case "trace-clear":
 					setRecords([]);
 					break;

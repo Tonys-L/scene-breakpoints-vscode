@@ -2,6 +2,7 @@ export * from "./views/sceneTreeProvider";
 export * from "./views/statusBarView";
 export * from "./views/sceneCodeLensProvider";
 export * from "./views/sceneInlayHintsProvider";
+export * from "./views/sceneHoverProvider";
 export * from "./utils/inlayHintsCoordinator";
 export * from "./commands/index";
 export * from "./locators/sceneJsonLocator";

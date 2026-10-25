@@ -511,6 +511,29 @@ function SingleStepCard({
 						{labels?.locateSource || "Locate Source"} <ArrowUpRightIcon size={11} />
 					</span>
 				</div>
+
+				{/* 变量监视求值快照 */}
+				{record.watches && record.watches.length > 0 && (
+					<div className="trace-watches-row">
+						{record.watches.map((w, idx) => {
+							const statusIcon = w.isMatched === true ? "✅" : w.isMatched === false ? "❌" : w.error ? "⚠️" : "";
+							let valStr = w.value ?? "-";
+							if (w.error) {
+								const firstLine = w.error.split("\n")[0].trim();
+								valStr = `<error: ${firstLine}>`;
+							}
+							return (
+								<span
+									key={idx}
+									className={`trace-watch-pill ${w.isMatched === false ? "mismatch" : w.error ? "error" : ""}`}
+									title={`${w.expression}: ${valStr}${w.expected !== undefined ? ` (expected: ${JSON.stringify(w.expected)})` : ""}`}
+								>
+									👁️ <span className="trace-watch-expr">{w.expression}</span>: <span className="trace-watch-val">{valStr}</span> {statusIcon}
+								</span>
+							);
+						})}
+					</div>
+				)}
 			</div>
 		</div>
 	);

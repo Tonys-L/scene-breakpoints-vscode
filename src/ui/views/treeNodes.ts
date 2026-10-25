@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { sceneStateManager } from "#src/application/sceneStateManager";
-import { getLatestWatchResults } from "#src/application/debugPauseContext";
+import { appendWatchTableMarkdown } from "./breakpointTooltipFormatter";
 import type { FunctionSceneBreakpoint, SceneBreakpoint, SourceSceneBreakpoint } from "#src/domain/types";
 import { isSameFsPath, isFilePathMatch } from "#src/shared/utils/pathUtils";
 
@@ -260,27 +260,33 @@ export class BreakpointNode extends vscode.TreeItem {
 		const srcBp = this.breakpoint as SourceSceneBreakpoint;
 		const isUnmatched = this.isUnmatched();
 
-		let extra = srcBp.desc;
-		if (!extra) {
-			if (srcBp.type === "condition") extra = `? ${srcBp.condition}`;
-			else if (srcBp.type === "hitCount") extra = `# ${srcBp.hitCondition}`;
-			else if (srcBp.type === "logpoint") extra = `log: "${srcBp.logMessage}"`;
+		let descPart = srcBp.desc;
+		if (!descPart) {
+			if (srcBp.type === "condition") descPart = `? ${srcBp.condition}`;
+			else if (srcBp.type === "hitCount") descPart = `# ${srcBp.hitCondition}`;
+			else if (srcBp.type === "logpoint") descPart = `log: "${srcBp.logMessage}"`;
 		}
 		const hasWatches = Array.isArray(srcBp.watch) && srcBp.watch.length > 0;
-		if (hasWatches) {
-			const watchTag = `[👁️ ${srcBp.watch!.length}]`;
-			extra = extra ? `${extra}  ${watchTag}` : watchTag;
+		const watchTag = hasWatches ? `[👁️ ${srcBp.watch!.length}]` : "";
+
+		const tags: string[] = [];
+		if (isPaused) {
+			tags.push(`▶ ${vscode.l10n.t("[PAUSED]")}`);
+		}
+		if (isUnmatched) {
+			tags.push(`[${vscode.l10n.t("Unmatched")}]`);
+		}
+		if (watchTag) {
+			tags.push(watchTag);
 		}
 
-		if (isUnmatched) {
-			const unmatchTag = `[${vscode.l10n.t("Unmatched")}]`;
-			extra = extra ? `${unmatchTag}  •  ${extra}` : unmatchTag;
+		if (tags.length > 0 && descPart) {
+			this.description = `${tags.join("  •  ")}  •  ${descPart}`;
+		} else if (tags.length > 0) {
+			this.description = tags.join("  •  ");
+		} else {
+			this.description = descPart;
 		}
-		if (isPaused) {
-			const pausedTag = `▶ ${vscode.l10n.t("[PAUSED]")}`;
-			extra = extra ? `${pausedTag}  •  ${extra}` : pausedTag;
-		}
-		this.description = extra;
 
 		const md = new vscode.MarkdownString();
 		if (isPaused) {
@@ -293,32 +299,7 @@ export class BreakpointNode extends vscode.TreeItem {
 		if (srcBp.desc) md.appendMarkdown(`\n\n${srcBp.desc}`);
 
 		// v1.5.0 变量监视锚点 (Watch Anchors) 呈现
-		if (hasWatches) {
-			md.appendMarkdown(`\n\n---\n**👁️ ${vscode.l10n.t("Watch Anchors")}**\n`);
-			const watchKey = `${srcBp.file}:${srcBp.line}`;
-			const latestResults = getLatestWatchResults(watchKey);
-
-			if (latestResults && latestResults.length > 0) {
-				md.appendMarkdown(`\n| ${vscode.l10n.t("Expression")} | ${vscode.l10n.t("Value")} | ${vscode.l10n.t("Expected")} | ${vscode.l10n.t("Status")} |`);
-				md.appendMarkdown(`\n| :--- | :--- | :--- | :--- |`);
-				for (const r of latestResults) {
-					let statusText = "⚪";
-					if (r.isMatched === true) statusText = "✅";
-					else if (r.isMatched === false) statusText = "❌ Mismatch";
-					else if (r.error) statusText = "⚠️ Error";
-
-					const valDisplay = r.value ? `\`${r.value.replace(/\|/g, "\\|")}\`` : "-";
-					const expDisplay = r.expected !== undefined ? `\`${JSON.stringify(r.expected)}\`` : "-";
-					md.appendMarkdown(`\n| \`${r.expression}\` | ${valDisplay} | ${expDisplay} | ${statusText} |`);
-				}
-			} else {
-				for (const w of srcBp.watch!) {
-					const exp = srcBp.expected ? srcBp.expected[w] : undefined;
-					const expStr = exp !== undefined ? ` *(expected: \`${JSON.stringify(exp)}\`)*` : "";
-					md.appendMarkdown(`\n- \`${w}\`${expStr}`);
-				}
-			}
-		}
+		appendWatchTableMarkdown(md, srcBp, this.workspaceRoot);
 
 		md.appendMarkdown(`\n\n---\n*💡 ${hintText}*`);
 		this.tooltip = md;
