@@ -8,9 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.5.1] - 2026-10-27
+
+### Improved & Documentation
+- **Comprehensive Bilingual Documentation & Hands-On Guide Alignment**:
+  - Fully updated `README.md` and `README_zh.md` to highlight v1.4.0 Secondary Side Bar canvas & full-screen tab escape hatches, v1.5.0 Auto-Continue cruise debugging, Zero-Prompt AI trace loops, and full-line hover inspector cards.
+  - Expanded Hands-On User Guides (`docs/guide.md` & `docs/guide_zh.md`) with five dedicated sections (3.12–3.16) explaining DAP tolerance matching, `onPass` cruise state machine, zero Git pollution guarantees for `.vscode/debug-trace.local.json`, and hover card expression suppression.
+  - Upgraded Section 5 with Dual-Track AI Skill workflows (Reader 5-step protocol & Writer intention matrix) and Zero-Prompt Auto-Inspection procedures.
+  - Synchronized Section 6 JSON reference (with `watch` schemas), Section 7 shortcut table, and Section 8 FAQs (cruise debugging and trace file isolation).
+- **Changelog & Release Notes Consistency**:
+  - Backfilled missing breakpoint variable watch anchor and assertion entries in CHANGELOG.
+  - Aligned `RELEASE_NOTES.md` to ensure GitHub Actions release workflow generates precise, up-to-date release bodies.
+
+---
+
 ## [1.5.0] - 2026-10-26
 
 ### Added
+- **Breakpoint Variable Watch Anchors & Expected Assertions (`watch` array)**:
+  - Native support for declarative variable watch lists: `watch: [{ name: "state.status", expected: "ready" }]` on breakpoints.
+  - Automatically evaluates variables in DAP context upon hit, capturing primitives, objects, and error states with normalized tolerance matching against expected values.
 - **Auto-Continue Cruise Mode (`sceneBreakpoints.autoContinueMode`)**:
   - Automatically evaluates breakpoint `watch` expressions and `expected` assertions on hit and resumes execution (`"onPass"` by default, `"always"`, or `"off"`).
   - In `"onPass"` mode, breakpoints with passing assertions (or no `watch` expressions) automatically continue, while any `Mismatch` (`isMatched === false`) or evaluation `Error` immediately brakes and freezes at the exact failing breakpoint.

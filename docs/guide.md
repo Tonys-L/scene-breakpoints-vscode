@@ -20,17 +20,24 @@
    - [3.9 Team & Personal Config Isolation (v1.2.0)](#39-team--personal-config-isolation-v120)
    - [3.10 Incident-to-Scene: Capture Call Stack (v1.2.0)](#310-incident-to-scene-capture-call-stack-v120)
    - [3.11 Scene References & Modular Composition (v1.1.0)](#311-scene-references--modular-composition-v110)
+   - [3.12 Permanent Secondary Side Bar Canvas & Full-Screen Tab (v1.4.0)](#312-permanent-secondary-side-bar-canvas--full-screen-tab-v140)
+   - [3.13 Breakpoint Watch Anchors & Assertions (v1.5.0)](#313-breakpoint-watch-anchors--assertions-v150)
+   - [3.14 Auto-Continue Cruise Mode (v1.5.0)](#314-auto-continue-cruise-mode-v150)
+   - [3.15 Debug Trace Persistence & Zero-Prompt AI Loop (v1.5.0 debug-trace.local.json)](#315-debug-trace-persistence--zero-prompt-ai-loop-v150-debug-tracelocaljson)
+   - [3.16 Full-Line Breakpoint Hover Cards (v1.5.0 Scene Hover Inspector)](#316-full-line-breakpoint-hover-cards-v150-scene-hover-inspector)
 4. [Code Drift & Self-Healing Architecture](#4-code-drift--self-healing-architecture)
    - [4.1 What is a Code Fingerprint? (3-Line Context Window)](#41-what-is-a-code-fingerprint-3-line-context-window)
    - [4.2 Two-Stage Self-Healing Engine: Near-Site Radiation + Scope Cruise](#42-two-stage-self-healing-engine-near-site-radiation--scope-cruise)
    - [4.3 What if Code Was Completely Deleted? (Unmatched Warning)](#43-what-if-code-was-completely-deleted-unmatched-warning)
 5. [AI Agent Orchestration & Skill Planning](#5-ai-agent-orchestration--skill-planning)
    - [5.1 How the Extension Empowers AI (Declarative Driven Architecture)](#51-how-the-extension-empowers-ai-declarative-driven-architecture)
-   - [5.2 Install AI Skills: When to Use & Core Scenarios](#52-install-ai-skills-when-to-use--core-scenarios)
-   - [5.3 Three Ways AI Activates Breakpoint Scenes](#53-three-ways-ai-activates-breakpoint-scenes)
-   - [5.4 AI Breakpoint Authoring Guidelines (Omission Strategy)](#54-ai-breakpoint-authoring-guidelines-omission-strategy)
-   - [5.5 Diagnostics Panel: Check Your AI Setup](#55-diagnostics-panel-check-your-ai-setup)
-   - [5.6 Will Plugin Updates Overwrite My Custom Rules?](#56-will-plugin-updates-overwrite-my-custom-rules)
+   - [5.2 Dual-Track AI Skills: Reader & Writer Protocols (v1.4.1)](#52-dual-track-ai-skills-reader--writer-protocols-v141)
+   - [5.3 Install AI Skills: When to Use & Core Scenarios](#53-install-ai-skills-when-to-use--core-scenarios)
+   - [5.4 Three Ways AI Activates Breakpoint Scenes](#54-three-ways-ai-activates-breakpoint-scenes)
+   - [5.5 AI Breakpoint Authoring Guidelines (Omission Strategy)](#55-ai-breakpoint-authoring-guidelines-omission-strategy)
+   - [5.6 Diagnostics Panel: Check Your AI Setup](#56-diagnostics-panel-check-your-ai-setup)
+   - [5.7 Will Plugin Updates Overwrite My Custom Rules?](#57-will-plugin-updates-overwrite-my-custom-rules)
+   - [5.8 Zero-Prompt AI Auto-Inspection Workflow (v1.5.0)](#58-zero-prompt-ai-auto-inspection-workflow-v150)
 6. [Full Configuration Reference (debug-scenes.json)](#6-full-configuration-reference-debug-scenesjson)
 7. [Cheat Sheet: Shortcuts & Actions](#7-cheat-sheet-shortcuts--actions)
 8. [Frequently Asked Questions (FAQ)](#8-frequently-asked-questions-faq)
@@ -308,6 +315,15 @@ Inspects external watcher status, active scenes, and whether your agent rules ar
    Clicking a custom rule opens VS Code's native `vscode.diff` window (your file on the left, official template on the right). Pick and merge what you want without fear of blind overrides;
 3. **Mandatory Backups**:
    Even if you choose to overwrite, a timestamped backup (e.g. `SKILL.2026-09-13T01-20-00-000Z.bak`) is created next to the file automatically.
+
+---
+
+### 5.8 Zero-Prompt AI Auto-Inspection Workflow (v1.5.0)
+
+1. **AI Generates Scene**: The AI defines breakpoints with `watch` variables and `expected` values in `.vscode/debug-scenes.json`;
+2. **Hit F5 to Cruise**: The developer presses F5 with `autoContinueMode: "onPass"`;
+3. **Auto-Braking & Atomic Persistence**: Any assertion discrepancy freezes on the offending line, and the full trace is written to `.vscode/debug-trace.local.json`;
+4. **One-Sentence Handoff**: The developer says *"Analyze why it broke"*, and the AI reads the trace file to instantly explain the bug.
 
 ---
 

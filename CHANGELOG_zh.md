@@ -8,9 +8,26 @@
 
 ---
 
+## [1.5.1] - 2026-10-27
+
+### 优化与文档 (Improved & Docs)
+- **双语文档与用户实战指南全景补齐**：
+  - 全面更新中英文 `README.md` 与 `README_zh.md`，深度呈现 v1.4.0 架构画布副侧边栏常驻与全屏 Tab 演进、v1.5.0 自动巡航放行、Trace 实时落盘零提示词 AI 闭环与整行悬浮透视卡片。
+  - 用户实战指南（`docs/guide_zh.md` 与 `docs/guide.md`）新增 3.12~3.16 五大进阶核心章节，系统阐述 DAP 自动求值容差机制、`onPass` 巡航放行状态机、`.vscode/debug-trace.local.json` 零污染安全保证与整行 Hover 卡片交互。
+  - 完善第 5 章：新增 AI Skill 双轨模式（读图五步法 Reader 与规范制图标准 Writer）以及零提示词自动分析工作流。
+  - 补齐第 6 章配置参考（新增 `watch` 声明）、第 7 章快捷操作与第 8 章 FAQ（增加巡航放行策略与本地轨迹隔离解答）。
+- **更新日志与发布说明稳态同步**：
+  - 补齐 CHANGELOG 中遗漏的“断点变量监视锚点与期望值比对 (`watch` 数组)”核心特性声明。
+  - 同步重构 `RELEASE_NOTES.md`，保障 GitHub Actions 自动化 Release 发布流水线产出精确的发布说明。
+
+---
+
 ## [1.5.0] - 2026-10-26
 
 ### 新增 (Added)
+- **断点变量监视锚点与期望值比对 (`watch` 数组)**：
+  - 断点定义原生支持声明式变量监视列表 `watch: [{ name: "state.status", expected: "ready" }]`。
+  - 在断点命中时自动通过 DAP 求值上下文提取变量值，支持基本类型、复杂对象与错误求值状态捕获，并与期望值进行宽松规范化比对（自动容忍引号、类型字符串差量）。
 - **断点命中自动巡航放行 (`sceneBreakpoints.autoContinueMode`)**：
   - 新增配置项 `sceneBreakpoints.autoContinueMode`（支持 `"onPass"` 默认、`"always"`、`"off"` 三档策略）：按一次 `F5` 即可全自动跑完整个场景断点链路并采集所有 `watch` 变量与 `expected` 断言。
   - 在默认的 `"onPass"` 模式下，断言全部通过（或未配置 `watch`）的断点自动放行继续执行；一旦发现任何 `Mismatch`（实际值与期望值不符）或求值 `<error>`，立即自动急刹并定格在出错断点现场。

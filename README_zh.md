@@ -12,9 +12,9 @@
   <p><a href="https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/README.md">English</a> | <b>简体中文</b></p>
 </div>
 
-> 🏷️ **核心特性**：`断点分组管理` · `场景化调试` · `AI Agent 协同` · `代码漂移自愈` · `团队共享导览`
+> 🏷️ **核心特性**：`断点分组管理` · `场景化调试` · `AI 读图制图双轨` · `自动巡航放行` · `变量监视断言` · `调试轨迹实时落盘` · `代码漂移自愈`
 
-**一句话介绍**：把散落的临时断点，变成可复用、可分享、可自愈的工程化调试资产。
+**一句话介绍**：把散落的临时断点，变成可复用、可分享、可自愈的工程化调试资产；按一次 F5 自动巡航跑完调用链并采集变量断言，AI 读盘即可秒级定位 Bug 根因。
 
 ---
 
@@ -23,11 +23,12 @@
 平时在 VS Code 里调试代码，大家经常会遇到这几个头疼事：
 1. **断点太多舍不得删，调试时到处乱停**：平时查各种问题留了几十个断点，查新 Bug 时走两步就误停一次，烦躁得不行；
 2. **复杂调用链理顺了，过两天就忘光**：好不容易理清一条横跨十几个文件的复杂业务链路，过两周又忘了关键步骤在哪，新人接手更是一头雾水；
-3. **Pull 一下代码或改了几行，断点全偏了**：代码行号一变，原来的断点全停在空行或注释上，彻底失效；*（这是多人协作、Git 分支切换与代码重构中最常见的断点失效场景）*
+3. **Pull 一下代码或改了几行，断点全偏了**：代码行号一变，原来的断点全停在空行或注释上，彻底失效；*(这是多人协作、Git 分支切换与代码重构中最常见的断点失效场景)*
 4. **想把断点分享给同事，换电脑断点全丢**：只能打字告诉同事“你在 xx 文件的 88 行打个断点”，换台电脑之前打的断点全没了；
-5. **AI 帮我梳理了业务流程，却没法直接把断点布置到编辑器**：让 AI 查 Bug 或理顺复杂逻辑，AI 找出了关键函数与条件分支，但只能文字回复“建议在 a.ts 第 20 行打断点”，开发者还得人工一个个文件去跳转并手动打断点。
+5. **单步调试点到手抽筋，只为观察某几个变量**：为了看深层函数里某个变量是否符合预期，需要连续按十几下 F10/F5，手一抖按快了还得从头来过；
+6. **AI 帮我梳理了流程，却无法直接布设断点与读取调试结果**：让 AI 查 Bug，AI 只能文字建议打断点，不仅需要人工手动跳转，跑完后还得把变量值大段复制给 AI。
 
-**Scene Breakpoints** 就是你的**断点分组与链路导览器**：把断点按业务场景分组，带上步骤备注，随切随用，自动随 Git 团队共享。同时支持 **AI Agent 一键直接写入并激活场景**——你只需要说一句话，AI 就能帮你完成断点编排。
+**Scene Breakpoints** 就是你的**断点分组管理、自动化巡航导览器与 AI 调试协同中枢**：把断点按业务场景分组，绑定意图备注与变量断言，随切随用，自动随 Git 团队共享。支持 **AI 双轨协同（读图 Reader + 编排 Writer）** 与 **零提示词自动分析（Zero-Prompt Auto-Inspect）**！
 
 ---
 
@@ -43,40 +44,29 @@
 - 🎯 **切到哪个场景，就只留哪组断点**
   切到“登录”，VS Code 里就只生效登录的断点，其他无关断点自动藏起来；切到“支付”，就只断支付，绝不瞎停。
 
+- 🚦 **断点命中自动巡航放行 (Auto-Continue Cruise, v1.5.0)**
+  配置 `sceneBreakpoints.autoContinueMode: "onPass"`（默认）。按一次 F5 全自动跑完整个场景链路并求值所有监视变量；断言全部吻合自动放行继续执行，**一旦发现任何 Mismatch 或报错立即自动急刹定格在出错断点现场**！
+
+- 📝 **调试轨迹实时落盘与 AI 零提示词闭环 (v1.5.0)**
+  调试执行过程中的命中断点、监视变量求值、断言结果实时原子写入 `.vscode/debug-trace.local.json`（自动加入 `.gitignore`）。跑完 F5 后直接对 AI 说一句“跑完了/看下结果”，AI 自动读盘完成根因定位。
+
+- 🔍 **编辑器断点整行悬浮透视卡片 (v1.5.0)**
+  鼠标悬停在激活断点行的任意位置，即可弹出包含步骤意图、`watch` 变量实时求值、期望值与校验状态（`✅` / `❌ Mismatch` / `⚠️ Error`）的 Markdown 表格卡片。智能拦截行首无意义浮窗，绝不干扰正常代码阅读。
+
 - 🛡️ **行号变了，断点自动找回（防漂移）**
-  拉取了最新代码或改动了行号？激活场景时，插件会自动根据代码内容把断点精准吸附到新行号上，再也不用手动重打。
+  拉取了最新代码或改动了行号？激活场景时，插件会自动根据代码三行指纹与函数作用域锚点把断点精准吸附到新行号上，再也不用手动重打。
 
-- 🔄 **随手打断点，一键另存为分组**
-  不用专门去写配置文件。平时该怎么打断点就怎么打，调通后点一下“导出为新场景”，直接打包存盘。
-
-- 🌲 **侧边栏像清单一样打勾管理**
-  在左侧“运行与调试”面板里直接看所有场景，点击复选框随手开启/关闭某个断点，还能同时勾选多个场景一起生效。
-
-- ⚡ **按 F5 启动调试，自动加载对应断点**
-  在 `launch.json` 里配好名字，按 F5 启动调试时，自动把关联场景的断点打好，不用每次手动切。
-
-- 📊 **可视化画板全景透视，复杂链路一览无余 (v1.3.0)**
-  点击调试侧边栏顶部的拓扑图按钮（或在命令面板输入 `Scene Breakpoints: Show Graph Canvas`），即可秒级打开交互式只读画板。泳道分层、场景引用嵌套、断点卡片一目了然；调试时实时脉冲点亮执行流并记录命中轨迹，还支持一键导出 Mermaid 流程图分享到文档或 PR。
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-canvas.png" alt="场景断点可视化画布与执行链路拓扑 (Scene Graph Canvas)" width="85%" />
-</p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-hit-trace.png" alt="调试运行时断点实时脉冲与执行流命中轨迹 (Hit Trace)" width="85%" />
-</p>
+- 📊 **可视化画板全景透视，副侧边栏常驻与全屏独立 Tab (v1.3.0 ~ v1.4.0)**
+  副侧边栏常驻呈现拓扑全景图，支持泳道分层、嵌套展开、执行流实时脉冲闪烁，并可通过全屏逃生门一键展开为独立编辑器 Tab 深入探索。支持一键导出 Mermaid 流程图分享至 PR 或文档。
 
 - 🧩 **场景引用：组合复用，一处维护 (v1.1.0)**
-  在场景中声明 `{ "type": "scene", "name": "..." }`，即可在该位置组合另一场景的全部断点。认证、会话等通用链路断点只维护一处、全场景复用：声明顺序即执行顺序，引用成环自动阻断并报出完整环路径，悬空引用降级为警告不阻断其余断点。
+  在场景中声明 `{ "type": "scene", "name": "..." }`，组合复用公共鉴权与初始化断点，内置成环阻断安全保护。
 
 - 🔒 **团队共享与个人私有配置智能隔离 (v1.2.0)**
-  公共场景保存在 `.vscode/debug-scenes.json` 随 Git 团队共享；个人临时调试断点自动保存到 `.vscode/debug-scenes.local.json` 并自动追加至 `.gitignore`。本地调试随心所欲，绝对不会污染代码仓库。
+  公共场景保存在 `.vscode/debug-scenes.json` 随 Git 共享；个人私有断点写入 `.vscode/debug-scenes.local.json` 零污染。
 
-- 📸 **暂停态逆向固化：调用栈一键生成场景 (v1.2.0)**
-  命中断点暂停时，右键即可将当前调用栈中跨文件的源码帧提取为新场景，自带 3 行上下文指纹。遇到棘手 Bug 时一键保存“事故现场”，随时复现或交给同事与 AI 协查。
-
-- 🤖 **AI 自动生成场景断点，调用链路一键落盘**
-  让 AI 分析 Bug 或梳理业务时，AI 梳理完关键步骤可直接生成一套带有步骤备注的场景断点并自动激活。告别对照聊天记录人肉翻文件打断点的麻烦，按 F5 就能直接顺着链路调试。
+- 📸 **事故现场逆向固化：调用栈一键生成场景 (v1.2.0)**
+  命中断点或异常崩溃时，右键即可将跨文件源码调用栈一键逆向固化为包含上下文指纹的新场景。
 
 ---
 
@@ -87,7 +77,7 @@
 - **扩展面板搜索**：在 VS Code 扩展市场搜索 `Scene Breakpoints` 直接安装；
 - **VSIX 文件安装**：在扩展面板点击右上角 `...` $\rightarrow$ 选择 `从 VSIX 安装...`。
 
-### 2. 三步上手流程
+### 2. 基础三步上手
 
 1. **添加断点**：在任意代码行右键选择 `Add to Debug Scene...`，或者直接按下快捷键 `Ctrl + Alt + B`（macOS: `Cmd + Alt + B`），选择场景并输入备注；
 
@@ -119,101 +109,145 @@
 
 ## 🎨 进阶核心特性
 
-### 1. 场景断点可视化画布 (Visual Graph Canvas, v1.3.0)
+### 1. 变量监视锚点与断言比对 (Watch Anchors & Assertions, v1.5.0)
 
-在调试侧边栏“Scene Breakpoints”标题栏点击拓扑图按钮（或在命令面板输入 `Scene Breakpoints: Show Graph Canvas`），即可唤出交互式画板：
-- **执行流 DAG 拓扑全景**：以泳道分层（团队主场景 / 本地私有场景）、引用嵌套（Scene Reference）和清晰的断点卡片直观呈现；
-- **点击直达源码**：在画布中点击任意断点卡片或执行步数，编辑器自动分屏打开目标文件、视口平滑居中并触发 800ms 行高亮；
-- **Live DAP 实时脉冲与命中轨迹**：调试运行命中断点时，画布节点同步闪烁脉冲；并以内联时间线（Trace Timeline）记录执行步数与循环折叠，清楚展现“代码停在哪、从哪跳过来”；
-- **场景范围选择器 (Scope Selector)**：支持勾选查看任意场景（包含未激活场景），所见即所得；
-- **一键 Mermaid 流程图导出**：在画布右上角点击导出按钮，秒级生成合法 `flowchart TD` 并复制到剪贴板，直接粘贴到 Markdown 文档、GitHub PR 或架构评审报告中。
+在断点中声明 `watch` 列表，为关键变量定义期望断言：
 
-### 2. 场景组合引擎：内联场景引用 (v1.1.0)
+```json
+{
+  "type": "line",
+  "file": "src/services/pay.ts",
+  "line": 52,
+  "desc": "步骤 2: 校验支付返回状态",
+  "watch": [
+    { "name": "result.status", "expected": "\"SUCCESS\"" },
+    { "name": "result.code", "expected": 200 }
+  ]
+}
+```
+- **自动 DAP 求值**：命中断点时底层自动提取变量运行时值，捕获基本类型、复杂对象与异常状态；
+- **智能容差比对**：自动归一化单双引号（如 `js-debug` 输出的 `'SUCCESS'` 自动匹配 `"SUCCESS"`），消除不同调试器输出格式带来的误判。
 
-多个业务流程共享基础鉴权或初始化断点时，无需复制粘贴，直接用场景组合：
-- **内联引用条目**：声明 `{ "type": "scene", "name": "auth-flow" }`，被引用场景的全部断点在该位置按深度优先展开，声明顺序即执行顺序；
-- **安全展开防护**：引用成环（含自引用）在写盘与下发调试器之前中止激活，报错携带完整环路径（如 `A → B → A`）；悬空引用降级为警告并跳过，不阻断其余断点下发；
-- **启停不删配置**：`enabled: false` 一键临时摘除整棵引用子树；可选 `desc` 备注在侧边栏展示；
-- **树视图导航**：侧边栏渲染只读嵌套引用节点，支持一键跳转引用源场景（`revealRefSource`）与启停切换；自愈回写按断点归属场景（ownerScene）精准路由。
+### 2. 断点命中自动巡航放行 (Auto-Continue Cruise, v1.5.0)
 
-### 3. 团队与个人私有配置智能隔离 (v1.2.0)
+无需一次次单步敲击键盘！在设置中开启自动巡航（默认即为 `"onPass"`）：
+- **`"onPass"` (默认推荐)**：断点命中后自动求值 `watch` 表达式；全部吻合期望值（或未配置 `watch`）时**自动 Continue 放行**；一旦发现任何 `Mismatch` 或求值错误，**立即定格暂停在出错现场**供开发者深入排查；
+- **`"always"`**：静默采集全链路所有断点的数据，不因断言失败而暂停，全速跑完链路；
+- **`"off"`**：关闭自动放行，每次断点命中均保持 VS Code 原生断点暂停。
 
-针对多人协作项目中“临时断点容易污染 Git 提交”的痛点，插件提供双层配置机制：
-- **团队主配置**：`.vscode/debug-scenes.json`（提交到 Git，团队统一沉淀与共享主干业务场景）；
-- **个人私有配置**：`.vscode/debug-scenes.local.json`（插件激活时**自动追加到 `.gitignore`**，私有场景零污染）；
-- **分层合并与就地覆盖**：本地与团队同名场景时，本地私有层自动无缝覆盖团队层，侧边栏合并展示并标记 `[local]` 徽标。
+内置代次守卫（`pauseSeq`）与栈顶锁（`ActivePauseAuthority`），彻底解决 `const x = await fn()` 同行多次暂停的竞态。
 
-### 4. 事故现场逆向固化：调用栈一键生成场景 (v1.2.0)
+### 3. 调试轨迹实时落盘与 AI 零提示词闭环 (v1.5.0)
 
-当调试命中断点或代码抛错暂停时：
-- 在代码编辑器右键选择 `Scene Breakpoints: Capture Call Stack to Scene`（或在命令面板执行）；
-- 插件会自动提取当前线程的所有源码堆栈帧（自动去重并过滤外部依赖），自动计算 3 行上下文指纹（防代码漂移），一键固化存盘为新场景！
+整个调试会话期间，断点执行轨迹实时原子持久化到 `.vscode/debug-trace.local.json`：
+- 记录当前调试状态（`running` / `paused` / `terminated`）、是否有断言失败（`hasMismatchOrError`）、当前暂停位置及每一步求得的变量值；
+- **零提示词闭环 (Zero-Prompt Auto-Inspect)**：按 F5 跑完调试后，无需复制粘贴变量，只需在对话中对 AI 说：
+  > “跑完了，看下结果” 或 “分析一下为什么挂了”  
+  AI 自动读取本地 Trace 文件，瞬间识别出哪一步断言失败并指出根因！
+
+### 4. 编辑器断点整行悬浮透视卡片 (Scene Hover Inspector, v1.5.0)
+
+将鼠标悬停在断点所在代码行的**任意位置**（不仅限红点本体）：
+- 立即弹出格式化的 Markdown 表格卡片，清晰呈现该步排查意图、当前变量求值结果、期望值及比对徽标（`✅` / `❌ Mismatch` / `⚠️ Error`）；
+- 智能屏蔽原生调试器在行首空白和类型声明处弹出的干扰浮窗，保障清爽的代码阅读体验。
+
+### 5. 场景断点可视化画布 (Visual Graph Canvas, v1.3.0 ~ v1.4.0)
+
+在调试侧边栏标题栏点击拓扑树按钮，即可唤出交互式画板：
+- **常驻副侧边栏 (Secondary Side Bar)**：右侧常驻拓扑全景，左侧代码，双屏伴随；
+- **全屏独立编辑器逃生门**：支持一键将画板在新 Tab 中全屏展开，复杂链路一览无余；
+- **Live DAP 实时脉冲**：命中断点时画布节点同步高亮脉冲并记录命中轨迹；
+- **一键 Mermaid 导出**：点击右上角导出按钮秒级生成合法 `flowchart TD` 代码，直接粘贴进 PR 或文档。
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/graph-canvas.png" alt="场景断点可视化画布与执行链路拓扑 (Scene Graph Canvas)" width="85%" />
+</p>
+
+### 6. 场景组合引擎：内联场景引用 (v1.1.0)
+
+在场景声明列表中声明 `{ "type": "scene", "name": "common-auth" }`，即可将公共基础断点按声明位置深度优先展开，内置循环引用检测与成环阻断保护。
+
+### 7. 团队与个人私有配置智能隔离 (v1.2.0)
+
+- **团队主配置**：`.vscode/debug-scenes.json`（提交到 Git，全团队共用）；
+- **个人私有配置**：`.vscode/debug-scenes.local.json`（自动追加进 `.gitignore`，本地临时断点绝不污染仓库）；
+- 本地与团队同名场景自动就地覆盖，侧边栏标记 `[local]` 徽标。
 
 ---
 
-断点数据以纯文本声明式保存在工作区 `.vscode/debug-scenes.json` 中，自带代码透视（CodeLens）一键激活与语法提示：
+## 配置文件完整参考 (`debug-scenes.json`)
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/docs/images/config-file-codelens.png" alt="debug-scenes.json 配置文件与 CodeLens 视图" width="85%" />
-</p>
+断点数据以纯文本声明式保存在工作区 `.vscode/debug-scenes.json` 中，自带代码透视（CodeLens）一键激活与语法提示：
 
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/Tonys-L/scene-breakpoints-vscode/main/schema.json",
-  "activeScenes": ["login-debug"],
+  "activeScenes": ["order-checkout-flow"],
   "bindings": {
-    "Launch API Server": "login-debug"
+    "Launch API Server": "order-checkout-flow"
   },
   "scenes": {
-    "common-setup": [
+    "common-auth": [
       {
         "type": "line",
-        "file": "src/server.ts",
-        "line": 12,
-        "desc": "公共链路：服务启动自检"
+        "file": "src/auth/session.ts",
+        "line": 15,
+        "desc": "公共链路：用户 Token 鉴权",
+        "watch": [
+          { "name": "session.isValid", "expected": true }
+        ]
       }
     ],
-    "login-debug": [
+    "order-checkout-flow": [
       {
         "type": "scene",
-        "name": "common-setup",
-        "desc": "步骤 0: 组合公共初始化场景"
+        "name": "common-auth",
+        "desc": "步骤 0: 组合公共鉴权链路"
       },
       {
         "type": "condition",
-        "file": "src/auth.ts",
-        "line": 45,
-        "condition": "user.isVip === true",
-        "desc": "步骤 1: 仅在 VIP 用户登录时拦截"
+        "file": "src/order/service.ts",
+        "line": 42,
+        "condition": "order.total > 0",
+        "desc": "步骤 1: 校验订单金额有效性",
+        "watch": [
+          { "name": "order.total", "expected": 199.9 }
+        ]
       },
       {
         "type": "logpoint",
-        "file": "src/agent-loop.ts",
-        "line": 104,
-        "logMessage": "Current status: {state.status}",
-        "desc": "步骤 2: 输出运行时状态不暂停"
+        "file": "src/order/service.ts",
+        "line": 68,
+        "logMessage": "Order created: {order.id}",
+        "desc": "步骤 2: 打印订单落库日志"
       },
       {
         "type": "line",
-        "file": "src/user.ts",
-        "line": 88,
-        "desc": "步骤 3: 提取用户会话核心数据"
+        "file": "src/payment/gateway.ts",
+        "line": 95,
+        "desc": "步骤 3: 触发第三方支付网关",
+        "watch": [
+          { "name": "res.status", "expected": "\"SUCCESS\"" },
+          { "name": "res.code", "expected": 200 }
+        ]
       }
     ]
   }
 }
 ```
 
-> 💡 **`activeScenes` 字段**：记录当前激活的场景列表（支持多场景并发激活）。AI Agent 通过修改此字段即可实现免命令唤起的声明式场景切换（详见下方 AI 协同章节）。
-
 ---
 
-## 🤖 AI Agent 协同与一键 Skill 赋能
+## 🤖 AI Agent 协同与双轨模式 (v1.4.1 ~ v1.5.0)
 
-Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接帮你管理断点场景：
+Scene Breakpoints 专为现代 AI 编程生态设计，支持通过标准 Skill 实现深度协同：
 
-### 1. 主流 AI Agent Skill 一键部署
-按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，即可一键将 `scene-breakpoints` 专属技能部署到工作区，覆盖以下 8 个平台：
+### 1. AI Skill 双轨模式 (v1.4.1)
+- **读图五步法 (Scene Breakpoints Reader)**：AI 在排查问题或阅读工程时，优先按图索骥——执行前置廉价探测、场景语义匹配、内联引用展开与物理行号精准跳读，以最低 Token 消耗建立工程空间感；
+- **规范制图标准 (Scene Breakpoints Writer)**：指导 AI 为断点编写精准排查意图标注（如“观察密码校验比对失败分支”），并规范锚定 `watch` 变量与预期断言。
+
+### 2. 8 大主流平台一键部署
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Install Agent Skill (安装 Skill)`**，支持一键部署到：
 - **Antigravity**: `.agents/skills/scene-breakpoints/SKILL.md`
 - **Cursor IDE**: `.cursor/rules/scene-breakpoints.mdc`
 - **Windsurf**: `.windsurf/rules/scene-breakpoints.md`
@@ -223,30 +257,32 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 - **GitHub Copilot**: `.github/skills/scene-breakpoints/SKILL.md`
 - **Trae IDE**: `.trae/skills/scene-breakpoints/SKILL.md`
 
-安装后，向 AI 说一句：“*帮我分析登录失败的原因，并建立断点场景*”，AI 便会自动研读代码、组织断点并为你激活！
+### 3. AI 集成状态全维诊断
+按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`** 随时检查规则就绪状态。
 
-### 2. AI 集成状态全维诊断
-按 `Ctrl+Shift+P` 执行 **`Scene Breakpoints: Diagnose AI Integration (AI 集成状态诊断)`**，可一目了然查看当前各平台 Skill 部署情况并提供一键修复：
+---
 
-```text
-⚡ [AI 宿主感知] 自动识别当前 IDE (Antigravity / Cursor / Trae / VS Code) 并置顶对应规则
-✅ [配置状态] allowAiFileActivation: 已开启 (支持 AI 声明式读写场景)
-✅ [已就绪 Skill] Antigravity, Cursor, Trae (最新规则基线)
-⚠️ [待部署平台] GitHub Copilot, Windsurf → 点击 [一键安装] 即可秒级补齐
-```
+## ⚙️ 配置项速查
+
+可在 VS Code `settings.json` 中配置以下选项：
+
+| 配置项 | 默认值 | 可选值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `sceneBreakpoints.autoContinueMode` | `"onPass"` | `"onPass"`, `"always"`, `"off"` | 断点命中时的自动放行巡航策略：`"onPass"` 表示断言均通过时自动放行，遇 Mismatch 自动定格 |
+| `sceneBreakpoints.allowAiFileActivation` | `false` | `true`, `false` | 是否允许 AI Agent 直接在 `debug-scenes.json` 中修改 `activeScenes` 声明式激活场景 |
 
 ---
 
 ## 📖 更多文档
 
-- 📕 [完整使用指南与常见问题 (FAQ)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md)
+- 📕 [完整实战指南与常见问题 (docs/guide_zh.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/docs/guide_zh.md)
 - 📝 [版本更新日志 (CHANGELOG_zh.md)](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/CHANGELOG_zh.md)
 
 ---
 
 ## 💖 支持与反馈
 
-如果这个插件对你有帮助，欢迎在 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) 或 [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode) 给个评分 ⭐。  
+如果这个插件对你有帮助，欢迎在 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Tony-L.scene-breakpoints-vscode) 或 [Open VSX](https://open-vsx.org/extension/tony-l/scene-breakpoints-vscode) 给个五星评分 ⭐。  
 遇到问题或有任何建议，欢迎[提交 Issue](https://github.com/Tonys-L/scene-breakpoints-vscode/issues)。
 
 ---
@@ -254,4 +290,3 @@ Scene Breakpoints 支持与主流 AI 编程助手协同，让 AI 理解并直接
 ## 📄 开源许可
 
 [MIT License](https://github.com/Tonys-L/scene-breakpoints-vscode/blob/main/LICENSE) © 2026 Tony.L
-

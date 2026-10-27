@@ -1,28 +1,28 @@
-## What's Changed in v1.4.1
+## What's Changed in v1.5.1
 
-### Added
-- **AI Skill Dual-Track Evolution (Reader & Writer)**:
-  - **Scene Breakpoints Reader (5-Step Protocol)**: empowers AI agents to read `.vscode/debug-scenes.json` via existence probing, scene semantic matching, inline reference recursion, and physical line jump reading before investigating codebases or diagnosing bugs.
-  - **Scene Breakpoints Writer**: standardized the breakpoint description matrix to mandate troubleshooting intentions (e.g. `desc: "Observe DB hash comparison failure branch"`) rather than meaningless file copies.
-  - **Canvas & Mermaid Collaboration Contract**: introduced read-only anti-hallucination guardrails and instructions for piping `Scene: Export Scene Graph as Mermaid` clipboard output into AI PR/architecture reviews.
-
-### Fixed & Improved
-- **E2E & Test Suite Stability**: aligned command registry bus test contracts to 31 commands and full-screen editor WebviewPanel assertions for reliable headless Linux CI runners.
-- **Official Skill Fingerprint Registry**: updated official SHA-256 fingerprint history for seamless lifecycle inspection and upgrade prompts.
+### Improved & Documentation
+- **Comprehensive Bilingual Documentation & Hands-On Guide Alignment**:
+  - Fully updated `README.md` and `README_zh.md` to highlight v1.4.0 Secondary Side Bar canvas & full-screen tab escape hatches, v1.5.0 Auto-Continue cruise debugging, Zero-Prompt AI trace loops, and full-line hover inspector cards.
+  - Expanded Hands-On User Guides (`docs/guide.md` & `docs/guide_zh.md`) with five dedicated sections (3.12–3.16) explaining DAP tolerance matching, `onPass` cruise state machine, zero Git pollution guarantees for `.vscode/debug-trace.local.json`, and hover card expression suppression.
+  - Upgraded Section 5 with Dual-Track AI Skill workflows (Reader 5-step protocol & Writer intention matrix) and Zero-Prompt Auto-Inspection procedures.
+  - Synchronized Section 6 JSON reference (with `watch` schemas), Section 7 shortcut table, and Section 8 FAQs (cruise debugging and trace file isolation).
+- **Changelog & Release Notes Consistency**:
+  - Backfilled missing breakpoint variable watch anchor and assertion entries in CHANGELOG.
+  - Aligned `RELEASE_NOTES.md` to ensure GitHub Actions release workflow generates precise, up-to-date release bodies.
 
 ---
 
 <details>
 <summary><b>🇨🇳 简体中文更新说明 (点击展开)</b></summary>
 
-### 新增 (Added)
-- **AI Skill 双轨协同演进 (读图 Reader 与制图 Writer)**：
-  - **读图五步法 (Scene Breakpoints Reader)**：指导 AI 在代码研读、排查诊断时优先按图索骥——执行前置廉价探测、场景语义匹配、内联引用递归展开与物理行号精准跳读，以最低 Token 消耗建立工程空间感。
-  - **规范制图标准 (Scene Breakpoints Writer)**：确立意图标注编写指引矩阵，强制断点描述聚焦排查动机（如“观察密码校验比对失败分支”），杜绝无意义代码复述。
-  - **画布与 Mermaid 协同契约**：明确只读防幻觉铁律（禁止在 JSON 中生造画布字段），并打通 `Scene: Export Scene Graph as Mermaid` 剪贴板文本与 AI 架构审阅链路。
-
-### 优化与修复 (Improved & Fixed)
-- **E2E 自动化测试契约对齐**：调整全量 31 大命令总线就绪与全屏独立编辑器 WebviewPanel 契约断言，保障多平台无头 CI 环境 100% 稳定通过。
-- **官方技能指纹史表登记**：完成新版 Skill 官方 SHA-256 指纹登记，支持存量纯净版平滑升级感知。
+### 优化与文档 (Improved & Docs)
+- **双语文档与用户实战指南全景补齐**：
+  - 全面更新中英文 `README.md` 与 `README_zh.md`，深度呈现 v1.4.0 架构画布副侧边栏常驻与全屏 Tab 演进、v1.5.0 自动巡航放行、Trace 实时落盘零提示词 AI 闭环与整行悬浮透视卡片。
+  - 用户实战指南（`docs/guide_zh.md` 与 `docs/guide.md`）新增 3.12~3.16 五大进阶核心章节，系统阐述 DAP 自动求值容差机制、`onPass` 巡航放行状态机、`.vscode/debug-trace.local.json` 零污染安全保证与整行 Hover 卡片交互。
+  - 完善第 5 章：新增 AI Skill 双轨模式（读图五步法 Reader 与规范制图标准 Writer）以及零提示词自动分析工作流。
+  - 补齐第 6 章配置参考（新增 `watch` 声明）、第 7 章快捷操作与第 8 章 FAQ（增加巡航放行策略与本地轨迹隔离解答）。
+- **更新日志与发布说明稳态同步**：
+  - 补齐 CHANGELOG 中遗漏的“断点变量监视锚点与期望值比对 (`watch` 数组)”核心特性声明。
+  - 同步重构 `RELEASE_NOTES.md`，保障 GitHub Actions 自动化 Release 发布流水线产出精确的发布说明。
 
 </details>
